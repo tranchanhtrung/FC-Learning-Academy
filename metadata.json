@@ -1,0 +1,6 @@
+{
+  "name": "FC Learning Academy",
+  "description": "Hospitality Financial Controller LMS – From Accountant to Strategic Business Partner. Enterprise learning and competency platform for hotel finance leaders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
