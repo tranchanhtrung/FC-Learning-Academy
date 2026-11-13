@@ -1,0 +1,3763 @@
+{
+  "users": [
+    {
+      "id": "user_admin",
+      "name": "Elena Rostova",
+      "email": "elena.rostova@fclearning.com",
+      "role": "super_admin",
+      "position": "Corporate Director of Finance Systems",
+      "department": "Corporate Finance & Technology",
+      "property": "Corporate Office – Singapore / Bangkok",
+      "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200",
+      "currentLevel": 4,
+      "targetLevel": 4,
+      "joinedDate": "2023-01-15"
+    },
+    {
+      "id": "user_lnd",
+      "name": "Marcus Sterling",
+      "email": "marcus.sterling@fclearning.com",
+      "role": "lnd_manager",
+      "position": "Regional Director of Talent & Learning",
+      "department": "Human Resources & L&D",
+      "property": "Asia-Pacific Regional Office",
+      "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200",
+      "currentLevel": 4,
+      "targetLevel": 4,
+      "joinedDate": "2023-03-01"
+    },
+    {
+      "id": "user_fc1",
+      "name": "David Tran",
+      "email": "david.tran@fclearning.com",
+      "role": "financial_controller",
+      "position": "Cluster Director of Finance",
+      "department": "Finance & Accounting",
+      "property": "Grand Horizon Saigon Hotel & Residences (5-Star Luxury)",
+      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
+      "currentLevel": 4,
+      "targetLevel": 4,
+      "joinedDate": "2022-06-10"
+    },
+    {
+      "id": "user_fc2",
+      "name": "Sarah Jenkins",
+      "email": "sarah.jenkins@fclearning.com",
+      "role": "financial_controller",
+      "position": "Financial Controller",
+      "department": "Finance & Accounting",
+      "property": "Royal Palm Resort & Spa Danang (450 Keys)",
+      "avatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=200",
+      "currentLevel": 4,
+      "targetLevel": 4,
+      "joinedDate": "2022-11-20"
+    },
+    {
+      "id": "user_gm",
+      "name": "Richard Vance",
+      "email": "richard.vance@fclearning.com",
+      "role": "general_manager",
+      "position": "General Manager",
+      "department": "Executive Office",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
+      "currentLevel": 4,
+      "targetLevel": 4,
+      "joinedDate": "2021-08-01"
+    },
+    {
+      "id": "user_learner1",
+      "name": "Nguyễn Minh Thư",
+      "email": "minhthu.nguyen@fclearning.com",
+      "role": "learner",
+      "position": "Senior Accountant & Aspiring AFC",
+      "department": "Finance & Accounting",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 2,
+      "targetLevel": 4,
+      "careerPathId": "path_senior_to_afc",
+      "joinedDate": "2024-02-15"
+    },
+    {
+      "id": "user_learner2",
+      "name": "Lê Hoàng Nam",
+      "email": "hoangnam.le@fclearning.com",
+      "role": "learner",
+      "position": "Assistant Financial Controller (AFC)",
+      "department": "Finance & Accounting",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "avatar": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 3,
+      "targetLevel": 4,
+      "careerPathId": "path_afc_to_fc",
+      "joinedDate": "2023-08-01"
+    },
+    {
+      "id": "user_learner3",
+      "name": "Phạm Thị Mai",
+      "email": "mai.pham@fclearning.com",
+      "role": "learner",
+      "position": "Income Auditor & Night Audit Lead",
+      "department": "Finance & Accounting",
+      "property": "Royal Palm Resort & Spa Danang",
+      "avatar": "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc2",
+      "currentLevel": 2,
+      "targetLevel": 3,
+      "careerPathId": "path_senior_to_afc",
+      "joinedDate": "2024-05-10"
+    },
+    {
+      "id": "user_learner4",
+      "name": "Trần Đức Anh",
+      "email": "ducanh.tran@fclearning.com",
+      "role": "learner",
+      "position": "Cost Controller & F&B Analyst",
+      "department": "Finance & Accounting",
+      "property": "Royal Palm Resort & Spa Danang",
+      "avatar": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc2",
+      "currentLevel": 2,
+      "targetLevel": 3,
+      "careerPathId": "path_senior_to_afc",
+      "joinedDate": "2024-03-20"
+    },
+    {
+      "id": "user_learner5",
+      "name": "Võ Thanh Hà",
+      "email": "thanhha.vo@fclearning.com",
+      "role": "learner",
+      "position": "Accounts Payable Supervisor",
+      "department": "Finance & Accounting",
+      "property": "Marina Bay Heritage Hotel Hanoi",
+      "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 2,
+      "targetLevel": 3,
+      "careerPathId": "path_senior_to_afc",
+      "joinedDate": "2024-01-10"
+    },
+    {
+      "id": "user_learner6",
+      "name": "Đặng Quốc Bảo",
+      "email": "quocbao.dang@fclearning.com",
+      "role": "learner",
+      "position": "General Ledger Accountant",
+      "department": "Finance & Accounting",
+      "property": "Marina Bay Heritage Hotel Hanoi",
+      "avatar": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 2,
+      "targetLevel": 3,
+      "careerPathId": "path_accountant_to_senior",
+      "joinedDate": "2024-06-15"
+    },
+    {
+      "id": "user_learner7",
+      "name": "Hoàng Yến Nhi",
+      "email": "yennhi.hoang@fclearning.com",
+      "role": "learner",
+      "position": "Credit Manager & AR Lead",
+      "department": "Finance & Accounting",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "avatar": "https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 2,
+      "targetLevel": 3,
+      "careerPathId": "path_senior_to_afc",
+      "joinedDate": "2023-10-01"
+    },
+    {
+      "id": "user_learner8",
+      "name": "Bùi Quang Huy",
+      "email": "quanghuy.bui@fclearning.com",
+      "role": "learner",
+      "position": "Junior Staff Accountant",
+      "department": "Finance & Accounting",
+      "property": "Emerald Bay Luxury Suites Nha Trang",
+      "avatar": "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc2",
+      "currentLevel": 1,
+      "targetLevel": 2,
+      "careerPathId": "path_accountant_to_senior",
+      "joinedDate": "2025-01-08"
+    },
+    {
+      "id": "user_learner9",
+      "name": "Vũ Thùy Linh",
+      "email": "thuylinh.vu@fclearning.com",
+      "role": "learner",
+      "position": "Purchasing & Receiving Specialist",
+      "department": "Finance & Accounting",
+      "property": "Emerald Bay Luxury Suites Nha Trang",
+      "avatar": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc2",
+      "currentLevel": 1,
+      "targetLevel": 2,
+      "careerPathId": "path_accountant_to_senior",
+      "joinedDate": "2024-09-01"
+    },
+    {
+      "id": "user_learner10",
+      "name": "Đoàn Văn Phúc",
+      "email": "vanphuc.doan@fclearning.com",
+      "role": "learner",
+      "position": "Assistant Cost Controller",
+      "department": "Finance & Accounting",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "avatar": "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&q=80&w=200",
+      "supervisorId": "user_fc1",
+      "currentLevel": 1,
+      "targetLevel": 3,
+      "careerPathId": "path_comprehensive_highway",
+      "joinedDate": "2024-11-15"
+    }
+  ],
+  "competencies": [
+    {
+      "id": "comp_far_01",
+      "code": "FAR-01",
+      "domainId": "dom_1",
+      "nameVi": "Chuẩn Mực Kế Toán Khách Sạn & USALI",
+      "nameEn": "USALI Principles & Hospitality Chart of Accounts",
+      "definitionVi": "Hiểu và vận dụng thành thạo cấu trúc USALI 11th & 12th Edition, phân bổ doanh thu và chi phí hợp lý giữa Operated Departments và Undistributed Departments.",
+      "definitionEn": "Mastery of USALI 11th/12th Edition principles, departmental revenue recognition, and cost allocation between operated and undistributed departments.",
+      "expectedLevelByPosition": {
+        "Junior Staff Accountant": 1,
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Biết các khái niệm cơ bản về USALI và định khoản được các nghiệp vụ chuẩn.",
+        "level2": "Tự lập và kiểm tra báo cáo tài chính từng bộ phận theo đúng chuẩn USALI.",
+        "level3": "Phân tích cấu trúc phân bổ chi phí phức tạp, hướng dẫn đội ngũ kế toán tuân thủ USALI.",
+        "level4": "Thiết lập hệ thống tài khoản quản trị tập đoàn, tư vấn tối ưu hóa phân loại tài chính chuẩn quốc tế."
+      },
+      "evidenceRequirements": [
+        "Bộ báo cáo tài chính tháng theo USALI",
+        "Biên bản khóa sổ doanh thu buồng phòng & F&B"
+      ],
+      "associatedCourseIds": [
+        "course_01",
+        "course_02"
+      ]
+    },
+    {
+      "id": "comp_far_02",
+      "code": "FAR-02",
+      "domainId": "dom_1",
+      "nameVi": "Quy Trình Khóa Sổ Tháng & Năm (Period-End Closing)",
+      "nameEn": "Month-End & Year-End Financial Closing",
+      "definitionVi": "Quản lý toàn diện lịch trình khóa sổ, trích trước chi phí (accruals), phân bổ khấu hao, doanh thu hoãn lại và xuất báo cáo đúng hạn (Day 3 / Day 5 P&L).",
+      "definitionEn": "Managing closing timetable, prepayments, accruals, depreciation, deferred revenue, and delivering flash/final P&L on schedule.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Thực hiện các bút toán trích trước và phân bổ chi phí định kỳ dưới sự giám sát.",
+        "level2": "Chủ động hoàn thành checklist khóa sổ của phần hành được giao trong vòng 2 ngày.",
+        "level3": "Điều phối toàn bộ quy trình khóa sổ của khách sạn, đảm bảo xuất báo cáo P&L ngày làm việc thứ 3.",
+        "level4": "Tối ưu hóa quy trình Fast-Close, số hóa đối chiếu dữ liệu tự động giữa PMS, POS và ERP."
+      },
+      "evidenceRequirements": [
+        "Closing checklist có chữ ký duyệt",
+        "Bảng phân tích biến động trích trước"
+      ],
+      "associatedCourseIds": [
+        "course_02"
+      ]
+    },
+    {
+      "id": "comp_far_03",
+      "code": "FAR-03",
+      "domainId": "dom_1",
+      "nameVi": "Đối Chiếu Bảng Cân Đối Kế Toán (Balance Sheet Reconciliation)",
+      "nameEn": "Balance Sheet Reconciliation & Asset Verification",
+      "definitionVi": "Lập và kiểm tra hồ sơ đối chiếu số dư toàn bộ các tài khoản tài sản, công nợ, tiền tệ và vốn chủ sở hữu theo chuẩn kiểm toán quốc tế.",
+      "definitionEn": "Comprehensive balance sheet reconciliations, clearing accounts verification, suspense accounts resolution, and audit-ready workpapers.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Đối chiếu các tài khoản đơn giản như tiền gửi ngân hàng, phải thu khách hàng vãng lai.",
+        "level2": "Tự lập hồ sơ đối chiếu chi tiết cho toàn bộ tài sản ngắn hạn và công nợ phải trả nhà cung cấp.",
+        "level3": "Soát xét, phát hiện các khoản tồn đọng bất thường trên tài khoản treo (clearing/suspense).",
+        "level4": "Phê duyệt hồ sơ đối chiếu hàng tháng, bảo vệ số liệu trước kiểm toán độc lập Big 4."
+      },
+      "evidenceRequirements": [
+        "Tập hồ sơ Balance Sheet Reconciliation tháng gần nhất",
+        "Biên bản xử lý tài khoản treo"
+      ],
+      "associatedCourseIds": [
+        "course_02"
+      ]
+    },
+    {
+      "id": "comp_far_04",
+      "code": "FAR-04",
+      "domainId": "dom_1",
+      "nameVi": "Ghi Nhận Doanh Thu Khách Sạn & Giao Dịch Phức Tạp",
+      "nameEn": "Hospitality Revenue Recognition (IFRS 15 / USALI)",
+      "definitionVi": "Ghi nhận doanh thu buồng, F&B, hội nghị tiệc (MICE), điểm thưởng khách hàng thân thiết (Loyalty Points), voucher và các gói bán trọn gói (Package Breakdown).",
+      "definitionEn": "Revenue recognition under IFRS 15, loyalty program accounting, breakage estimation, advanced deposits, and package allocation matrices.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Hiểu nguyên tắc ghi nhận doanh thu phòng và ăn uống hàng ngày từ báo cáo Night Audit.",
+        "level2": "Tách bóc chính xác doanh thu từ các gói phức tạp (ví dụ Room + Breakfast + Spa credit).",
+        "level3": "Xử lý chuẩn xác kế toán điểm thưởng Loyalty của tập đoàn và doanh thu nhận trước tiệc cưới.",
+        "level4": "Thiết lập chính sách ghi nhận doanh thu phù hợp với hợp đồng quản lý khách sạn (HMA)."
+      },
+      "evidenceRequirements": [
+        "Ma trận phân bổ doanh thu package",
+        "Bảng tính trích lập điểm thưởng loyalty"
+      ],
+      "associatedCourseIds": [
+        "course_01"
+      ]
+    },
+    {
+      "id": "comp_far_05",
+      "code": "FAR-05",
+      "domainId": "dom_1",
+      "nameVi": "Phân Tích Báo Cáo Tài Chính Đa Chiều",
+      "nameEn": "Multidimensional Financial Statement Analysis",
+      "definitionVi": "Phân tích chuyên sâu biến động P&L so với ngân sách và cùng kỳ năm trước, xác định nguyên nhân cốt lõi từ giá bán, số lượng và năng suất.",
+      "definitionEn": "Deep-dive P&L variance analysis vs budget and prior year, isolating rate, volume, and operational productivity drivers.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Tính toán chênh lệch số học giữa thực tế và ngân sách trên báo cáo kết quả kinh doanh.",
+        "level2": "Giải thích được các biến động chi phí lớn của bộ phận buồng phòng và nhà hàng.",
+        "level3": "Phân tích sâu nguyên nhân biến động phân loại theo Rate Variance và Volume Variance.",
+        "level4": "Trình bày bức tranh tài chính tổng thể cho Ban Giám đốc kèm giải pháp hành động khắc phục."
+      },
+      "evidenceRequirements": [
+        "Monthly Financial Critique Report",
+        "Slide trình bày tài chính tháng"
+      ],
+      "associatedCourseIds": [
+        "course_06"
+      ]
+    },
+    {
+      "id": "comp_fca_01",
+      "code": "FCA-01",
+      "domainId": "dom_2",
+      "nameVi": "Hệ Thống Kiểm Soát Nội Bộ & Quy Trình SOP",
+      "nameEn": "Internal Control Framework & Operational SOPs",
+      "definitionVi": "Thiết kế, ban hành và giám sát việc thực thi các chuẩn mực kiểm soát nội bộ tại tất cả các điểm tạo doanh thu và phát sinh chi phí trong khách sạn.",
+      "definitionEn": "Designing, enforcing, and monitoring internal control systems, segregation of duties, and operational SOPs across all hotel touchpoints.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Tuân thủ đúng quy trình thanh toán và đối soát chứng từ.",
+        "level2": "Thực hiện kiểm tra đột xuất quỹ tiền mặt và kiểm kê kho định kỳ.",
+        "level3": "Đánh giá điểm yếu kiểm soát trong quy trình mua sắm và thanh toán (Procure-to-Pay).",
+        "level4": "Xây dựng toàn bộ hệ thống kiểm soát nội bộ đạt chuẩn kiểm toán tập đoàn (Group Audit Score > 90%)."
+      },
+      "evidenceRequirements": [
+        "Báo cáo tự đánh giá kiểm soát nội bộ (CSA)",
+        "Quy trình SOP tài chính ban hành"
+      ],
+      "associatedCourseIds": [
+        "course_03"
+      ]
+    },
+    {
+      "id": "comp_fca_02",
+      "code": "FCA-02",
+      "domainId": "dom_2",
+      "nameVi": "Kiểm Soát Doanh Thu & Kiểm Toán Đêm (Night Audit Review)",
+      "nameEn": "Revenue Control & Night Audit Oversight",
+      "definitionVi": "Giám sát báo cáo kiểm toán đêm, kiểm soát hóa đơn mở (open checks), giảm trừ giá (rebates), buồng miễn phí (complimentary rooms) và chênh lệch thanh toán thẻ.",
+      "definitionEn": "Night audit verification, complimentary & house use rooms control, rebates/allowances review, and credit card settlement balancing.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Kiểm tra tính cân đối của báo cáo D-Card và bảng đối chiếu doanh thu ngày.",
+        "level2": "Soát xét toàn bộ các khoản giảm trừ (rebates/allowances) và yêu cầu đầy đủ phê duyệt hợp lệ.",
+        "level3": "Phát hiện các dấu hiệu bất thường trong việc sử dụng mã giá (rate overrides) và phòng miễn phí.",
+        "level4": "Thiết lập quy trình kiểm soát chống thất thoát doanh thu F&B và buồng phòng toàn diện."
+      },
+      "evidenceRequirements": [
+        "Báo cáo kiểm tra Rebate/Allowance hàng tháng",
+        "Audit trail nhật ký chỉnh sửa hóa đơn"
+      ],
+      "associatedCourseIds": [
+        "course_03"
+      ]
+    },
+    {
+      "id": "comp_fca_03",
+      "code": "FCA-03",
+      "domainId": "dom_2",
+      "nameVi": "Kiểm Soát Chi Phí F&B & Quản Lý Kho Bãi",
+      "nameEn": "F&B Cost Control & Inventory Management",
+      "definitionVi": "Tính toán chi phí nguyên vật liệu tiêu hao (Food & Beverage Cost %), định mức món ăn (Recipe Costing), hao hụt, kiểm kê định kỳ và kiểm soát thất thoát bếp.",
+      "definitionEn": "Food & Beverage cost percentage calculation, potential vs actual cost variance, recipe costing, yield tests, and butcher test audits.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Nhập liệu hóa đơn mua hàng và tham gia kiểm kê kho thực tế cuối tháng.",
+        "level2": "Tính toán tỷ lệ F&B Cost thực tế và đối chiếu với định mức (Theoretical vs Actual Cost).",
+        "level3": "Tiến hành butcher test, yield test và phân tích nguyên nhân biến động giá nguyên vật liệu.",
+        "level4": "Tham mưu cho Tổng Giám đốc và Bếp trưởng giải pháp tái cấu trúc thực đơn (Menu Engineering) tối ưu lợi nhuận."
+      },
+      "evidenceRequirements": [
+        "Báo cáo Food Cost Flash hàng tuần",
+        "Báo cáo phân tích Menu Engineering"
+      ],
+      "associatedCourseIds": [
+        "course_07"
+      ]
+    },
+    {
+      "id": "comp_fca_04",
+      "code": "FCA-04",
+      "domainId": "dom_2",
+      "nameVi": "Kiểm Toán & Phòng Ngừa Gian Lận Khách Sạn",
+      "nameEn": "Audit Readiness & Hospitality Fraud Prevention",
+      "definitionVi": "Nhận diện các rủi ro gian lận phổ biến trong khách sạn (mua sắm thông đồng, gian lận quầy bar, tiền hoa hồng đen, chiếm dụng tiền mặt) và chuẩn bị hồ sơ kiểm toán.",
+      "definitionEn": "Fraud risk mapping, forensic accounting techniques, whistleblowing protocols, and internal/external audit readiness.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Nhận thức được các rủi ro bảo mật thông tin thẻ khách hàng (PCI-DSS) và quy định hóa đơn.",
+        "level2": "Thực hiện kiểm tra ngẫu nhiên nhà cung cấp và đối chiếu giá thị trường độc lập.",
+        "level3": "Phối hợp hiệu quả với đoàn kiểm toán nội bộ của tập đoàn, chuẩn bị chứng từ kịp thời.",
+        "level4": "Xây dựng ma trận rủi ro gian lận khách sạn và kế hoạch khắc phục triệt để các phát hiện kiểm toán."
+      },
+      "evidenceRequirements": [
+        "Ma trận quản lý rủi ro gian lận",
+        "Kế hoạch hành động sau kiểm toán (CAP)"
+      ],
+      "associatedCourseIds": [
+        "course_03"
+      ]
+    },
+    {
+      "id": "comp_fca_05",
+      "code": "FCA-05",
+      "domainId": "dom_2",
+      "nameVi": "Quản Trị Tín Dụng & Thu Hồi Nợ (Credit Control)",
+      "nameEn": "Credit Management & Working Capital Safeguarding",
+      "definitionVi": "Thẩm định hạn mức tín dụng cho đại lý du lịch (OTA, TA) và khách hàng doanh nghiệp (Corporate), kiểm soát nợ quá hạn và giảm thiểu nợ xấu.",
+      "definitionEn": "Credit limit appraisal for OTAs/corporates, aging debtor management, DSO optimization, and provision for doubtful debts.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Theo dõi tuổi nợ và gửi thư đối chiếu công nợ định kỳ cho khách hàng.",
+        "level2": "Tổ chức họp xét duyệt công nợ hàng tuần, đôn đốc thu hồi các khoản nợ trên 60 ngày.",
+        "level3": "Đánh giá năng lực tài chính của đối tác MICE lớn trước khi cấp hạn mức nợ tiệc.",
+        "level4": "Tối ưu hóa chỉ số DSO (Days Sales Outstanding) dưới 28 ngày, hạn chế tối đa rủi ro nợ khó đòi."
+      },
+      "evidenceRequirements": [
+        "Biên bản họp Credit Meeting hàng tháng",
+        "Báo cáo phân tích AR Aging"
+      ],
+      "associatedCourseIds": [
+        "course_02"
+      ]
+    },
+    {
+      "id": "comp_fpm_01",
+      "code": "FPM-01",
+      "domainId": "dom_3",
+      "nameVi": "Lập Ngân Sách Hoạt Động Thường Niên (Annual Operating Budget)",
+      "nameEn": "Annual Operating Budgeting & Zero-Based Modeling",
+      "definitionVi": "Lãnh đạo quy trình xây dựng ngân sách tổng thể của khách sạn, kết hợp dự báo số buồng, doanh thu F&B, định mức nhân sự (Manning Guide) và chi phí vận hành.",
+      "definitionEn": "Leading hotel annual budget process, zero-based departmental budgeting, manning & payroll models, and alignment with owner ROI targets.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Hỗ trợ thu thập dữ liệu lịch sử và tổng hợp biểu mẫu chi phí của các phòng ban.",
+        "level2": "Xây dựng mô hình tính toán chi phí năng lượng, chi phí văn phòng và bảo hiểm.",
+        "level3": "Phối hợp với Trưởng các bộ phận hoàn thiện ngân sách chi tiết theo chuẩn USALI.",
+        "level4": "Bảo vệ thành công kế hoạch ngân sách trước Chủ đầu tư và Ban Điều hành Tập đoàn."
+      },
+      "evidenceRequirements": [
+        "File Excel mô hình ngân sách năm hoàn chỉnh",
+        "Kịch bản phân tích độ nhạy ngân sách"
+      ],
+      "associatedCourseIds": [
+        "course_05"
+      ]
+    },
+    {
+      "id": "comp_fpm_02",
+      "code": "FPM-02",
+      "domainId": "dom_3",
+      "nameVi": "Dự Báo Doanh Thu & Lợi Nhuận Lăn (Rolling Forecast)",
+      "nameEn": "Rolling Financial Forecasting & Pace Analysis",
+      "definitionVi": "Xây dựng mô hình dự báo tài chính 30-60-90 ngày và 12 tháng lăn, cập nhật theo tốc độ đặt phòng (booking pace), biến động giá và xu hướng thị trường.",
+      "definitionEn": "30-60-90 day and 12-month rolling forecasts, pace analysis, pickup tracking, dynamic cost flexing, and month-end forecast accuracy within ±3%.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Cập nhật số liệu đặt phòng (OTB - On the books) từ phần mềm PMS vào file dự báo.",
+        "level2": "Dự báo chi phí biến đổi (biến phí buồng phòng, giặt là, nguyên liệu) theo công suất phòng.",
+        "level3": "Chủ trì cuộc họp dự báo doanh thu hàng tuần cùng Giám đốc Kinh doanh và Tổng Giám đốc.",
+        "level4": "Duy trì độ chính xác của dự báo lợi nhuận GOP trong biên độ sai số dưới 3% liên tục 12 tháng."
+      },
+      "evidenceRequirements": [
+        "Báo cáo 90-day Rolling Forecast",
+        "Bảng theo dõi độ chính xác dự báo (Forecast Accuracy)"
+      ],
+      "associatedCourseIds": [
+        "course_05"
+      ]
+    },
+    {
+      "id": "comp_fpm_03",
+      "code": "FPM-03",
+      "domainId": "dom_3",
+      "nameVi": "Quản Trị Dòng Tiền & Vốn Lưu Động (Cash Flow Management)",
+      "nameEn": "Cash Flow & Working Capital Optimization",
+      "definitionVi": "Lập dự báo dòng tiền 13 tuần, quản trị tiền mặt tại quỹ, tối ưu hóa chu kỳ luân chuyển vốn lưu động và đảm bảo thanh khoản thanh toán cho nhà cung cấp và chủ nợ.",
+      "definitionEn": "13-week direct cash flow forecasting, working capital cash conversion cycle, debt service management, and cash surplus repatriation.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Theo dõi số dư tài khoản ngân hàng hàng ngày và lập kế hoạch chi tiền tuần.",
+        "level2": "Lập bảng dự báo dòng tiền thu - chi ngắn hạn 4 tuần với độ chính xác cao.",
+        "level3": "Quản lý lịch thanh toán công nợ nhà cung cấp hài hòa với dòng tiền về từ đại lý du lịch.",
+        "level4": "Xây dựng kế hoạch tài chính bảo toàn thanh khoản khách sạn vượt qua các mùa vụ thấp điểm."
+      },
+      "evidenceRequirements": [
+        "Mô hình dòng tiền 13-week Cash Flow Forecast",
+        "Báo cáo tối ưu hóa dòng vốn lưu động"
+      ],
+      "associatedCourseIds": [
+        "course_05"
+      ]
+    },
+    {
+      "id": "comp_fpm_04",
+      "code": "FPM-04",
+      "domainId": "dom_3",
+      "nameVi": "Thẩm Định Dự Án Vốn Đầu Tư (CAPEX Planning & ROI)",
+      "nameEn": "Capital Expenditure (CAPEX) Modeling & Asset Feasibility",
+      "definitionVi": "Lập kế hoạch quỹ thay thế trang thiết bị nội thất (FF&E Reserve), thẩm định hiệu quả tài chính dự án cải tạo, tính toán NPV, IRR và thời gian hoàn vốn.",
+      "definitionEn": "FF&E reserve management, capital allocation, feasibility studies, discounted cash flow (DCF), NPV, IRR, and payback period modeling for hotel refurbishments.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Theo dõi danh mục tài sản cố định và chứng từ chi phí thuộc quỹ FF&E.",
+        "level2": "Kiểm tra tính hợp lệ của báo giá và hồ sơ thầu dự án mua sắm tài sản lớn.",
+        "level3": "Xây dựng mô hình tính toán thời gian hoàn vốn (Payback) và ROI cho dự án tiết kiệm năng lượng.",
+        "level4": "Soạn thảo tờ trình đầu tư CAPEX hoàn chỉnh trình Hội đồng Quản trị và Chủ khách sạn phê duyệt."
+      },
+      "evidenceRequirements": [
+        "Tờ trình thẩm định dự án đầu tư CAPEX kèm mô hình DCF/NPV"
+      ],
+      "associatedCourseIds": [
+        "course_04"
+      ]
+    },
+    {
+      "id": "comp_fpm_05",
+      "code": "FPM-05",
+      "domainId": "dom_3",
+      "nameVi": "Kiểm Soát & Linh Hoạt Chi Phí (Cost Flexing & Optimization)",
+      "nameEn": "Cost Optimization & Flow-Through Flexing",
+      "definitionVi": "Thiết lập mô hình linh hoạt chi phí khi doanh thu sụt giảm (Flexing), kiểm soát chi phí cố định và tối ưu hóa năng suất lao động theo mùa vụ.",
+      "definitionEn": "Dynamic expense flexing during downturns, zero-based cost reviews, contract renegotiations, and productivity-driven payroll scaling.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Phân loại rành mạch giữa định phí (fixed cost) và biến phí (variable cost) của khách sạn.",
+        "level2": "Tính toán mức độ tiết kiệm chi phí biến đổi tương ứng với mỗi 5% sụt giảm công suất phòng.",
+        "level3": "Đàm phán lại các hợp đồng dịch vụ thuê ngoài (giặt là, vệ sinh, IT) để giảm định phí.",
+        "level4": "Ban hành cẩm nang ứng phó khủng hoảng tài chính (Financial Contingency Playbook) duy trì GOP dương."
+      },
+      "evidenceRequirements": [
+        "Contingency Cost Flexing Matrix",
+        "Báo cáo đàm phán hợp đồng nhà cung cấp"
+      ],
+      "associatedCourseIds": [
+        "course_06"
+      ]
+    },
+    {
+      "id": "comp_bpa_01",
+      "code": "BPA-01",
+      "domainId": "dom_4",
+      "nameVi": "Phân Tích Dòng Chuyển Hóa Lợi Nhuận (Flow-Through & Flex Analysis)",
+      "nameEn": "Flow-Through & Flex Analysis (GOP Sensitivity)",
+      "definitionVi": "Tính toán và diễn giải tỷ lệ chuyển hóa tăng trưởng doanh thu thành lợi nhuận (Flow-Through % > 50%) và khả năng tiết giảm chi phí khi hụt doanh thu (Flex % > 35%).",
+      "definitionEn": "Calculating flow-through percentage (ΔGOP / ΔRevenue) on revenue gains and flex percentage on revenue shortfalls, pinpointing leakages.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Thuộc công thức tính Flow-Through và Flex theo hướng dẫn USALI.",
+        "level2": "Tính toán chính xác Flow-Through của bộ phận Buồng phòng và Nhà hàng từng tháng.",
+        "level3": "Phát hiện lý do tại sao doanh thu phòng tăng 10% nhưng GOP chỉ tăng 2% (cháy chi phí OTA/nhân công).",
+        "level4": "Huấn luyện Trưởng bộ phận vận hành tự kiểm soát chỉ tiêu Flow-through đạt chuẩn 50%+."
+      },
+      "evidenceRequirements": [
+        "Báo cáo Flow-Through & Flex Report chi tiết từng Outlet",
+        "Slide trình bày GOP Flow-Through"
+      ],
+      "associatedCourseIds": [
+        "course_06"
+      ]
+    },
+    {
+      "id": "comp_bpa_02",
+      "code": "BPA-02",
+      "domainId": "dom_4",
+      "nameVi": "Chỉ Số Doanh Thu Phòng (RevPAR, ADR & STR Report Benchmarking)",
+      "nameEn": "Rooms Revenue Metrics & STR Benchmark Intelligence",
+      "definitionVi": "Hiểu sâu về mối quan hệ giữa Occupancy, ADR, RevPAR, RevPAR Index (RGI / MPI / ARI) từ báo cáo STR để định vị chiến lược giá và tối ưu doanh thu phòng.",
+      "definitionEn": "RevPAR, ADR, Occupancy analytics, STR competitive set benchmarking (MPI, ARI, RGI), yield management synergy, and net ADR after distribution cost.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Tính toán đúng các chỉ số RevPAR, TRevPAR và hiểu ý nghĩa số liệu báo cáo STR.",
+        "level2": "Phân tích chi phí hoa hồng kênh OTA trừ vào giá ròng (Net ADR after commission).",
+        "level3": "Đối chiếu kết quả RGI của khách sạn so với tập đối thủ cạnh tranh (Comp Set).",
+        "level4": "Phối hợp với Giám đốc Doanh thu (Director of Revenue) hoạch định chiến lược phân phối mang lại GOP cao nhất."
+      },
+      "evidenceRequirements": [
+        "Báo cáo phân tích Net ADR theo kênh phân phối",
+        "Báo cáo đánh giá STR Index hàng tháng"
+      ],
+      "associatedCourseIds": [
+        "course_07"
+      ]
+    },
+    {
+      "id": "comp_bpa_03",
+      "code": "BPA-03",
+      "domainId": "dom_4",
+      "nameVi": "Quản Trị Chi Phí Nhân Công & Năng Suất Lao Động",
+      "nameEn": "Labor Cost Management & Productivity Benchmarking",
+      "definitionVi": "Phân tích tổng chi phí nhân sự (Salaries, Benefits, Outsourced Labor) trên doanh thu, đo lường năng suất (Hours Per Occupied Room - HPOR, Covers Per Labor Hour).",
+      "definitionEn": "Payroll & related expenses analytics, productivity metrics (Hours Per Occupied Room, Covers Per Hour), scheduling optimization, and contractor flex labor.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Kiểm tra bảng lương, làm thêm giờ (overtime) và chi phí phúc lợi hàng tháng.",
+        "level2": "Tính toán chỉ số HPOR của bộ phận Buồng phòng và so sánh với định mức chuẩn.",
+        "level3": "Nhận diện tình trạng thừa nhân lực hoặc lạm dụng giờ làm thêm ngoài giờ.",
+        "level4": "Thiết lập mô hình định biên lao động linh hoạt (Dynamic Manning Model) giúp tiết kiệm 8% quỹ lương."
+      },
+      "evidenceRequirements": [
+        "Mô hình tính toán năng suất HPOR",
+        "Báo cáo tối ưu hóa chi phí làm thêm giờ (Overtime Audit)"
+      ],
+      "associatedCourseIds": [
+        "course_06"
+      ]
+    },
+    {
+      "id": "comp_bpa_04",
+      "code": "BPA-04",
+      "domainId": "dom_4",
+      "nameVi": "Lợi Nhuận Từng Bộ Phận & Phân Bổ Chi Phí Quản Lý",
+      "nameEn": "Departmental Profitability & Undistributed Cost Control",
+      "definitionVi": "Đánh giá biên lợi nhuận của từng bộ phận tạo doanh thu (Rooms, F&B, Spa) và kiểm soát chặt chẽ các chi phí không phân bổ (A&G, S&M, POM, Energy).",
+      "definitionEn": "Profit margin tracking for operated departments, overhead cost control across A&G, Sales & Marketing, Property Operation & Maintenance, and Utilities.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Tổng hợp số liệu doanh thu và chi phí trực tiếp của từng outlet F&B.",
+        "level2": "Tính toán biên lợi nhuận của Spa, Giặt là và Dịch vụ vận chuyển.",
+        "level3": "Phân tích hiệu quả chi tiêu ngân sách Sales & Marketing so với doanh thu mang lại (ROAS).",
+        "level4": "Tái cơ cấu các outlet hoặc dịch vụ kinh doanh thua lỗ để nâng cao tỷ suất GOP toàn khách sạn."
+      },
+      "evidenceRequirements": [
+        "Báo cáo P&L chi tiết từng Outlet",
+        "Đánh giá chi phí POM & Energy trên mỗi phòng sẵn có"
+      ],
+      "associatedCourseIds": [
+        "course_06"
+      ]
+    },
+    {
+      "id": "comp_bpa_05",
+      "code": "BPA-05",
+      "domainId": "dom_4",
+      "nameVi": "Ứng Dụng Business Intelligence & Dữ Liệu Lớn",
+      "nameEn": "Hotel Business Intelligence & Data Analytics",
+      "definitionVi": "Khai thác dữ liệu từ hệ thống quản lý khách sạn (PMS, POS, CRM, Procurement) để xây dựng Dashboard điều hành thời gian thực và phát hiện xu hướng.",
+      "definitionEn": "Leveraging hotel PMS/POS data, Power BI/Tableau dashboarding, customer spending patterns, and predictive analytics for commercial agility.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Trích xuất dữ liệu thô từ hệ thống PMS và tạo bảng tổng hợp PivotTable.",
+        "level2": "Xây dựng biểu đồ trực quan hóa dữ liệu chi phí và doanh thu hàng ngày.",
+        "level3": "Thiết kế Dashboard theo dõi KPI tài chính tự động cập nhật.",
+        "level4": "Triển khai hệ thống BI tập trung hóa dữ liệu toàn chuỗi khách sạn, hỗ trợ ra quyết định tốc độ cao."
+      },
+      "evidenceRequirements": [
+        "File Dashboard BI phân tích doanh thu khách sạn",
+        "Quy trình trích xuất dữ liệu tự động"
+      ],
+      "associatedCourseIds": [
+        "course_07"
+      ]
+    },
+    {
+      "id": "comp_lpm_01",
+      "code": "LPM-01",
+      "domainId": "dom_5",
+      "nameVi": "Lãnh Đạo & Xây Dựng Đội Ngũ Tài Chính Hiệu Suất Cao",
+      "nameEn": "Finance Team Leadership & High Performance Culture",
+      "definitionVi": "Truyền cảm hứng, thiết lập mục tiêu rõ ràng (OKRs/KPIs), xây dựng văn hóa chính trực, tính chịu trách nhiệm và tinh thần phục vụ khách hàng nội bộ.",
+      "definitionEn": "Inspiring finance teams, establishing clear KPIs/OKRs, fostering ethical culture, accountability, and customer-service mindset toward operational departments.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Làm việc nhóm tích cực, hỗ trợ đồng nghiệp trong các đợt cao điểm khóa sổ.",
+        "level2": "Quản lý nhóm nhỏ (3-5 nhân viên), phân công công việc công bằng và kiểm soát chất lượng.",
+        "level3": "Tạo động lực làm việc, giải quyết bất đồng và duy trì tỷ lệ gắn kết nhân viên trên 85%.",
+        "level4": "Được công nhận là lãnh đạo tài chính xuất sắc, kiến tạo môi trường làm việc chuyên nghiệp chuẩn quốc tế."
+      },
+      "evidenceRequirements": [
+        "Kết quả khảo sát mức độ hài lòng nhân viên bộ phận tài chính",
+        "Kế hoạch phát triển đội ngũ"
+      ],
+      "associatedCourseIds": [
+        "course_08"
+      ]
+    },
+    {
+      "id": "comp_lpm_02",
+      "code": "LPM-02",
+      "domainId": "dom_5",
+      "nameVi": "Huấn Luyện & Phát Triển Kế Thừa (Coaching & Succession)",
+      "nameEn": "Coaching, Mentoring & Finance Succession Planning",
+      "definitionVi": "Kèm cặp chuyên môn, tổ chức đào tạo nội bộ, đánh giá tiềm năng và bồi dưỡng kế toán viên trở thành Trưởng bộ phận tài chính tương lai.",
+      "definitionEn": "Structured coaching, one-on-one development reviews, individual development plans (IDPs), and building a qualified bench for FC succession.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Hướng dẫn nhân viên mới làm quen với phần mềm và quy trình làm việc.",
+        "level2": "Kèm cặp 1 nhân viên cấp dưới hoàn thành các chứng chỉ chuyên môn nội bộ.",
+        "level3": "Xây dựng và theo dõi kế hoạch phát triển cá nhân (IDP) cho toàn bộ nhân sự trong phòng.",
+        "level4": "Đào tạo thành công ít nhất 1 Assistant FC sẵn sàng đảm nhận vị trí FC độc lập trong vòng 12 tháng."
+      },
+      "evidenceRequirements": [
+        "Bảng đánh giá IDP của nhân viên cấp dưới",
+        "Biên bản các buổi Coaching 1-1"
+      ],
+      "associatedCourseIds": [
+        "course_08"
+      ]
+    },
+    {
+      "id": "comp_lpm_03",
+      "code": "LPM-03",
+      "domainId": "dom_5",
+      "nameVi": "Giao Tiếp Thuyết Phục & Giải Quyết Xung Đột",
+      "nameEn": "Executive Communication & Cross-Functional Conflict Resolution",
+      "definitionVi": "Chuyển đổi ngôn ngữ tài chính phức tạp thành thông điệp dễ hiểu cho Trưởng các bộ phận không chuyên tài chính (Bếp trưởng, Giám đốc Buồng, F&B Manager).",
+      "definitionEn": "Translating complex financial jargon into actionable operational insights for non-finance heads, de-escalating budget conflicts constructively.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Giao tiếp rõ ràng bằng văn bản và email với các phòng ban liên quan.",
+        "level2": "Thuyết minh số liệu chi phí một cách khách quan, không gây cảm giác đổ lỗi.",
+        "level3": "Dàn xếp thành công mâu thuẫn về cắt giảm ngân sách giữa Bếp trưởng và Ban Giám đốc.",
+        "level4": "Tạo dựng vị thế đối tác tin cậy, được Trưởng tất cả các bộ phận chủ động tìm kiếm lời khuyên."
+      },
+      "evidenceRequirements": [
+        "Tài liệu đào tạo tài chính dành cho Trưởng bộ phận phi tài chính",
+        "Đánh giá 360 độ"
+      ],
+      "associatedCourseIds": [
+        "course_08",
+        "course_09"
+      ]
+    },
+    {
+      "id": "comp_lpm_04",
+      "code": "LPM-04",
+      "domainId": "dom_5",
+      "nameVi": "Quản Lý Thay Đổi & Số Hóa Quy Trình (Change Management)",
+      "nameEn": "Change Management & Finance Digital Transformation",
+      "definitionVi": "Dẫn dắt các sáng kiến đổi mới công nghệ (hóa đơn điện tử, thanh toán tự động, báo cáo đám mây), vượt qua sự phản kháng và duy trì tính liên tục.",
+      "definitionEn": "Leading system implementations, robotic process automation (RPA) in accounting, digital payment gateways, and managing user adoption.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Sử dụng thành thạo và nhanh chóng thích ứng với các công cụ phần mềm mới.",
+        "level2": "Tham gia chạy thử nghiệm (UAT) hệ thống ERP hoặc phần mềm quản lý chi phí mới.",
+        "level3": "Soạn thảo tài liệu đào tạo và trực tiếp hướng dẫn nhân viên áp dụng công nghệ mới.",
+        "level4": "Dẫn dắt dự án số hóa toàn diện quy trình tài chính, cắt giảm 40% thời gian xử lý thủ công."
+      },
+      "evidenceRequirements": [
+        "Kế hoạch triển khai dự án công nghệ tài chính",
+        "Báo cáo đo lường hiệu quả chuyển đổi số"
+      ],
+      "associatedCourseIds": [
+        "course_08"
+      ]
+    },
+    {
+      "id": "comp_sbp_01",
+      "code": "SBP-01",
+      "domainId": "dom_6",
+      "nameVi": "Tư Duy Kinh Doanh Nhạy Bén & Hiểu Biết Thương Mại",
+      "nameEn": "Commercial Acumen & Hospitality Market Dynamics",
+      "definitionVi": "Hiểu rõ mô hình kinh doanh khách sạn, các phân khúc khách (FIT, Corporate, MICE, Group), kênh phân phối, chi phí thâu tóm khách hàng và định vị thị trường.",
+      "definitionEn": "Comprehensive understanding of hotel business models, guest segmentation, customer acquisition costs (CAC), channel economics, and commercial levers.",
+      "expectedLevelByPosition": {
+        "Senior Accountant": 2,
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Biết các phân khúc khách hàng chính của khách sạn và cơ cấu doanh thu.",
+        "level2": "Tính toán chi phí trung gian của các kênh OTA (Booking.com, Agoda, Expedia) trên từng booking.",
+        "level3": "Phân tích khả năng sinh lời theo phân khúc khách (Profitability by Market Segment).",
+        "level4": "Đóng góp sáng kiến thương mại giúp Tổng Giám đốc nắm bắt cơ hội tăng trưởng doanh thu ròng."
+      },
+      "evidenceRequirements": [
+        "Báo cáo phân tích lợi nhuận theo kênh phân phối",
+        "Bản kế hoạch hành động thương mại"
+      ],
+      "associatedCourseIds": [
+        "course_09"
+      ]
+    },
+    {
+      "id": "comp_sbp_02",
+      "code": "SBP-02",
+      "domainId": "dom_6",
+      "nameVi": "Tư Vấn Hỗ Trợ Ra Quyết Định Cho Tổng Giám Đốc (Decision Support)",
+      "nameEn": "Executive Decision Support & Business Scenario Planning",
+      "definitionVi": "Đóng vai trò là \"người hoa tiêu tài chính\" cho GM, mô phỏng các kịch bản kinh doanh (Best / Base / Worst case) để hỗ trợ các quyết định kinh doanh rủi ro cao.",
+      "definitionEn": "Acting as co-pilot to the General Manager, scenario modeling, trade-off analysis, commercial contract structuring, and risk-adjusted decision guidance.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Chuẩn bị dữ liệu và báo cáo theo yêu cầu của Giám đốc Tài chính.",
+        "level2": "Xây dựng bảng tính mô phỏng kịch bản giá bán phòng tiệc và điểm hòa vốn.",
+        "level3": "Đưa ra các phân tích so sánh đánh đổi (Trade-off Analysis) trước các đề xuất giảm giá phòng.",
+        "level4": "Trở thành đối tác tư vấn không thể thiếu của Tổng Giám đốc trong mọi quyết định chiến lược của khách sạn."
+      },
+      "evidenceRequirements": [
+        "Mô hình kịch bản tài chính What-If Scenario",
+        "Biên bản tư vấn chiến lược cho GM"
+      ],
+      "associatedCourseIds": [
+        "course_09"
+      ]
+    },
+    {
+      "id": "comp_sbp_03",
+      "code": "SBP-03",
+      "domainId": "dom_6",
+      "nameVi": "Thuyết Trình Tài Chính & Báo Cáo Chủ Đầu Tư (Owner Relations)",
+      "nameEn": "Owner Financial Presentations & Asset Management Alignment",
+      "definitionVi": "Trình bày số liệu tài chính trước Chủ sở hữu khách sạn (Hotel Owners / Asset Managers), bảo vệ tính toàn vẹn của kết quả kinh doanh và quyền lợi của đơn vị quản lý.",
+      "definitionEn": "Owner relations, asset management reporting, HMA compliance, management fee calculations, and persuasive board presentations.",
+      "expectedLevelByPosition": {
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Chuẩn bị số liệu thô cho bài thuyết trình kết quả kinh doanh.",
+        "level2": "Thiết kế slide báo cáo tài chính trực quan, rõ ràng, đúng format tập đoàn.",
+        "level3": "Tham gia trình bày phần số liệu chi phí trong buổi họp định kỳ với đại diện chủ đầu tư.",
+        "level4": "Độc lập điều hành phần trình bày tài chính với Chủ đầu tư, trả lời thuyết phục các câu hỏi chất vấn khó."
+      },
+      "evidenceRequirements": [
+        "Bộ slide thuyết trình kết quả kinh doanh hàng quý với Chủ đầu tư",
+        "Thư giải trình kiểm toán"
+      ],
+      "associatedCourseIds": [
+        "course_09"
+      ]
+    },
+    {
+      "id": "comp_sbp_04",
+      "code": "SBP-04",
+      "domainId": "dom_6",
+      "nameVi": "Định Giá Chiến Lược & Quản Trị Hợp Đồng Thương Mại",
+      "nameEn": "Strategic Pricing, Contract Auditing & Revenue Assurance",
+      "definitionVi": "Thẩm định điều khoản tài chính trong các hợp đồng thương mại lớn (hợp đồng đoàn MICE, hợp đồng thuê mặt bằng thương mại, dịch vụ nhà thầu) để bảo vệ dòng tiền.",
+      "definitionEn": "Contractual risk appraisal, commercial lease audits, major MICE group payment terms, cancellation penalties, and revenue assurance.",
+      "expectedLevelByPosition": {
+        "Assistant Financial Controller": 3,
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Kiểm tra tính đầy đủ của hợp đồng mẫu trước khi chuyển duyệt.",
+        "level2": "Tính toán điểm hòa vốn và biên đóng góp (Contribution Margin) cho đoàn khách lớn.",
+        "level3": "Rà soát các điều khoản bảo lãnh thanh toán, phạt hủy phòng và cam kết đặt cọc trong hợp đồng MICE.",
+        "level4": "Đàm phán thành công các hợp đồng thuê mặt bằng mang lại doanh thu cố định và phần trăm doanh thu tối ưu."
+      },
+      "evidenceRequirements": [
+        "Bản thẩm định hợp đồng thương mại",
+        "Bảng tính Contribution Margin đoàn khách"
+      ],
+      "associatedCourseIds": [
+        "course_09"
+      ]
+    },
+    {
+      "id": "comp_sbp_05",
+      "code": "SBP-05",
+      "domainId": "dom_6",
+      "nameVi": "Tầm Nhìn Chiến Lược & Quản Trị Giá Trị Tài Sản Khách Sạn",
+      "nameEn": "Strategic Value Creation & Hotel Asset Management",
+      "definitionVi": "Nhìn nhận khách sạn không chỉ là cơ sở lưu trú mà là một tài sản đầu tư bất động sản (Real Estate Investment), tối đa hóa giá trị định giá tài sản thông qua EBITDA bền vững.",
+      "definitionEn": "Viewing the hotel as an investment asset, maximizing hotel enterprise valuation through sustainable EBITDA growth, capital efficiency, and debt servicing.",
+      "expectedLevelByPosition": {
+        "Financial Controller": 4
+      },
+      "assessmentCriteria": {
+        "level1": "Hiểu khái niệm giá trị tài sản khách sạn và tác động của EBITDA tới giá trị chuyển nhượng.",
+        "level2": "Tính toán tỷ suất lợi nhuận trên vốn đầu tư (ROIC) của các hạng mục cải tạo.",
+        "level3": "Đề xuất các phương án tối ưu hóa chi phí vận hành giúp tăng EBITDA chuẩn hóa.",
+        "level4": "Tư vấn chiến lược tái cấu trúc tài chính và định vị tài sản giúp gia tăng giá trị định giá khách sạn hàng triệu USD."
+      },
+      "evidenceRequirements": [
+        "Báo cáo đánh giá giá trị tài sản qua hệ số vốn hóa (Cap Rate & Asset Valuation)",
+        "Chiến lược tài chính 3 năm"
+      ],
+      "associatedCourseIds": [
+        "course_09"
+      ]
+    }
+  ],
+  "enrollments": [
+    {
+      "id": "enr_1",
+      "userId": "user_learner1",
+      "courseId": "course_01",
+      "progressPercent": 100,
+      "completedModules": [
+        "mod_101_1",
+        "mod_101_2",
+        "mod_101_3",
+        "mod_101_4"
+      ],
+      "status": "completed",
+      "enrolledDate": "2024-02-18",
+      "completedDate": "2024-03-01",
+      "quizScore": 92
+    },
+    {
+      "id": "enr_2",
+      "userId": "user_learner1",
+      "courseId": "course_02",
+      "progressPercent": 66,
+      "completedModules": [
+        "mod_102_1",
+        "mod_102_2"
+      ],
+      "status": "in_progress",
+      "enrolledDate": "2024-03-05"
+    },
+    {
+      "id": "enr_3",
+      "userId": "user_learner1",
+      "courseId": "course_03",
+      "progressPercent": 33,
+      "completedModules": [
+        "mod_201_1"
+      ],
+      "status": "in_progress",
+      "enrolledDate": "2024-04-10"
+    },
+    {
+      "id": "enr_4",
+      "userId": "user_learner2",
+      "courseId": "course_01",
+      "progressPercent": 100,
+      "completedModules": [
+        "mod_101_1",
+        "mod_101_2",
+        "mod_101_3",
+        "mod_101_4"
+      ],
+      "status": "completed",
+      "enrolledDate": "2023-08-15",
+      "completedDate": "2023-09-02",
+      "quizScore": 96
+    },
+    {
+      "id": "enr_5",
+      "userId": "user_learner2",
+      "courseId": "course_04",
+      "progressPercent": 100,
+      "completedModules": [
+        "mod_202_1",
+        "mod_202_2"
+      ],
+      "status": "completed",
+      "enrolledDate": "2023-10-10",
+      "completedDate": "2023-11-05",
+      "quizScore": 88
+    },
+    {
+      "id": "enr_6",
+      "userId": "user_learner2",
+      "courseId": "course_09",
+      "progressPercent": 66,
+      "completedModules": [
+        "mod_501_1",
+        "mod_501_2"
+      ],
+      "status": "in_progress",
+      "enrolledDate": "2024-01-10"
+    }
+  ],
+  "quizAttempts": [
+    {
+      "id": "qa_001",
+      "userId": "user_learner1",
+      "courseId": "course_01",
+      "quizTitle": "USALI Mastery Comprehensive Quiz",
+      "score": 92,
+      "totalQuestions": 10,
+      "passed": true,
+      "date": "2024-03-01",
+      "answers": {}
+    },
+    {
+      "id": "qa_002",
+      "userId": "user_learner2",
+      "courseId": "course_01",
+      "quizTitle": "USALI Mastery Comprehensive Quiz",
+      "score": 96,
+      "totalQuestions": 10,
+      "passed": true,
+      "date": "2023-09-02",
+      "answers": {}
+    }
+  ],
+  "submissions": [
+    {
+      "id": "sub_001",
+      "assignmentId": "ojt_01",
+      "userId": "user_learner1",
+      "submittedDate": "2024-03-12",
+      "status": "approved",
+      "submissionNotes": "Đã hoàn thành bảng checklist khóa sổ tháng 10 và báo cáo P&L Critique giải trình các biến động chi phí trên 5% của bộ phận Buồng và F&B.",
+      "fileName": "MinhThu_OJT_MonthEnd_Closing_Pack.xlsx",
+      "fileSize": "2.4 MB",
+      "score": 90,
+      "feedback": "Bài làm rất cẩn trọng, phân tích biến động chi phí buồng phòng sắc bén. Cần lưu ý thêm về trích trước chi phí hoa hồng OTA.",
+      "reviewedBy": "David Tran (Cluster FC)",
+      "reviewedDate": "2024-03-15"
+    },
+    {
+      "id": "sub_002",
+      "assignmentId": "ojt_04",
+      "userId": "user_learner2",
+      "submittedDate": "2024-03-18",
+      "status": "under_review",
+      "submissionNotes": "Gửi Hội đồng hồ sơ thẩm định CAPEX hệ thống Smart Energy $850k, mô hình DCF và độ nhạy NPV với giá điện tăng 7%.",
+      "fileName": "HoangNam_SmartEnergy_Capex_CAR.xlsx",
+      "fileSize": "3.8 MB"
+    }
+  ],
+  "assessments": [
+    {
+      "id": "asmt_001",
+      "learnerId": "user_learner1",
+      "supervisorId": "user_fc1",
+      "cycle": "2026 Q1 Annual Assessment",
+      "status": "completed",
+      "date": "2026-03-15",
+      "overallGapAverage": 1.2,
+      "approvedDate": "2026-03-18",
+      "scores": {
+        "FAR-01": {
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Nắm rất tốt USALI, đã tự lập báo cáo buồng và F&B chuẩn xác."
+        },
+        "FAR-02": {
+          "selfLevel": 3,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Cần cải thiện tốc độ khóa sổ, hiện Day 4 mới xong hồ sơ trích trước."
+        },
+        "FAR-03": {
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Hồ sơ Balance sheet rec còn một số khoản treo chưa dọn dẹp kịp thời."
+        },
+        "FCA-01": {
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Thực hiện kiểm kê kho tốt, cần tăng cường giám sát các điểm thanh toán thẻ."
+        },
+        "FPM-01": {
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Đã tham gia hỗ trợ lập ngân sách năm ngoái, cần học cách dựng mô hình zero-based."
+        },
+        "BPA-01": {
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Hiểu khái niệm Flow-through nhưng chưa tự chạy được mô hình phân tích sâu."
+        },
+        "LPM-01": {
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Hòa đồng, hỗ trợ đồng nghiệp tốt trong giai đoạn cao điểm."
+        },
+        "SBP-02": {
+          "selfLevel": 1,
+          "supervisorLevel": 2,
+          "gap": 2,
+          "supervisorNotes": "Cần thêm cơ hội tham gia các buổi họp bàn chiến lược giá cùng GM."
+        }
+      }
+    },
+    {
+      "id": "asmt_002",
+      "learnerId": "user_learner2",
+      "supervisorId": "user_fc1",
+      "cycle": "2026 Q1 Succession Assessment",
+      "status": "approved",
+      "date": "2026-03-20",
+      "overallGapAverage": 0.5,
+      "approvedDate": "2026-03-22",
+      "scores": {
+        "FAR-01": {
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "gap": 0,
+          "supervisorNotes": "Chuyên gia USALI, đào tạo rất tốt cho cấp dưới."
+        },
+        "FAR-02": {
+          "selfLevel": 4,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Khóa sổ Day 3 ổn định, cần tự động hóa thêm các bảng đối chiếu ngân hàng."
+        },
+        "FCA-01": {
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "gap": 0,
+          "supervisorNotes": "Điểm kiểm toán nội bộ đợt vừa rồi đạt 94% nhờ công lớn của Nam."
+        },
+        "FPM-01": {
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Đã trực tiếp chủ trì lập ngân sách bộ phận POM và A&G."
+        },
+        "BPA-01": {
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Phân tích Flow-through rất sắc bén."
+        },
+        "LPM-01": {
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Quản lý tốt nhóm 6 nhân viên kế toán."
+        },
+        "SBP-02": {
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "gap": 1,
+          "supervisorNotes": "Bắt đầu tự tin tranh luận và tư vấn số liệu cho GM trong các buổi giao ban."
+        }
+      }
+    }
+  ],
+  "idps": [
+    {
+      "id": "idp_001",
+      "learnerId": "user_learner1",
+      "createdDate": "2026-03-20",
+      "targetPosition": "Assistant Financial Controller (AFC)",
+      "targetCompletionDate": "2026-12-31",
+      "status": "Active",
+      "approvedBy": "David Tran, Cluster FC",
+      "items": [
+        {
+          "id": "idp_item_1",
+          "competencyId": "FAR-02",
+          "priority": "High",
+          "targetDate": "2026-06-30",
+          "recommendedCourseIds": [
+            "course_02"
+          ],
+          "practicalActivity": "Chủ trì toàn bộ quy trình khóa sổ tháng 5 và tháng 6, xuất báo cáo P&L sơ bộ đúng 17:00 ngày Day 3.",
+          "status": "In Progress",
+          "mentorNotes": "Đã hoàn thành 50% khóa học HFC-102, đang thực hành rút ngắn checklist khóa sổ."
+        },
+        {
+          "id": "idp_item_2",
+          "competencyId": "BPA-01",
+          "priority": "High",
+          "targetDate": "2026-08-31",
+          "recommendedCourseIds": [
+            "course_06"
+          ],
+          "practicalActivity": "Thực hiện bài tập OJT-BPA-01: Phân tích nguyên nhân sụt giảm GOP tại một Outlet F&B và trình bày trước FC.",
+          "status": "Not Started",
+          "mentorNotes": "Sẽ phân công sau khi hoàn tất khóa sổ quý 2."
+        },
+        {
+          "id": "idp_item_3",
+          "competencyId": "FPM-01",
+          "priority": "Medium",
+          "targetDate": "2026-10-31",
+          "recommendedCourseIds": [
+            "course_05"
+          ],
+          "practicalActivity": "Tham gia tổ công tác xây dựng Ngân sách năm 2027 của khách sạn, phụ trách mảng chi phí Buồng và F&B.",
+          "status": "Not Started",
+          "mentorNotes": "Kế hoạch trọng tâm cho quý 4."
+        }
+      ]
+    },
+    {
+      "id": "idp_002",
+      "learnerId": "user_learner2",
+      "createdDate": "2026-03-25",
+      "targetPosition": "Financial Controller (FC) – Independent Property",
+      "targetCompletionDate": "2026-10-30",
+      "status": "Active",
+      "approvedBy": "Elena Rostova, Corporate Director of Finance",
+      "items": [
+        {
+          "id": "idp_item_201",
+          "competencyId": "SBP-02",
+          "priority": "High",
+          "targetDate": "2026-07-31",
+          "recommendedCourseIds": [
+            "course_09"
+          ],
+          "practicalActivity": "Tham gia tương tác trực tiếp 3 buổi với GM trên FC Business Partner Simulator và chủ trì 1 buổi họp Owner Review.",
+          "status": "In Progress",
+          "mentorNotes": "Nam thể hiện tư duy rất tiến bộ, cần trau dồi thêm kỹ năng giao tiếp điều hành trước chủ đầu tư."
+        },
+        {
+          "id": "idp_item_202",
+          "competencyId": "FPM-04",
+          "priority": "High",
+          "targetDate": "2026-09-15",
+          "recommendedCourseIds": [
+            "course_04"
+          ],
+          "practicalActivity": "Hoàn thiện hồ sơ thẩm định CAPEX dự án nâng cấp hệ thống điều hòa Chiller $850k (OJT-FPM-02).",
+          "status": "In Progress",
+          "mentorNotes": "Đang hoàn thiện file mô hình DCF và độ nhạy NPV."
+        }
+      ]
+    }
+  ],
+  "certificates": [
+    {
+      "id": "cert_001",
+      "certificateNumber": "FCA-CERT-2025-089",
+      "userId": "user_learner2",
+      "level": 3,
+      "titleVi": "Chứng Chỉ Cấp Độ 3: Sẵn Sàng Trợ Lý Giám Đốc Tài Chính (AFC Ready)",
+      "titleEn": "Level 3 Certification: Assistant Financial Controller Ready",
+      "issueDate": "2025-11-20",
+      "status": "Active",
+      "verificationCode": "VERIFY-AFC-8829-VN",
+      "authorizedSigner": "David Tran & Richard Vance",
+      "authorizedSignerTitle": "Cluster FC & General Manager"
+    },
+    {
+      "id": "cert_002",
+      "certificateNumber": "FCA-CERT-2025-042",
+      "userId": "user_learner1",
+      "level": 2,
+      "titleVi": "Chứng Chỉ Cấp Độ 2: Chuyên Viên Kế Toán Khách Sạn Chuyên Nghiệp",
+      "titleEn": "Level 2 Certification: Hospitality Finance Professional",
+      "issueDate": "2025-09-15",
+      "status": "Active",
+      "verificationCode": "VERIFY-HFP-4412-VN",
+      "authorizedSigner": "David Tran",
+      "authorizedSignerTitle": "Cluster Director of Finance"
+    }
+  ],
+  "auditLogs": [
+    {
+      "id": "log_1794552742872_77",
+      "action": "UPDATE_TALENT_CONFIG",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Talent Engine Configuration",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Weight mode: default_equal, 70-20-10: 70/20/10"
+    },
+    {
+      "id": "log_1794552742866_528",
+      "action": "UPDATE_TALENT_CONFIG",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Talent Engine Configuration",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Weight mode: custom_weighted, 70-20-10: 70/20/10"
+    },
+    {
+      "id": "log_1794552742791_955",
+      "action": "COMPETENCY_REASSESSMENT",
+      "actor": "Sarah Jenkins (financial_controller)",
+      "target": "Phạm Thị Mai",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Baseline 67% -> New 68% (v2)"
+    },
+    {
+      "id": "log_1794552742767_28",
+      "action": "CREATE_DEVELOPMENT_ACTIVITY",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "user_learner8 (FAR-01)",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Assigned activity: E2E USALI Close Shadowing"
+    },
+    {
+      "id": "log_1794552742761_549",
+      "action": "CREATE_TALENT_IDP",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Nguyễn Minh Thư",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Created IDP tidp_1794552742760_128 for Assistant Financial Controller"
+    },
+    {
+      "id": "log_1794552742754_856",
+      "action": "SAVE_COMPETENCY_ASSESSMENT",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Bùi Quang Huy (2026-Q1 v3)",
+      "timestamp": "2026-11-13 06:52:22",
+      "details": "Saved assessment (hr_lnd) for target Senior Accountant"
+    },
+    {
+      "id": "log_1794552702845_418",
+      "action": "CREATE_DEVELOPMENT_ACTIVITY",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "user_learner8 (FAR-01)",
+      "timestamp": "2026-11-13 06:51:42",
+      "details": "Assigned activity: E2E USALI Close Shadowing"
+    },
+    {
+      "id": "log_1794552702839_80",
+      "action": "CREATE_TALENT_IDP",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Nguyễn Minh Thư",
+      "timestamp": "2026-11-13 06:51:42",
+      "details": "Created IDP tidp_1794552702839_10 for Assistant Financial Controller"
+    },
+    {
+      "id": "log_1794552702833_743",
+      "action": "SAVE_COMPETENCY_ASSESSMENT",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Bùi Quang Huy (2026-Q1 v2)",
+      "timestamp": "2026-11-13 06:51:42",
+      "details": "Saved assessment (hr_lnd) for target Senior Accountant"
+    },
+    {
+      "id": "log_1794551460208_62",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "Variant_Reject.xlsx",
+      "timestamp": "2026-11-13 06:31:00",
+      "details": "Strategy: reject | Created: 0, Updated: 0, Skipped: 0, Failed: 259"
+    },
+    {
+      "id": "log_1794551460140_223",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "Variant_Update.xlsx",
+      "timestamp": "2026-11-13 06:31:00",
+      "details": "Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794551460070_287",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "Variant_Skip.xlsx",
+      "timestamp": "2026-11-13 06:31:00",
+      "details": "Strategy: skip | Created: 0, Updated: 0, Skipped: 259, Failed: 0"
+    },
+    {
+      "id": "log_1794551460009_464",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "Variant_RealWorld_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 06:31:00",
+      "details": "Strategy: skip | Created: 259, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794543615058_325",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 04:20:15",
+      "details": "Strategy: reject | Created: 0, Updated: 0, Skipped: 0, Failed: 259"
+    },
+    {
+      "id": "log_1794543615009_204",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 04:20:15",
+      "details": "Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794543614947_561",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 04:20:14",
+      "details": "Strategy: skip | Created: 0, Updated: 0, Skipped: 259, Failed: 0"
+    },
+    {
+      "id": "log_1794543614880_697",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 04:20:14",
+      "details": "Strategy: skip | Created: 259, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794543597462_112",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-13 04:19:57",
+      "details": "Strategy: skip | Created: 259, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1",
+      "action": "APPROVE_ASSESSMENT",
+      "actor": "David Tran (Cluster FC)",
+      "target": "Nguyễn Minh Thư (Senior Accountant)",
+      "timestamp": "2026-03-18 14:32:00",
+      "details": "Phê duyệt đánh giá năng lực Q1/2026 và kích hoạt IDP"
+    },
+    {
+      "id": "log_2",
+      "action": "ISSUE_CERTIFICATE",
+      "actor": "Elena Rostova (Corporate Director)",
+      "target": "Lê Hoàng Nam (AFC)",
+      "timestamp": "2025-11-20 09:15:22",
+      "details": "Cấp chứng chỉ Level 3 - Assistant Financial Controller Ready (FCA-CERT-2025-089)"
+    },
+    {
+      "id": "log_3",
+      "action": "OJT_GRADE",
+      "actor": "David Tran (Cluster FC)",
+      "target": "Nguyễn Minh Thư (Senior Accountant)",
+      "timestamp": "2024-03-15 16:45:10",
+      "details": "Chấm điểm dự án OJT-FAR-01: Điểm 90/100 (Đạt)"
+    }
+  ],
+  "talentConfig": {
+    "id": "default",
+    "weightMode": "default_equal",
+    "competencyOverrides": {},
+    "customPositionTargets": {},
+    "ratio702010": {
+      "experiential": 70,
+      "social": 20,
+      "formal": 10
+    },
+    "readinessThresholds": {
+      "readyForReviewMinAchievement": 90,
+      "readyForReviewMinIdp": 80,
+      "readyForReviewMinCritical": 85,
+      "nearlyReadyMinAchievement": 75,
+      "nearlyReadyMinIdp": 60,
+      "developingMinAchievement": 50,
+      "requireAllCriticalAtTarget": true
+    },
+    "updatedBy": "Marcus Sterling",
+    "updatedAt": "2026-11-13T06:52:22.872Z"
+  },
+  "competencyAssessments": [
+    {
+      "id": "casmt_seed_thu_1",
+      "version": 1,
+      "employeeId": "user_learner1",
+      "employeeName": "Nguyễn Minh Thư",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "department": "Finance & Accounting",
+      "currentPosition": "Senior Accountant",
+      "targetPosition": "Assistant Financial Controller",
+      "assessmentPeriod": "2026-Q1",
+      "assessorId": "user_fc1",
+      "assessorName": "David Tran",
+      "assessorType": "financial_controller",
+      "status": "approved",
+      "submittedAt": "2026-03-10T09:00:00.000Z",
+      "approvedById": "user_fc1",
+      "approvedByName": "David Tran",
+      "approvedAt": "2026-03-18T14:30:00.000Z",
+      "overallComments": "Strong USALI foundation; priority gaps in Day 3 Fast-Close, Flow-Through diagnostics, and Zero-Based Budgeting.",
+      "results": {
+        "FAR-01": {
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-02": {
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-03": {
+          "competencyId": "comp_far_03",
+          "competencyCode": "FAR-03",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-04": {
+          "competencyId": "comp_far_04",
+          "competencyCode": "FAR-04",
+          "domainId": "dom_1",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-05": {
+          "competencyId": "comp_far_05",
+          "competencyCode": "FAR-05",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-01": {
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-02": {
+          "competencyId": "comp_fca_02",
+          "competencyCode": "FCA-02",
+          "domainId": "dom_2",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-03": {
+          "competencyId": "comp_fca_03",
+          "competencyCode": "FCA-03",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-04": {
+          "competencyId": "comp_fca_04",
+          "competencyCode": "FCA-04",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-05": {
+          "competencyId": "comp_fca_05",
+          "competencyCode": "FCA-05",
+          "domainId": "dom_2",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-01": {
+          "competencyId": "comp_fpm_01",
+          "competencyCode": "FPM-01",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-02": {
+          "competencyId": "comp_fpm_02",
+          "competencyCode": "FPM-02",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-03": {
+          "competencyId": "comp_fpm_03",
+          "competencyCode": "FPM-03",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-04": {
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 3,
+          "gap": 2,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-05": {
+          "competencyId": "comp_fpm_05",
+          "competencyCode": "FPM-05",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-01": {
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-02": {
+          "competencyId": "comp_bpa_02",
+          "competencyCode": "BPA-02",
+          "domainId": "dom_4",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-03": {
+          "competencyId": "comp_bpa_03",
+          "competencyCode": "BPA-03",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-04": {
+          "competencyId": "comp_bpa_04",
+          "competencyCode": "BPA-04",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-05": {
+          "competencyId": "comp_bpa_05",
+          "competencyCode": "BPA-05",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-01": {
+          "competencyId": "comp_lpm_01",
+          "competencyCode": "LPM-01",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-02": {
+          "competencyId": "comp_lpm_02",
+          "competencyCode": "LPM-02",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-03": {
+          "competencyId": "comp_lpm_03",
+          "competencyCode": "LPM-03",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-04": {
+          "competencyId": "comp_lpm_04",
+          "competencyCode": "LPM-04",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-01": {
+          "competencyId": "comp_sbp_01",
+          "competencyCode": "SBP-01",
+          "domainId": "dom_6",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-02": {
+          "competencyId": "comp_sbp_02",
+          "competencyCode": "SBP-02",
+          "domainId": "dom_6",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-04": {
+          "competencyId": "comp_sbp_04",
+          "competencyCode": "SBP-04",
+          "domainId": "dom_6",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        }
+      },
+      "createdAt": "2026-03-08T08:00:00.000Z",
+      "updatedAt": "2026-03-18T14:30:00.000Z"
+    },
+    {
+      "id": "casmt_seed_nam_1",
+      "version": 1,
+      "employeeId": "user_learner2",
+      "employeeName": "Lê Hoàng Nam",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "department": "Finance & Accounting",
+      "currentPosition": "Assistant Financial Controller",
+      "targetPosition": "Financial Controller",
+      "assessmentPeriod": "2026-Q1",
+      "assessorId": "user_fc1",
+      "assessorName": "David Tran",
+      "assessorType": "final_validated",
+      "status": "approved",
+      "submittedAt": "2026-03-19T10:00:00.000Z",
+      "approvedById": "user_lnd",
+      "approvedByName": "Marcus Sterling",
+      "approvedAt": "2026-03-22T11:00:00.000Z",
+      "overallComments": "High-potential AFC; passes internal controls at L4, needs final step-up on GM decision support (SBP-02) & CAPEX DCF ownership.",
+      "results": {
+        "FAR-01": {
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-02": {
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-03": {
+          "competencyId": "comp_far_03",
+          "competencyCode": "FAR-03",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-04": {
+          "competencyId": "comp_far_04",
+          "competencyCode": "FAR-04",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-05": {
+          "competencyId": "comp_far_05",
+          "competencyCode": "FAR-05",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-01": {
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-02": {
+          "competencyId": "comp_fca_02",
+          "competencyCode": "FCA-02",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-03": {
+          "competencyId": "comp_fca_03",
+          "competencyCode": "FCA-03",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-04": {
+          "competencyId": "comp_fca_04",
+          "competencyCode": "FCA-04",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-05": {
+          "competencyId": "comp_fca_05",
+          "competencyCode": "FCA-05",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-01": {
+          "competencyId": "comp_fpm_01",
+          "competencyCode": "FPM-01",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-02": {
+          "competencyId": "comp_fpm_02",
+          "competencyCode": "FPM-02",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-03": {
+          "competencyId": "comp_fpm_03",
+          "competencyCode": "FPM-03",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-04": {
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "currentLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Requires structured development to reach Level 4."
+        },
+        "FPM-05": {
+          "competencyId": "comp_fpm_05",
+          "competencyCode": "FPM-05",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-01": {
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-02": {
+          "competencyId": "comp_bpa_02",
+          "competencyCode": "BPA-02",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-03": {
+          "competencyId": "comp_bpa_03",
+          "competencyCode": "BPA-03",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-04": {
+          "competencyId": "comp_bpa_04",
+          "competencyCode": "BPA-04",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-05": {
+          "competencyId": "comp_bpa_05",
+          "competencyCode": "BPA-05",
+          "domainId": "dom_4",
+          "currentLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Requires structured development to reach Level 4."
+        },
+        "LPM-01": {
+          "competencyId": "comp_lpm_01",
+          "competencyCode": "LPM-01",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-02": {
+          "competencyId": "comp_lpm_02",
+          "competencyCode": "LPM-02",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-03": {
+          "competencyId": "comp_lpm_03",
+          "competencyCode": "LPM-03",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-04": {
+          "competencyId": "comp_lpm_04",
+          "competencyCode": "LPM-04",
+          "domainId": "dom_5",
+          "currentLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Requires structured development to reach Level 4."
+        },
+        "SBP-01": {
+          "competencyId": "comp_sbp_01",
+          "competencyCode": "SBP-01",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-02": {
+          "competencyId": "comp_sbp_02",
+          "competencyCode": "SBP-02",
+          "domainId": "dom_6",
+          "currentLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Requires structured development to reach Level 4."
+        },
+        "SBP-03": {
+          "competencyId": "comp_sbp_03",
+          "competencyCode": "SBP-03",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-04": {
+          "competencyId": "comp_sbp_04",
+          "competencyCode": "SBP-04",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-05": {
+          "competencyId": "comp_sbp_05",
+          "competencyCode": "SBP-05",
+          "domainId": "dom_6",
+          "currentLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Requires structured development to reach Level 4."
+        }
+      },
+      "createdAt": "2026-03-15T09:00:00.000Z",
+      "updatedAt": "2026-03-22T11:00:00.000Z"
+    },
+    {
+      "id": "casmt_seed_huy_1",
+      "version": 1,
+      "employeeId": "user_learner8",
+      "employeeName": "Bùi Quang Huy",
+      "property": "Emerald Bay Luxury Suites Nha Trang",
+      "department": "Finance & Accounting",
+      "currentPosition": "Accountant",
+      "targetPosition": "Senior Accountant",
+      "assessmentPeriod": "2026-Q1",
+      "assessorId": "user_fc2",
+      "assessorName": "Sarah Jenkins",
+      "assessorType": "supervisor",
+      "status": "approved",
+      "submittedAt": "2026-02-15T09:00:00.000Z",
+      "approvedById": "user_fc2",
+      "approvedByName": "Sarah Jenkins",
+      "approvedAt": "2026-02-18T14:00:00.000Z",
+      "overallComments": "Solid daily AP/Night Audit habits; needs month-end close ownership and USALI package breakdown.",
+      "results": {
+        "FAR-01": {
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 2,
+          "gap": 0,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-02": {
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FAR-03": {
+          "competencyId": "comp_far_03",
+          "competencyCode": "FAR-03",
+          "domainId": "dom_1",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FAR-04": {
+          "competencyId": "comp_far_04",
+          "competencyCode": "FAR-04",
+          "domainId": "dom_1",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FAR-05": {
+          "competencyId": "comp_far_05",
+          "competencyCode": "FAR-05",
+          "domainId": "dom_1",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FCA-01": {
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 2,
+          "gap": 0,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-02": {
+          "competencyId": "comp_fca_02",
+          "competencyCode": "FCA-02",
+          "domainId": "dom_2",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FCA-03": {
+          "competencyId": "comp_fca_03",
+          "competencyCode": "FCA-03",
+          "domainId": "dom_2",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FCA-04": {
+          "competencyId": "comp_fca_04",
+          "competencyCode": "FCA-04",
+          "domainId": "dom_2",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FCA-05": {
+          "competencyId": "comp_fca_05",
+          "competencyCode": "FCA-05",
+          "domainId": "dom_2",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FPM-01": {
+          "competencyId": "comp_fpm_01",
+          "competencyCode": "FPM-01",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FPM-02": {
+          "competencyId": "comp_fpm_02",
+          "competencyCode": "FPM-02",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FPM-03": {
+          "competencyId": "comp_fpm_03",
+          "competencyCode": "FPM-03",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FPM-04": {
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "FPM-05": {
+          "competencyId": "comp_fpm_05",
+          "competencyCode": "FPM-05",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "BPA-01": {
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "BPA-02": {
+          "competencyId": "comp_bpa_02",
+          "competencyCode": "BPA-02",
+          "domainId": "dom_4",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "BPA-03": {
+          "competencyId": "comp_bpa_03",
+          "competencyCode": "BPA-03",
+          "domainId": "dom_4",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "BPA-04": {
+          "competencyId": "comp_bpa_04",
+          "competencyCode": "BPA-04",
+          "domainId": "dom_4",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "BPA-05": {
+          "competencyId": "comp_bpa_05",
+          "competencyCode": "BPA-05",
+          "domainId": "dom_4",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        },
+        "SBP-01": {
+          "competencyId": "comp_sbp_01",
+          "competencyCode": "SBP-01",
+          "domainId": "dom_6",
+          "currentLevel": 1,
+          "targetLevel": 2,
+          "gap": 1,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 2."
+        }
+      },
+      "createdAt": "2026-02-10T08:00:00.000Z",
+      "updatedAt": "2026-02-18T14:00:00.000Z"
+    },
+    {
+      "id": "casmt_seed_sarah_1",
+      "version": 1,
+      "employeeId": "user_fc2",
+      "employeeName": "Sarah Jenkins",
+      "property": "Royal Palm Resort & Spa Danang (450 Keys)",
+      "department": "Finance & Accounting",
+      "currentPosition": "Financial Controller",
+      "targetPosition": "Strategic Finance Business Partner",
+      "assessmentPeriod": "2026-Q1",
+      "assessorId": "user_admin",
+      "assessorName": "Elena Rostova",
+      "assessorType": "hr_lnd",
+      "status": "approved",
+      "submittedAt": "2026-03-01T10:00:00.000Z",
+      "approvedById": "user_admin",
+      "approvedByName": "Elena Rostova",
+      "approvedAt": "2026-03-05T16:00:00.000Z",
+      "overallComments": "Ready for Regional Cluster Finance & Strategic Business Partnering endorsement.",
+      "results": {
+        "FAR-01": {
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-02": {
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-03": {
+          "competencyId": "comp_far_03",
+          "competencyCode": "FAR-03",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-04": {
+          "competencyId": "comp_far_04",
+          "competencyCode": "FAR-04",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FAR-05": {
+          "competencyId": "comp_far_05",
+          "competencyCode": "FAR-05",
+          "domainId": "dom_1",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-01": {
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-02": {
+          "competencyId": "comp_fca_02",
+          "competencyCode": "FCA-02",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-03": {
+          "competencyId": "comp_fca_03",
+          "competencyCode": "FCA-03",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-04": {
+          "competencyId": "comp_fca_04",
+          "competencyCode": "FCA-04",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-05": {
+          "competencyId": "comp_fca_05",
+          "competencyCode": "FCA-05",
+          "domainId": "dom_2",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-01": {
+          "competencyId": "comp_fpm_01",
+          "competencyCode": "FPM-01",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-02": {
+          "competencyId": "comp_fpm_02",
+          "competencyCode": "FPM-02",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-03": {
+          "competencyId": "comp_fpm_03",
+          "competencyCode": "FPM-03",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-04": {
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FPM-05": {
+          "competencyId": "comp_fpm_05",
+          "competencyCode": "FPM-05",
+          "domainId": "dom_3",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-01": {
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-02": {
+          "competencyId": "comp_bpa_02",
+          "competencyCode": "BPA-02",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-03": {
+          "competencyId": "comp_bpa_03",
+          "competencyCode": "BPA-03",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-04": {
+          "competencyId": "comp_bpa_04",
+          "competencyCode": "BPA-04",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "BPA-05": {
+          "competencyId": "comp_bpa_05",
+          "competencyCode": "BPA-05",
+          "domainId": "dom_4",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-01": {
+          "competencyId": "comp_lpm_01",
+          "competencyCode": "LPM-01",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-02": {
+          "competencyId": "comp_lpm_02",
+          "competencyCode": "LPM-02",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-03": {
+          "competencyId": "comp_lpm_03",
+          "competencyCode": "LPM-03",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "LPM-04": {
+          "competencyId": "comp_lpm_04",
+          "competencyCode": "LPM-04",
+          "domainId": "dom_5",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-01": {
+          "competencyId": "comp_sbp_01",
+          "competencyCode": "SBP-01",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-02": {
+          "competencyId": "comp_sbp_02",
+          "competencyCode": "SBP-02",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-03": {
+          "competencyId": "comp_sbp_03",
+          "competencyCode": "SBP-03",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-04": {
+          "competencyId": "comp_sbp_04",
+          "competencyCode": "SBP-04",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "SBP-05": {
+          "competencyId": "comp_sbp_05",
+          "competencyCode": "SBP-05",
+          "domainId": "dom_6",
+          "currentLevel": 4,
+          "targetLevel": 4,
+          "gap": 0,
+          "selfLevel": 4,
+          "supervisorLevel": 4,
+          "assessorNotes": "Meets target operational standard."
+        }
+      },
+      "createdAt": "2026-02-26T09:00:00.000Z",
+      "updatedAt": "2026-03-05T16:00:00.000Z"
+    },
+    {
+      "id": "casmt_seed_mai_1",
+      "version": 1,
+      "employeeId": "user_learner3",
+      "employeeName": "Phạm Thị Mai",
+      "property": "Royal Palm Resort & Spa Danang",
+      "department": "Finance & Accounting",
+      "currentPosition": "Senior Accountant",
+      "targetPosition": "Assistant Financial Controller",
+      "assessmentPeriod": "2026-Q1",
+      "assessorId": "user_fc2",
+      "assessorName": "Sarah Jenkins",
+      "assessorType": "financial_controller",
+      "status": "approved",
+      "approvedById": "user_fc2",
+      "approvedByName": "Sarah Jenkins",
+      "approvedAt": "2026-03-14T10:00:00.000Z",
+      "results": {
+        "FAR-01": {
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-02": {
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-03": {
+          "competencyId": "comp_far_03",
+          "competencyCode": "FAR-03",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-04": {
+          "competencyId": "comp_far_04",
+          "competencyCode": "FAR-04",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FAR-05": {
+          "competencyId": "comp_far_05",
+          "competencyCode": "FAR-05",
+          "domainId": "dom_1",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-01": {
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-02": {
+          "competencyId": "comp_fca_02",
+          "competencyCode": "FCA-02",
+          "domainId": "dom_2",
+          "currentLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "selfLevel": 3,
+          "supervisorLevel": 3,
+          "assessorNotes": "Meets target operational standard."
+        },
+        "FCA-03": {
+          "competencyId": "comp_fca_03",
+          "competencyCode": "FCA-03",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-04": {
+          "competencyId": "comp_fca_04",
+          "competencyCode": "FCA-04",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FCA-05": {
+          "competencyId": "comp_fca_05",
+          "competencyCode": "FCA-05",
+          "domainId": "dom_2",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-01": {
+          "competencyId": "comp_fpm_01",
+          "competencyCode": "FPM-01",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-02": {
+          "competencyId": "comp_fpm_02",
+          "competencyCode": "FPM-02",
+          "domainId": "dom_3",
+          "currentLevel": 1,
+          "targetLevel": 3,
+          "gap": 2,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-03": {
+          "competencyId": "comp_fpm_03",
+          "competencyCode": "FPM-03",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-04": {
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "FPM-05": {
+          "competencyId": "comp_fpm_05",
+          "competencyCode": "FPM-05",
+          "domainId": "dom_3",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-01": {
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-02": {
+          "competencyId": "comp_bpa_02",
+          "competencyCode": "BPA-02",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-03": {
+          "competencyId": "comp_bpa_03",
+          "competencyCode": "BPA-03",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-04": {
+          "competencyId": "comp_bpa_04",
+          "competencyCode": "BPA-04",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "BPA-05": {
+          "competencyId": "comp_bpa_05",
+          "competencyCode": "BPA-05",
+          "domainId": "dom_4",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-01": {
+          "competencyId": "comp_lpm_01",
+          "competencyCode": "LPM-01",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-02": {
+          "competencyId": "comp_lpm_02",
+          "competencyCode": "LPM-02",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-03": {
+          "competencyId": "comp_lpm_03",
+          "competencyCode": "LPM-03",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "LPM-04": {
+          "competencyId": "comp_lpm_04",
+          "competencyCode": "LPM-04",
+          "domainId": "dom_5",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-01": {
+          "competencyId": "comp_sbp_01",
+          "competencyCode": "SBP-01",
+          "domainId": "dom_6",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-02": {
+          "competencyId": "comp_sbp_02",
+          "competencyCode": "SBP-02",
+          "domainId": "dom_6",
+          "currentLevel": 1,
+          "targetLevel": 3,
+          "gap": 2,
+          "selfLevel": 1,
+          "supervisorLevel": 1,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        },
+        "SBP-04": {
+          "competencyId": "comp_sbp_04",
+          "competencyCode": "SBP-04",
+          "domainId": "dom_6",
+          "currentLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "selfLevel": 2,
+          "supervisorLevel": 2,
+          "assessorNotes": "Requires structured development to reach Level 3."
+        }
+      },
+      "createdAt": "2026-03-10T10:00:00.000Z",
+      "updatedAt": "2026-03-14T10:00:00.000Z"
+    }
+  ],
+  "talentIdps": [
+    {
+      "id": "tidp_seed_thu_1",
+      "version": 1,
+      "employeeId": "user_learner1",
+      "employeeName": "Nguyễn Minh Thư",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "department": "Finance & Accounting",
+      "currentPosition": "Senior Accountant",
+      "targetPosition": "Assistant Financial Controller",
+      "sourceAssessmentId": "casmt_seed_thu_1",
+      "sourceAssessmentPeriod": "2026-Q1",
+      "managerId": "user_fc1",
+      "managerName": "David Tran",
+      "status": "in_progress",
+      "periodStart": "2026-03-20",
+      "periodEnd": "2026-09-30",
+      "overallGoalEn": "Close 5 priority competency gaps across Month-End Fast Close, Internal Control, Zero-Based Budgeting, and GOP Flow-Through to attain AFC readiness.",
+      "overallGoalVi": "Thu hẹp 5 khoảng trống năng lực trọng tâm về Khóa sổ nhanh Day 3, Kiểm soát nội bộ, Ngân sách & GOP Flow-Through để sẵn sàng bổ nhiệm AFC.",
+      "ratioTarget": {
+        "experiential70": 70,
+        "social20": 20,
+        "formal10": 10
+      },
+      "submittedAt": "2026-03-20T09:00:00.000Z",
+      "managerReviewedBy": "David Tran",
+      "managerReviewedAt": "2026-03-21T11:00:00.000Z",
+      "lndApprovedBy": "Marcus Sterling",
+      "lndApprovedAt": "2026-03-22T15:00:00.000Z",
+      "activatedAt": "2026-03-22T15:05:00.000Z",
+      "createdBy": "user_learner1",
+      "createdAt": "2026-03-20T08:30:00.000Z",
+      "updatedAt": "2026-04-05T10:00:00.000Z",
+      "objectives": [
+        {
+          "id": "tobj_thu_1",
+          "competencyId": "comp_far_01",
+          "competencyCode": "FAR-01",
+          "domainId": "dom_1",
+          "baselineLevel": 3,
+          "targetLevel": 3,
+          "gap": 0,
+          "isCritical": true,
+          "priority": "High",
+          "titleEn": "Complete Course HFC-101: Mastering USALI 11th & 12th Editions",
+          "titleVi": "Hoàn thành khóa học HFC-101: Làm chủ chuẩn mực USALI 11th & 12th",
+          "category": "A_Formal_Learning",
+          "ratioCategory": "10_formal",
+          "linkedCourseId": "course_01",
+          "linkedCourseCode": "HFC-101",
+          "activityIds": [
+            "tact_seed_thu_1"
+          ],
+          "targetDate": "2026-04-30",
+          "successMeasure": "Score >= 80% on USALI Mastery Exam and complete all 4 modules.",
+          "status": "completed",
+          "progressPercent": 100,
+          "evidenceNotes": "Completed HFC-101 with 92% final quiz score.",
+          "supervisorValidationStatus": "approved",
+          "supervisorValidatedBy": "David Tran",
+          "supervisorValidatedAt": "2026-03-25T10:00:00.000Z",
+          "completedAt": "2026-03-25T10:00:00.000Z"
+        },
+        {
+          "id": "tobj_thu_2",
+          "competencyId": "comp_far_02",
+          "competencyCode": "FAR-02",
+          "domainId": "dom_1",
+          "baselineLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "isCritical": false,
+          "priority": "High",
+          "titleEn": "OJT-FAR-01: Lead Day 3 Accelerated Month-End Closing & P&L Critique",
+          "titleVi": "OJT-FAR-01: Chủ trì khóa sổ tháng Day 3 & Báo cáo biến động P&L",
+          "category": "C_Practical_Assignment",
+          "ratioCategory": "70_experiential",
+          "linkedPracticalId": "ojt_01",
+          "linkedPracticalCode": "OJT-FAR-01",
+          "activityIds": [
+            "tact_seed_thu_2"
+          ],
+          "targetDate": "2026-05-30",
+          "successMeasure": "Deliver Day 3 flash P&L & Balance Sheet Recs with zero suspense > 30 days.",
+          "status": "completed",
+          "progressPercent": 100,
+          "evidenceNotes": "Submitted MinhThu_OJT_MonthEnd_Closing_Pack.xlsx; scored 90/100 by Cluster FC.",
+          "evidenceFileName": "MinhThu_OJT_MonthEnd_Closing_Pack.xlsx",
+          "supervisorValidationStatus": "approved",
+          "supervisorValidatedBy": "David Tran",
+          "supervisorValidatedAt": "2026-03-28T16:00:00.000Z",
+          "completedAt": "2026-03-28T16:00:00.000Z"
+        },
+        {
+          "id": "tobj_thu_3",
+          "competencyId": "comp_fca_01",
+          "competencyCode": "FCA-01",
+          "domainId": "dom_2",
+          "baselineLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "isCritical": true,
+          "priority": "Critical",
+          "titleEn": "Lead Front Office & F&B Internal Control CSA Audit",
+          "titleVi": "Chủ trì kiểm toán tự đánh giá Kiểm soát nội bộ (CSA) Quầy lễ tân & F&B",
+          "category": "B_On_The_Job",
+          "ratioCategory": "70_experiential",
+          "linkedPracticalId": "ojt_05",
+          "linkedPracticalCode": "OJT-FCA-01",
+          "activityIds": [
+            "tact_seed_thu_3"
+          ],
+          "targetDate": "2026-06-30",
+          "successMeasure": "Achieve >= 90% internal control audit compliance with signed SOP revisions.",
+          "status": "in_progress",
+          "progressPercent": 50,
+          "evidenceNotes": "",
+          "supervisorValidationStatus": "pending_validation"
+        },
+        {
+          "id": "tobj_thu_4",
+          "competencyId": "comp_bpa_01",
+          "competencyCode": "BPA-01",
+          "domainId": "dom_4",
+          "baselineLevel": 2,
+          "targetLevel": 3,
+          "gap": 1,
+          "isCritical": true,
+          "priority": "Critical",
+          "titleEn": "Bi-Weekly Coaching & GOP Flow-Through Diagnostic Briefings",
+          "titleVi": "Kèm cặp 1-1 cùng FC & Phân tích dòng chuyển hóa lợi nhuận GOP Flow-Through",
+          "category": "D_Coaching_Mentoring",
+          "ratioCategory": "20_social",
+          "linkedCourseId": "course_06",
+          "linkedCourseCode": "HFC-302",
+          "activityIds": [
+            "tact_seed_thu_4"
+          ],
+          "targetDate": "2026-07-31",
+          "successMeasure": "Present departmental Flow-Through & Flex deck to Cluster FC and GM.",
+          "status": "not_started",
+          "progressPercent": 0,
+          "supervisorValidationStatus": "pending_validation"
+        }
+      ]
+    },
+    {
+      "id": "tidp_seed_nam_1",
+      "version": 1,
+      "employeeId": "user_learner2",
+      "employeeName": "Lê Hoàng Nam",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "department": "Finance & Accounting",
+      "currentPosition": "Assistant Financial Controller",
+      "targetPosition": "Financial Controller",
+      "sourceAssessmentId": "casmt_seed_nam_1",
+      "sourceAssessmentPeriod": "2026-Q1",
+      "managerId": "user_fc1",
+      "managerName": "David Tran",
+      "status": "in_progress",
+      "periodStart": "2026-03-25",
+      "periodEnd": "2026-08-30",
+      "overallGoalEn": "Bridge final Level 4 Strategic Business Partnering and CAPEX DCF modeling gaps prior to standalone FC appointment.",
+      "overallGoalVi": "Hoàn thiện năng lực Cấp 4 về Đối tác chiến lược GM và thẩm định CAPEX trước khi bổ nhiệm FC độc lập.",
+      "ratioTarget": {
+        "experiential70": 70,
+        "social20": 20,
+        "formal10": 10
+      },
+      "submittedAt": "2026-03-25T08:00:00.000Z",
+      "managerReviewedBy": "David Tran",
+      "managerReviewedAt": "2026-03-26T09:00:00.000Z",
+      "lndApprovedBy": "Marcus Sterling",
+      "lndApprovedAt": "2026-03-26T16:00:00.000Z",
+      "activatedAt": "2026-03-26T16:05:00.000Z",
+      "createdBy": "user_learner2",
+      "createdAt": "2026-03-25T08:00:00.000Z",
+      "updatedAt": "2026-04-02T10:00:00.000Z",
+      "objectives": [
+        {
+          "id": "tobj_nam_1",
+          "competencyId": "comp_fpm_04",
+          "competencyCode": "FPM-04",
+          "domainId": "dom_3",
+          "baselineLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "isCritical": false,
+          "priority": "High",
+          "titleEn": "Complete Course HFC-202 & $850k Smart Energy CAPEX CAR",
+          "titleVi": "Hoàn thành HFC-202 & Tờ trình thẩm định CAPEX $850k Smart Energy",
+          "category": "A_Formal_Learning",
+          "ratioCategory": "10_formal",
+          "linkedCourseId": "course_04",
+          "linkedCourseCode": "HFC-202",
+          "linkedPracticalId": "ojt_04",
+          "linkedPracticalCode": "OJT-FPM-02",
+          "activityIds": [
+            "tact_seed_nam_1"
+          ],
+          "targetDate": "2026-06-15",
+          "successMeasure": "Complete HFC-202 with >= 85% and present DCF Board paper.",
+          "status": "completed",
+          "progressPercent": 100,
+          "evidenceNotes": "Course HFC-202 completed (88% quiz); CAR workbook submitted.",
+          "supervisorValidationStatus": "approved",
+          "supervisorValidatedBy": "David Tran",
+          "supervisorValidatedAt": "2026-04-01T14:00:00.000Z",
+          "completedAt": "2026-04-01T14:00:00.000Z"
+        },
+        {
+          "id": "tobj_nam_2",
+          "competencyId": "comp_sbp_02",
+          "competencyCode": "SBP-02",
+          "domainId": "dom_6",
+          "baselineLevel": 3,
+          "targetLevel": 4,
+          "gap": 1,
+          "isCritical": true,
+          "priority": "Critical",
+          "titleEn": "Executive GM Co-Piloting & Ownership Scenario Defense",
+          "titleVi": "Đồng hành chiến lược GM & Thuyết trình kịch bản trước Chủ đầu tư",
+          "category": "D_Coaching_Mentoring",
+          "ratioCategory": "20_social",
+          "linkedCourseId": "course_09",
+          "linkedCourseCode": "HFC-501",
+          "activityIds": [
+            "tact_seed_nam_2"
+          ],
+          "targetDate": "2026-07-30",
+          "successMeasure": "Lead 3 monthly GM commercial steering reviews and Ownership Q&A.",
+          "status": "in_progress",
+          "progressPercent": 60,
+          "evidenceNotes": "Drafted Q2 scenario trade-off analysis for GM briefing.",
+          "supervisorValidationStatus": "pending_validation"
+        }
+      ]
+    }
+  ],
+  "developmentActivities": [
+    {
+      "id": "tact_seed_thu_1",
+      "idpId": "tidp_seed_thu_1",
+      "objectiveId": "tobj_thu_1",
+      "employeeId": "user_learner1",
+      "competencyId": "comp_far_01",
+      "competencyCode": "FAR-01",
+      "domainId": "dom_1",
+      "category": "A_Formal_Learning",
+      "ratioCategory": "10_formal",
+      "titleEn": "Complete Course HFC-101: Mastering USALI 11th & 12th Editions",
+      "titleVi": "Hoàn thành khóa học HFC-101: Làm chủ chuẩn mực USALI 11th & 12th",
+      "descriptionEn": "Finish all 4 modules and pass USALI Mastery Comprehensive Quiz >= 80%.",
+      "descriptionVi": "Hoàn tất 4 học phần và đạt điểm thi USALI >= 80%.",
+      "sourceType": "course",
+      "sourceRecordId": "course_01",
+      "sourceCode": "HFC-101",
+      "targetLevel": 3,
+      "estimatedHours": 16,
+      "dueDate": "2026-04-30",
+      "status": "completed",
+      "validationStatus": "approved",
+      "evidenceRequired": false,
+      "evidenceNotes": "Verified via LMS completion (100%, Quiz 92%).",
+      "validatedById": "user_fc1",
+      "validatedByName": "David Tran",
+      "validatedAt": "2026-03-25T10:00:00.000Z",
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-20T09:00:00.000Z",
+      "updatedAt": "2026-03-25T10:00:00.000Z"
+    },
+    {
+      "id": "tact_seed_thu_2",
+      "idpId": "tidp_seed_thu_1",
+      "objectiveId": "tobj_thu_2",
+      "employeeId": "user_learner1",
+      "competencyId": "comp_far_02",
+      "competencyCode": "FAR-02",
+      "domainId": "dom_1",
+      "category": "C_Practical_Assignment",
+      "ratioCategory": "70_experiential",
+      "titleEn": "OJT-FAR-01: Lead Day 3 Accelerated Month-End Closing",
+      "titleVi": "OJT-FAR-01: Chủ trì khóa sổ tháng Day 3 & P&L Critique",
+      "descriptionEn": "Own closing checklist, accruals, and executive variance critique.",
+      "descriptionVi": "Trực tiếp điều phối checklist khóa sổ và báo cáo biến động P&L.",
+      "sourceType": "practical_assignment",
+      "sourceRecordId": "ojt_01",
+      "sourceCode": "OJT-FAR-01",
+      "targetLevel": 3,
+      "estimatedHours": 24,
+      "dueDate": "2026-05-30",
+      "status": "completed",
+      "validationStatus": "approved",
+      "evidenceRequired": true,
+      "evidenceNotes": "Day 3 Flash P&L published on schedule; 90/100 rubric score.",
+      "evidenceFileName": "MinhThu_OJT_MonthEnd_Closing_Pack.xlsx",
+      "validatedById": "user_fc1",
+      "validatedByName": "David Tran",
+      "validatedAt": "2026-03-28T16:00:00.000Z",
+      "validatorFeedback": "Excellent variance breakdown; monitor OTA commission accrual cut-off.",
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-20T09:00:00.000Z",
+      "updatedAt": "2026-03-28T16:00:00.000Z"
+    },
+    {
+      "id": "tact_seed_thu_3",
+      "idpId": "tidp_seed_thu_1",
+      "objectiveId": "tobj_thu_3",
+      "employeeId": "user_learner1",
+      "competencyId": "comp_fca_01",
+      "competencyCode": "FCA-01",
+      "domainId": "dom_2",
+      "category": "B_On_The_Job",
+      "ratioCategory": "70_experiential",
+      "titleEn": "Lead Front Office & F&B Internal Control CSA Audit",
+      "titleVi": "Chủ trì kiểm toán tự đánh giá Kiểm soát nội bộ (CSA)",
+      "descriptionEn": "Execute surprise cashier float count and void/rebate exception testing.",
+      "descriptionVi": "Thực hiện kiểm kê quỹ đột xuất và rà soát chứng từ hủy/giảm trừ POS.",
+      "sourceType": "ojt",
+      "sourceRecordId": "ojt_05",
+      "sourceCode": "OJT-FCA-01",
+      "targetLevel": 3,
+      "estimatedHours": 20,
+      "dueDate": "2026-06-30",
+      "status": "in_progress",
+      "validationStatus": "pending_validation",
+      "evidenceRequired": true,
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-22T15:00:00.000Z",
+      "updatedAt": "2026-04-02T09:00:00.000Z"
+    },
+    {
+      "id": "tact_seed_thu_4",
+      "idpId": "tidp_seed_thu_1",
+      "objectiveId": "tobj_thu_4",
+      "employeeId": "user_learner1",
+      "competencyId": "comp_bpa_01",
+      "competencyCode": "BPA-01",
+      "domainId": "dom_4",
+      "category": "D_Coaching_Mentoring",
+      "ratioCategory": "20_social",
+      "titleEn": "FC 1-on-1 Coaching: Flow-Through & Flex Analysis",
+      "titleVi": "Kèm cặp 1-1 cùng FC: Phân tích Flow-Through & Co giãn chi phí",
+      "descriptionEn": "Bi-weekly review of F&B and Rooms flow-through variances.",
+      "descriptionVi": "Review định kỳ biên độ chuyển hóa lợi nhuận các bộ phận.",
+      "sourceType": "coaching",
+      "sourceCode": "COACH-BPA-01",
+      "targetLevel": 3,
+      "estimatedHours": 8,
+      "dueDate": "2026-07-31",
+      "status": "planned",
+      "validationStatus": "pending_validation",
+      "evidenceRequired": true,
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-22T15:00:00.000Z",
+      "updatedAt": "2026-03-22T15:00:00.000Z"
+    },
+    {
+      "id": "tact_seed_nam_1",
+      "idpId": "tidp_seed_nam_1",
+      "objectiveId": "tobj_nam_1",
+      "employeeId": "user_learner2",
+      "competencyId": "comp_fpm_04",
+      "competencyCode": "FPM-04",
+      "domainId": "dom_3",
+      "category": "A_Formal_Learning",
+      "ratioCategory": "10_formal",
+      "titleEn": "Complete HFC-202 & $850k Smart Energy CAPEX CAR",
+      "titleVi": "Hoàn thành HFC-202 & Tờ trình CAPEX $850k Smart Energy",
+      "descriptionEn": "DCF, NPV, IRR modeling and Ownership CAR memo.",
+      "descriptionVi": "Mô hình hóa DCF, NPV, IRR và tờ trình đầu tư trình Chủ đầu tư.",
+      "sourceType": "course",
+      "sourceRecordId": "course_04",
+      "sourceCode": "HFC-202",
+      "targetLevel": 4,
+      "estimatedHours": 16,
+      "dueDate": "2026-06-15",
+      "status": "completed",
+      "validationStatus": "approved",
+      "evidenceRequired": false,
+      "evidenceNotes": "HFC-202 Completed (88% quiz).",
+      "validatedById": "user_fc1",
+      "validatedByName": "David Tran",
+      "validatedAt": "2026-04-01T14:00:00.000Z",
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-25T09:00:00.000Z",
+      "updatedAt": "2026-04-01T14:00:00.000Z"
+    },
+    {
+      "id": "tact_seed_nam_2",
+      "idpId": "tidp_seed_nam_1",
+      "objectiveId": "tobj_nam_2",
+      "employeeId": "user_learner2",
+      "competencyId": "comp_sbp_02",
+      "competencyCode": "SBP-02",
+      "domainId": "dom_6",
+      "category": "D_Coaching_Mentoring",
+      "ratioCategory": "20_social",
+      "titleEn": "Executive GM Co-Piloting & Ownership Scenario Defense",
+      "titleVi": "Đồng hành chiến lược GM & Thuyết trình kịch bản Chủ đầu tư",
+      "descriptionEn": "Run commercial trade-off sessions with GM Richard Vance.",
+      "descriptionVi": "Chủ trì phiên phân tích kịch bản đánh đổi doanh thu/GOP cùng GM.",
+      "sourceType": "coaching",
+      "sourceRecordId": "course_09",
+      "sourceCode": "COACH-SBP-02",
+      "targetLevel": 4,
+      "estimatedHours": 14,
+      "dueDate": "2026-07-30",
+      "status": "in_progress",
+      "validationStatus": "pending_validation",
+      "evidenceRequired": true,
+      "evidenceNotes": "Completed 2 of 3 GM scenario briefings.",
+      "assignedById": "user_fc1",
+      "assignedByName": "David Tran",
+      "createdAt": "2026-03-25T09:00:00.000Z",
+      "updatedAt": "2026-04-02T10:00:00.000Z"
+    }
+  ],
+  "competencyReassessments": [
+    {
+      "id": "reasmt_seed_sarah_1",
+      "employeeId": "user_fc2",
+      "employeeName": "Sarah Jenkins",
+      "idpId": "tidp_seed_sarah_prev",
+      "baselineAssessmentId": "casmt_seed_sarah_1",
+      "newApprovedAssessmentId": "casmt_seed_sarah_1",
+      "targetPosition": "Strategic Finance Business Partner",
+      "reassessmentDate": "2026-03-05",
+      "assessorId": "user_admin",
+      "assessorName": "Elena Rostova",
+      "assessorRole": "super_admin",
+      "beforeAchievementPct": 92,
+      "afterAchievementPct": 100,
+      "netImprovementPct": 8,
+      "gapsClosedCount": 2,
+      "remainingGapsCount": 0,
+      "items": [
+        {
+          "competencyCode": "SBP-03",
+          "competencyNameEn": "Owner Financial Presentations & Asset Management Alignment",
+          "competencyNameVi": "Thuyết Trình Tài Chính & Báo Cáo Chủ Đầu Tư (Owner Relations)",
+          "domainId": "dom_6",
+          "beforeLevel": 3,
+          "afterLevel": 4,
+          "targetLevel": 4,
+          "delta": 1,
+          "remainingGap": 0,
+          "evidenceRef": "Q4 Ownership Board Asset Review"
+        },
+        {
+          "competencyCode": "SBP-05",
+          "competencyNameEn": "Strategic Value Creation & Hotel Asset Management",
+          "competencyNameVi": "Tầm Nhìn Chiến Lược & Quản Trị Giá Trị Tài Sản Khách Sạn",
+          "domainId": "dom_6",
+          "beforeLevel": 3,
+          "afterLevel": 4,
+          "targetLevel": 4,
+          "delta": 1,
+          "remainingGap": 0,
+          "evidenceRef": "Royal Palm 3-Year Cap Rate & EBITDA Valuation Plan"
+        }
+      ],
+      "summaryFeedback": "All Strategic Business Partnership Level 4 criteria demonstrated before Ownership committee.",
+      "createdAt": "2026-03-05T16:30:00.000Z"
+    }
+  ],
+  "careerReadinessReviews": [
+    {
+      "id": "crr_seed_nam_1",
+      "employeeId": "user_learner2",
+      "employeeName": "Lê Hoàng Nam",
+      "property": "Grand Horizon Saigon Hotel & Residences",
+      "department": "Finance & Accounting",
+      "currentPosition": "Assistant Financial Controller",
+      "targetPosition": "Financial Controller",
+      "sourceAssessmentId": "casmt_seed_nam_1",
+      "sourceIdpId": "tidp_seed_nam_1",
+      "computedStatus": "Nearly Ready",
+      "finalStatus": "Nearly Ready",
+      "achievementPct": 97,
+      "weightedAchievementPct": 97,
+      "idpCompletionPct": 50,
+      "criticalAchievementPct": 98,
+      "criticalBlockers": [
+        "SBP-02: L3/L4"
+      ],
+      "recommendedNextSteps": [
+        "Complete SBP-02 GM Co-Piloting & Ownership Scenario Defense before Ready for Review gate unlocks."
+      ],
+      "reviewerId": "user_fc1",
+      "reviewerName": "David Tran",
+      "reviewerRole": "financial_controller",
+      "reviewNotes": "High achievement (97%), blocked from Ready for Review strictly due to critical competency SBP-02 currently at L3 vs L4.",
+      "reviewedAt": "2026-04-02T11:00:00.000Z"
+    }
+  ],
+  "idpReviewLogs": [
+    {
+      "id": "rlog_1794552742761_80",
+      "idpId": "tidp_1794552742760_128",
+      "employeeId": "user_learner1",
+      "action": "CREATED",
+      "toStatus": "draft",
+      "actorId": "user_lnd",
+      "actorName": "Marcus Sterling",
+      "actorRole": "lnd_manager",
+      "comment": "Created IDP v3 for Assistant Financial Controller (1 objectives).",
+      "timestamp": "2026-11-13T06:52:22.760Z"
+    },
+    {
+      "id": "rlog_1794552702839_269",
+      "idpId": "tidp_1794552702839_10",
+      "employeeId": "user_learner1",
+      "action": "CREATED",
+      "toStatus": "draft",
+      "actorId": "user_lnd",
+      "actorName": "Marcus Sterling",
+      "actorRole": "lnd_manager",
+      "comment": "Created IDP v2 for Assistant Financial Controller (1 objectives).",
+      "timestamp": "2026-11-13T06:51:42.839Z"
+    },
+    {
+      "id": "rlog_seed_1",
+      "idpId": "tidp_seed_thu_1",
+      "employeeId": "user_learner1",
+      "action": "SUBMITTED",
+      "fromStatus": "draft",
+      "toStatus": "submitted",
+      "actorId": "user_learner1",
+      "actorName": "Nguyễn Minh Thư",
+      "actorRole": "learner",
+      "comment": "Submitted Q2-Q3 AFC Development Plan with 4 priority competency objectives.",
+      "timestamp": "2026-03-20T09:00:00.000Z"
+    },
+    {
+      "id": "rlog_seed_2",
+      "idpId": "tidp_seed_thu_1",
+      "employeeId": "user_learner1",
+      "action": "MANAGER_APPROVED",
+      "fromStatus": "submitted",
+      "toStatus": "manager_review",
+      "actorId": "user_fc1",
+      "actorName": "David Tran",
+      "actorRole": "financial_controller",
+      "comment": "Aligned on Day 3 closing and CSA internal audit milestones.",
+      "timestamp": "2026-03-21T11:00:00.000Z"
+    },
+    {
+      "id": "rlog_seed_3",
+      "idpId": "tidp_seed_thu_1",
+      "employeeId": "user_learner1",
+      "action": "LND_APPROVED",
+      "fromStatus": "manager_review",
+      "toStatus": "lnd_approved",
+      "actorId": "user_lnd",
+      "actorName": "Marcus Sterling",
+      "actorRole": "lnd_manager",
+      "comment": "70-20-10 learning mix verified and approved for Q2 execution.",
+      "timestamp": "2026-03-22T15:00:00.000Z"
+    },
+    {
+      "id": "rlog_seed_4",
+      "idpId": "tidp_seed_thu_1",
+      "employeeId": "user_learner1",
+      "action": "EVIDENCE_VALIDATED",
+      "fromStatus": "in_progress",
+      "toStatus": "in_progress",
+      "actorId": "user_fc1",
+      "actorName": "David Tran",
+      "actorRole": "financial_controller",
+      "comment": "Validated OJT-FAR-01 closing workbook (90/100).",
+      "timestamp": "2026-03-28T16:00:00.000Z"
+    }
+  ],
+  "talentNotifications": [
+    {
+      "id": "tnotif_1794552742791_342",
+      "recipientId": "user_learner3",
+      "type": "reassessment",
+      "title": "Competency Reassessment Completed",
+      "message": "Sarah Jenkins completed your reassessment: Achievement moved from 67% to 68%.",
+      "relatedId": "reasmt_1794552742791",
+      "time": "2026-11-13",
+      "read": false
+    },
+    {
+      "id": "tnotif_1794552742785_278",
+      "recipientId": "user_learner8",
+      "type": "activity_validated",
+      "title": "Activity Evidence Validated",
+      "message": "Sarah Jenkins approved your evidence for FAR-01: E2E USALI Close Shadowing.",
+      "relatedId": "tact_1794552742767_926",
+      "time": "2026-11-13",
+      "read": false
+    },
+    {
+      "id": "tnotif_1",
+      "recipientId": "user_learner1",
+      "type": "idp_approved",
+      "title": "IDP Approved by Manager & L&D",
+      "message": "Your AFC Individual Development Plan has been approved by David Tran and Marcus Sterling.",
+      "relatedId": "tidp_seed_thu_1",
+      "time": "2026-03-22",
+      "read": false
+    },
+    {
+      "id": "tnotif_2",
+      "recipientId": "user_fc1",
+      "type": "due_soon",
+      "title": "Objective Validation Pending",
+      "message": "Lê Hoàng Nam updated evidence on SBP-02 GM Co-Piloting (60% progress).",
+      "relatedId": "tidp_seed_nam_1",
+      "time": "2026-04-02",
+      "read": false
+    },
+    {
+      "id": "tnotif_3",
+      "recipientId": "user_learner2",
+      "type": "readiness",
+      "title": "Career Readiness Gate Notice",
+      "message": "SBP-02 (L3 vs Target L4) is blocking promotion to Ready for Review.",
+      "relatedId": "crr_seed_nam_1",
+      "time": "2026-04-02",
+      "read": false
+    }
+  ]
+}

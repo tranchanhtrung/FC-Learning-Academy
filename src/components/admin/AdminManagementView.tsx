@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole, ProficiencyLevel } from '../../types';
+import { DataImportCenterView } from './DataImportCenterView';
 import {
   Settings,
   Database,
@@ -43,7 +44,7 @@ const PROPERTIES_META = [
 export const AdminManagementView: React.FC = () => {
   const { users, currentUser, auditLogs, addUser, updateUser, showToast, language, t } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'properties' | 'system'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'properties' | 'system' | 'dataImport'>('users');
   const [userModalOpen, setUserModalOpen] = useState<boolean>(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState<{
@@ -182,7 +183,24 @@ export const AdminManagementView: React.FC = () => {
         >
           {language === 'vi' ? 'Kiến Trúc & Nhật Ký Kiểm Toán' : 'Architecture & Audit Logs'}
         </button>
+        <button
+          onClick={() => setActiveAdminTab('dataImport')}
+          className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+            activeAdminTab === 'dataImport'
+              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+              : 'text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          <Database className="w-3.5 h-3.5" />
+          <span>
+            {language === 'vi'
+              ? 'Quản Lý Dữ Liệu → Trung Tâm Nhập Dữ Liệu'
+              : 'Data Management → Data Import Center'}
+          </span>
+        </button>
       </div>
+
+      {activeAdminTab === 'dataImport' && <DataImportCenterView />}
 
       {/* Users Tab */}
       {activeAdminTab === 'users' && (

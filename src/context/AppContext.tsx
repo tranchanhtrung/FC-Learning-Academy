@@ -14,7 +14,16 @@ import {
   Certificate,
   SuccessionCandidate,
   AuditLogEntry,
+  CompetencyAssessmentDoc,
+  IndividualDevelopmentPlanDoc,
+  DevelopmentActivityDoc,
+  CompetencyReassessmentDoc,
+  CareerReadinessReviewDoc,
+  IdpReviewLogDoc,
+  TalentConfigDoc,
+  LmsNotificationItem,
 } from '../types';
+import { DEFAULT_TALENT_CONFIG } from '../lib/talentEngine';
 import {
   INITIAL_USERS,
   COMPETENCY_DOMAINS,
@@ -113,6 +122,35 @@ interface AppContextType {
   setActiveQuizTopic: (topic: string | null) => void;
   notifications: Array<{ id: string; title: string; time: string; read: boolean }>;
   markAllNotificationsRead: () => void;
+
+  // Competency Gap Engine & IDP Module
+  talentConfig: TalentConfigDoc;
+  competencyAssessments: CompetencyAssessmentDoc[];
+  talentIdps: IndividualDevelopmentPlanDoc[];
+  developmentActivities: DevelopmentActivityDoc[];
+  competencyReassessments: CompetencyReassessmentDoc[];
+  careerReadinessReviews: CareerReadinessReviewDoc[];
+  idpReviewLogs: IdpReviewLogDoc[];
+  talentNotifications: LmsNotificationItem[];
+  selectedTalentEmployeeId: string;
+  setSelectedTalentEmployeeId: (id: string) => void;
+  selectedTalentTargetPosition: string;
+  setSelectedTalentTargetPosition: (pos: string) => void;
+  refreshTalentData: () => Promise<void>;
+  updateTalentConfig: (updates: Partial<TalentConfigDoc>) => Promise<boolean>;
+  saveTalentAssessment: (payload: any) => Promise<CompetencyAssessmentDoc | null>;
+  transitionTalentAssessment: (
+    id: string,
+    targetStatus: 'draft' | 'submitted' | 'approved' | 'rejected',
+    rejectionReason?: string
+  ) => Promise<CompetencyAssessmentDoc | null>;
+  createTalentActivity: (payload: any) => Promise<DevelopmentActivityDoc | null>;
+  updateTalentActivity: (id: string, payload: any) => Promise<DevelopmentActivityDoc | null>;
+  createTalentIdp: (payload: any) => Promise<{ idp?: IndividualDevelopmentPlanDoc; duplicateId?: string; error?: string }>;
+  transitionTalentIdp: (id: string, targetStatus: string, comment?: string) => Promise<IndividualDevelopmentPlanDoc | null>;
+  updateTalentIdpObjective: (idpId: string, objId: string, payload: any) => Promise<IndividualDevelopmentPlanDoc | null>;
+  submitTalentReassessment: (payload: any) => Promise<{ reassessment?: CompetencyReassessmentDoc; newAssessment?: CompetencyAssessmentDoc } | null>;
+  submitCareerReadinessReview: (payload: any) => Promise<CareerReadinessReviewDoc | null>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -165,6 +203,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [idps, setIdps] = useState<IndividualDevelopmentPlan[]>(INITIAL_IDPS);
   const [certificates, setCertificates] = useState<Certificate[]>(INITIAL_CERTIFICATES);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+
+  // Competency Gap Engine & IDP state
+  const [talentConfig, setTalentConfig] = useState<TalentConfigDoc>(DEFAULT_TALENT_CONFIG);
+  const [competencyAssessments, setCompetencyAssessments] = useState<CompetencyAssessmentDoc[]>([]);
+  const [talentIdps, setTalentIdps] = useState<IndividualDevelopmentPlanDoc[]>([]);
+  const [developmentActivities, setDevelopmentActivities] = useState<DevelopmentActivityDoc[]>([]);
+  const [competencyReassessments, setCompetencyReassessments] = useState<CompetencyReassessmentDoc[]>([]);
+  const [careerReadinessReviews, setCareerReadinessReviews] = useState<CareerReadinessReviewDoc[]>([]);
+  const [idpReviewLogs, setIdpReviewLogs] = useState<IdpReviewLogDoc[]>([]);
+  const [talentNotifications, setTalentNotifications] = useState<LmsNotificationItem[]>([]);
+  const [selectedTalentEmployeeId, setSelectedTalentEmployeeId] = useState<string>('user_learner1');
+  const [selectedTalentTargetPosition, setSelectedTalentTargetPosition] = useState<string>('Assistant Financial Controller');
 
   const [notifications, setNotifications] = useState([
     {
@@ -245,6 +295,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }),
     [currentUser.id, currentUser.role]
   );
+
+  const refreshTalentData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/talent/bootstrap', {
+        headers: {
+          'x-user-id': currentUser.id,
+          'x-user-role': currentUser.role,
+        },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.talentConfig) setTalentConfig(data.talentConfig);
+      if (Array.isArray(data.competencyAssessments)) setCompetencyAssessments(data.competencyAssessments);
+      if (Array.isArray(data.talentIdps)) setTalentIdps(data.talentIdps);
+      if (Array.isArray(data.developmentActivities)) setDevelopmentActivities(data.developmentActivities);
+      if (Array.isArray(data.competencyReassessments)) setCompetencyReassessments(data.competencyReassessments);
+      if (Array.isArray(data.careerReadinessReviews)) setCareerReadinessReviews(data.careerReadinessReviews);
+      if (Array.isArray(data.idpReviewLogs)) setIdpReviewLogs(data.idpReviewLogs);
+      if (Array.isArray(data.talentNotifications)) setTalentNotifications(data.talentNotifications);
+    } catch {
+      // ignore network error on bootstrap
+    }
+  }, [currentUser.id, currentUser.role]);
+
+  useEffect(() => {
+    refreshTalentData();
+    if (currentUser.role === 'learner') {
+      setSelectedTalentEmployeeId(currentUser.id);
+    }
+  }, [refreshTalentData, currentUser.id, currentUser.role]);
 
   const enrollCourse = async (courseId: string) => {
     const existing = enrollments.find((e) => e.userId === currentUser.id && e.courseId === courseId);
@@ -787,11 +867,259 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateUser(currentUser.id, { careerPathId: pathId });
   };
 
-  const markAllNotificationsRead = () => {
+  const markAllNotificationsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setTalentNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await fetch('/api/talent/notifications/read', {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const updateTalentConfig = async (updates: Partial<TalentConfigDoc>): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/talent/config', {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save configuration', 'error');
+        return false;
+      }
+      if (data.talentConfig) setTalentConfig(data.talentConfig);
+      refreshAuditLogs();
+      showToast(language === 'vi' ? 'Đã lưu cấu hình Competency & IDP Engine.' : 'Talent configuration updated.', 'success');
+      return true;
+    } catch (e: any) {
+      showToast(e.message || 'Network error', 'error');
+      return false;
+    }
+  };
+
+  const saveTalentAssessment = async (payload: any): Promise<CompetencyAssessmentDoc | null> => {
+    try {
+      const res = await fetch('/api/talent/assessments', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save competency assessment', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return data.assessment;
+    } catch (e: any) {
+      showToast(e.message || 'Failed to save assessment', 'error');
+      return null;
+    }
+  };
+
+  const transitionTalentAssessment = async (
+    id: string,
+    targetStatus: 'draft' | 'submitted' | 'approved' | 'rejected',
+    rejectionReason?: string
+  ): Promise<CompetencyAssessmentDoc | null> => {
+    try {
+      const res = await fetch(`/api/talent/assessments/${encodeURIComponent(id)}/transition`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ targetStatus, rejectionReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to transition assessment', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return data.assessment;
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update assessment status', 'error');
+      return null;
+    }
+  };
+
+  const createTalentActivity = async (payload: any): Promise<DevelopmentActivityDoc | null> => {
+    try {
+      const res = await fetch('/api/talent/activities', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to create development activity', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return data.activity;
+    } catch (e: any) {
+      showToast(e.message || 'Failed to create activity', 'error');
+      return null;
+    }
+  };
+
+  const updateTalentActivity = async (id: string, payload: any): Promise<DevelopmentActivityDoc | null> => {
+    try {
+      const res = await fetch(`/api/talent/activities/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to update activity', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      return data.activity;
+    } catch (e: any) {
+      showToast(e.message || 'Failed to update activity', 'error');
+      return null;
+    }
+  };
+
+  const createTalentIdp = async (
+    payload: any
+  ): Promise<{ idp?: IndividualDevelopmentPlanDoc; duplicateId?: string; error?: string }> => {
+    try {
+      const res = await fetch('/api/talent/idps', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.code === 'DUPLICATE_IDP_CONFIRM_REQUIRED') {
+        return { duplicateId: data.existingIdpId, error: data.error };
+      }
+      if (!res.ok) {
+        showToast(data.error || 'Failed to create IDP', 'error');
+        return { error: data.error };
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return { idp: data.idp };
+    } catch (e: any) {
+      showToast(e.message || 'Failed to create IDP', 'error');
+      return { error: e.message };
+    }
+  };
+
+  const transitionTalentIdp = async (
+    id: string,
+    targetStatus: string,
+    comment?: string
+  ): Promise<IndividualDevelopmentPlanDoc | null> => {
+    try {
+      const res = await fetch(`/api/talent/idps/${encodeURIComponent(id)}/transition`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ targetStatus, comment }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'IDP workflow transition denied', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return data.idp;
+    } catch (e: any) {
+      showToast(e.message || 'IDP transition failed', 'error');
+      return null;
+    }
+  };
+
+  const updateTalentIdpObjective = async (
+    idpId: string,
+    objId: string,
+    payload: any
+  ): Promise<IndividualDevelopmentPlanDoc | null> => {
+    try {
+      const res = await fetch(
+        `/api/talent/idps/${encodeURIComponent(idpId)}/objectives/${encodeURIComponent(objId)}`,
+        {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Objective update blocked', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      return data.idp;
+    } catch (e: any) {
+      showToast(e.message || 'Objective update failed', 'error');
+      return null;
+    }
+  };
+
+  const submitTalentReassessment = async (payload: any) => {
+    try {
+      const res = await fetch('/api/talent/reassessments', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Reassessment failed', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return { reassessment: data.reassessment, newAssessment: data.newAssessment };
+    } catch (e: any) {
+      showToast(e.message || 'Reassessment error', 'error');
+      return null;
+    }
+  };
+
+  const submitCareerReadinessReview = async (payload: any): Promise<CareerReadinessReviewDoc | null> => {
+    try {
+      const res = await fetch('/api/talent/readiness', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Readiness review blocked', 'error');
+        return null;
+      }
+      await refreshTalentData();
+      refreshAuditLogs();
+      return data.review;
+    } catch (e: any) {
+      showToast(e.message || 'Readiness review failed', 'error');
+      return null;
+    }
   };
 
   const t = translations[language];
+
+  const mergedNotifications = [
+    ...talentNotifications.map((n) => ({
+      id: n.id,
+      title: `${n.title}: ${n.message}`,
+      time: n.time,
+      read: n.read,
+    })),
+    ...notifications,
+  ];
 
   return (
     <AppContext.Provider
@@ -842,8 +1170,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedCertificateForView,
         activeQuizTopic,
         setActiveQuizTopic,
-        notifications,
+        notifications: mergedNotifications,
         markAllNotificationsRead,
+        talentConfig,
+        competencyAssessments,
+        talentIdps,
+        developmentActivities,
+        competencyReassessments,
+        careerReadinessReviews,
+        idpReviewLogs,
+        talentNotifications,
+        selectedTalentEmployeeId,
+        setSelectedTalentEmployeeId,
+        selectedTalentTargetPosition,
+        setSelectedTalentTargetPosition,
+        refreshTalentData,
+        updateTalentConfig,
+        saveTalentAssessment,
+        transitionTalentAssessment,
+        createTalentActivity,
+        updateTalentActivity,
+        createTalentIdp,
+        transitionTalentIdp,
+        updateTalentIdpObjective,
+        submitTalentReassessment,
+        submitCareerReadinessReview,
       }}
     >
       {children}

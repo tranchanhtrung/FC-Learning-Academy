@@ -1,0 +1,594 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'tranchanhtrung@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Health check document for client SDK startup verification
+    match /test/connection {
+      allow get: if true;
+      allow write: if isAdmin();
+    }
+
+    // Trusted Admin Registry
+    match /admins/{adminUid} {
+      allow get: if isVerifiedUser() && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isValidId(adminUid)
+        && isAdmin()
+        && incoming().keys().hasAll(['uid', 'email', 'role', 'grantedAt'])
+        && incoming().keys().hasOnly(['uid', 'email', 'role', 'grantedAt'])
+        && incoming().uid == adminUid
+        && incoming().email is string && incoming().email.size() <= 200
+        && incoming().role in ['super_admin', 'lnd_manager']
+        && incoming().grantedAt is string && incoming().grantedAt.size() <= 64;
+      allow delete: if isValidId(adminUid) && isBootstrappedAdmin();
+    }
+
+    // Validation Helpers
+    function isValidCompetencyDomain(data) {
+      return data.keys().hasAll(['id', 'code', 'nameEn', 'nameVi', 'weightPercent', 'sortOrder', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'code', 'nameEn', 'nameVi', 'descriptionEn', 'descriptionVi', 'weightPercent', 'sortOrder', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 32
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 200
+        && data.nameVi is string && data.nameVi.size() >= 1 && data.nameVi.size() <= 200
+        && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 1000))
+        && (!('descriptionVi' in data) || (data.descriptionVi is string && data.descriptionVi.size() <= 1000))
+        && data.weightPercent is number && data.weightPercent >= 0 && data.weightPercent <= 100
+        && data.sortOrder is number && data.sortOrder >= 0
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidProficiencyLevel(data) {
+      return data.keys().hasAll(['id', 'level', 'code', 'nameEn', 'nameVi', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'level', 'code', 'nameEn', 'nameVi', 'descriptionEn', 'descriptionVi', 'targetRole', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.level is number && data.level >= 1 && data.level <= 4
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 32
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 150
+        && data.nameVi is string && data.nameVi.size() >= 1 && data.nameVi.size() <= 150
+        && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 1000))
+        && (!('descriptionVi' in data) || (data.descriptionVi is string && data.descriptionVi.size() <= 1000))
+        && (!('targetRole' in data) || (data.targetRole is string && data.targetRole.size() <= 150))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidCompetency(data) {
+      return data.keys().hasAll(['id', 'code', 'domainId', 'nameEn', 'nameVi', 'targetLevel', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'code', 'domainId', 'nameEn', 'nameVi', 'definitionEn', 'definitionVi', 'targetLevel', 'weightPercent', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 32
+        && isValidId(data.domainId)
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 250
+        && data.nameVi is string && data.nameVi.size() >= 1 && data.nameVi.size() <= 250
+        && (!('definitionEn' in data) || (data.definitionEn is string && data.definitionEn.size() <= 1500))
+        && (!('definitionVi' in data) || (data.definitionVi is string && data.definitionVi.size() <= 1500))
+        && data.targetLevel is number && data.targetLevel >= 1 && data.targetLevel <= 4
+        && (!('weightPercent' in data) || (data.weightPercent is number && data.weightPercent >= 0 && data.weightPercent <= 100))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidCompetencyRubric(data) {
+      return data.keys().hasAll(['id', 'competencyId', 'proficiencyLevel', 'criteriaEn', 'criteriaVi', 'assessmentWeight', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'competencyId', 'proficiencyLevel', 'proficiencyLevelId', 'criteriaEn', 'criteriaVi', 'observableBehavior', 'evidenceRequired', 'assessmentWeight', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && isValidId(data.competencyId)
+        && data.proficiencyLevel is number && data.proficiencyLevel >= 1 && data.proficiencyLevel <= 4
+        && (!('proficiencyLevelId' in data) || (data.proficiencyLevelId is string && data.proficiencyLevelId.size() <= 128))
+        && data.criteriaEn is string && data.criteriaEn.size() >= 1 && data.criteriaEn.size() <= 1500
+        && data.criteriaVi is string && data.criteriaVi.size() >= 1 && data.criteriaVi.size() <= 1500
+        && (!('observableBehavior' in data) || (data.observableBehavior is string && data.observableBehavior.size() <= 1000))
+        && (!('evidenceRequired' in data) || (data.evidenceRequired is string && data.evidenceRequired.size() <= 500))
+        && data.assessmentWeight is number && data.assessmentWeight >= 0 && data.assessmentWeight <= 100
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'code', 'domainId', 'competencyId', 'titleEn', 'titleVi', 'targetLevel', 'durationHours', 'passingScore', 'assessmentWeightQuiz', 'assessmentWeightPractical', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'code', 'domainId', 'competencyId', 'titleEn', 'titleVi', 'descriptionEn', 'descriptionVi', 'targetLevel', 'durationHours', 'passingScore', 'assessmentWeightQuiz', 'assessmentWeightPractical', 'deliveryMode', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 32
+        && isValidId(data.domainId)
+        && isValidId(data.competencyId)
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 250
+        && data.titleVi is string && data.titleVi.size() >= 1 && data.titleVi.size() <= 250
+        && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 2000))
+        && (!('descriptionVi' in data) || (data.descriptionVi is string && data.descriptionVi.size() <= 2000))
+        && data.targetLevel is number && data.targetLevel >= 1 && data.targetLevel <= 4
+        && data.durationHours is number && data.durationHours > 0
+        && data.passingScore is number && data.passingScore >= 0 && data.passingScore <= 100
+        && data.assessmentWeightQuiz is number && data.assessmentWeightPractical is number
+        && (data.assessmentWeightQuiz + data.assessmentWeightPractical == 100)
+        && (!('deliveryMode' in data) || (data.deliveryMode is string && data.deliveryMode.size() <= 100))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['id', 'courseId', 'competencyId', 'questionType', 'questionTextEn', 'questionTextVi', 'correctAnswer', 'proficiencyLevel', 'points', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'courseId', 'competencyId', 'questionType', 'questionTextEn', 'questionTextVi', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'explanationEn', 'explanationVi', 'proficiencyLevel', 'points', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && isValidId(data.courseId)
+        && isValidId(data.competencyId)
+        && data.questionType in ['multiple_choice', 'single_choice', 'numeric', 'true_false']
+        && data.questionTextEn is string && data.questionTextEn.size() >= 1 && data.questionTextEn.size() <= 2000
+        && data.questionTextVi is string && data.questionTextVi.size() >= 1 && data.questionTextVi.size() <= 2000
+        && (!('optionA' in data) || (data.optionA is string && data.optionA.size() <= 500))
+        && (!('optionB' in data) || (data.optionB is string && data.optionB.size() <= 500))
+        && (!('optionC' in data) || (data.optionC is string && data.optionC.size() <= 500))
+        && (!('optionD' in data) || (data.optionD is string && data.optionD.size() <= 500))
+        && data.correctAnswer is string && data.correctAnswer.size() >= 1 && data.correctAnswer.size() <= 200
+        && (!('explanationEn' in data) || (data.explanationEn is string && data.explanationEn.size() <= 2000))
+        && (!('explanationVi' in data) || (data.explanationVi is string && data.explanationVi.size() <= 2000))
+        && data.proficiencyLevel is number && data.proficiencyLevel >= 1 && data.proficiencyLevel <= 4
+        && data.points is number && data.points > 0
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidPracticalAssignment(data) {
+      return data.keys().hasAll(['id', 'code', 'courseId', 'competencyId', 'titleEn', 'titleVi', 'maxScore', 'passingScore', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'code', 'courseId', 'competencyId', 'titleEn', 'titleVi', 'scenarioEn', 'scenarioVi', 'deliverables', 'maxScore', 'passingScore', 'weightPercent', 'dueDateDays', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 32
+        && isValidId(data.courseId)
+        && isValidId(data.competencyId)
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 250
+        && data.titleVi is string && data.titleVi.size() >= 1 && data.titleVi.size() <= 250
+        && (!('scenarioEn' in data) || (data.scenarioEn is string && data.scenarioEn.size() <= 2500))
+        && (!('scenarioVi' in data) || (data.scenarioVi is string && data.scenarioVi.size() <= 2500))
+        && (!('deliverables' in data) || (data.deliverables is string && data.deliverables.size() <= 1500))
+        && data.maxScore is number && data.maxScore > 0
+        && data.passingScore is number && data.passingScore >= 0 && data.passingScore <= data.maxScore
+        && (!('weightPercent' in data) || (data.weightPercent is number && data.weightPercent >= 0 && data.weightPercent <= 100))
+        && (!('dueDateDays' in data) || (data.dueDateDays is number && data.dueDateDays > 0))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidAnnualTrainingMatrixEntry(data) {
+      return data.keys().hasAll(['id', 'month', 'targetDate', 'targetRole', 'domainId', 'courseId', 'competencyId', 'mandatory', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'month', 'targetDate', 'targetRole', 'domainId', 'courseId', 'competencyId', 'deliveryFormat', 'mandatory', 'cohortSize', 'assessmentWeight', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.month is number && data.month >= 1 && data.month <= 12
+        && data.targetDate is string && data.targetDate.size() >= 8 && data.targetDate.size() <= 32
+        && data.targetRole is string && data.targetRole.size() >= 1 && data.targetRole.size() <= 150
+        && isValidId(data.domainId)
+        && isValidId(data.courseId)
+        && isValidId(data.competencyId)
+        && (!('deliveryFormat' in data) || (data.deliveryFormat is string && data.deliveryFormat.size() <= 100))
+        && data.mandatory is bool
+        && (!('cohortSize' in data) || (data.cohortSize is number && data.cohortSize >= 0))
+        && (!('assessmentWeight' in data) || (data.assessmentWeight is number && data.assessmentWeight >= 0 && data.assessmentWeight <= 100))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidCareerPath(data) {
+      return data.keys().hasAll(['id', 'code', 'nameEn', 'nameVi', 'fromRole', 'toRole', 'targetLevel', 'durationMonths', 'requiredCourseIds', 'requiredCompetencyIds', 'minAssessmentScore', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'code', 'nameEn', 'nameVi', 'fromRole', 'toRole', 'targetLevel', 'durationMonths', 'requiredCourseIds', 'requiredCompetencyIds', 'requiredPracticalIds', 'minAssessmentScore', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 64
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 200
+        && data.nameVi is string && data.nameVi.size() >= 1 && data.nameVi.size() <= 200
+        && data.fromRole is string && data.fromRole.size() >= 1 && data.fromRole.size() <= 150
+        && data.toRole is string && data.toRole.size() >= 1 && data.toRole.size() <= 150
+        && data.targetLevel is number && data.targetLevel >= 1 && data.targetLevel <= 4
+        && data.durationMonths is number && data.durationMonths > 0
+        && data.requiredCourseIds is list && data.requiredCourseIds.size() <= 30
+        && (data.requiredCourseIds.size() == 0 || data.requiredCourseIds[0] is string)
+        && data.requiredCompetencyIds is list && data.requiredCompetencyIds.size() <= 40
+        && (data.requiredCompetencyIds.size() == 0 || data.requiredCompetencyIds[0] is string)
+        && (!('requiredPracticalIds' in data) || (data.requiredPracticalIds is list && data.requiredPracticalIds.size() <= 20 && (data.requiredPracticalIds.size() == 0 || data.requiredPracticalIds[0] is string)))
+        && data.minAssessmentScore is number && data.minAssessmentScore >= 0 && data.minAssessmentScore <= 100
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidImportLog(data) {
+      return data.keys().hasAll(['id', 'fileName', 'performedByUid', 'duplicateStrategy', 'status', 'totalRowsDetected', 'validRecords', 'invalidRecords', 'createdCount', 'skippedCount', 'updatedCount', 'failedCount', 'startedAt', 'completedAt'])
+        && data.keys().hasOnly(['id', 'fileName', 'performedByUid', 'performedByEmail', 'performedByName', 'performedByRole', 'duplicateStrategy', 'selectedSheets', 'status', 'totalRowsDetected', 'validRecords', 'invalidRecords', 'createdCount', 'skippedCount', 'updatedCount', 'failedCount', 'errorCount', 'warningCount', 'verificationPassed', 'startedAt', 'completedAt', 'sheetSummaries'])
+        && isValidId(data.id)
+        && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255
+        && data.performedByUid == request.auth.uid
+        && (!('performedByEmail' in data) || (data.performedByEmail is string && data.performedByEmail.size() <= 200))
+        && (!('performedByName' in data) || (data.performedByName is string && data.performedByName.size() <= 200))
+        && (!('performedByRole' in data) || (data.performedByRole is string && data.performedByRole.size() <= 64))
+        && data.duplicateStrategy in ['skip', 'update', 'reject']
+        && (!('selectedSheets' in data) || (data.selectedSheets is list && data.selectedSheets.size() <= 15))
+        && data.status in ['completed', 'partial_failure', 'failed', 'demo_mode']
+        && data.totalRowsDetected is number && data.totalRowsDetected >= 0
+        && data.validRecords is number && data.validRecords >= 0
+        && data.invalidRecords is number && data.invalidRecords >= 0
+        && data.createdCount is number && data.createdCount >= 0
+        && data.skippedCount is number && data.skippedCount >= 0
+        && data.updatedCount is number && data.updatedCount >= 0
+        && data.failedCount is number && data.failedCount >= 0
+        && (!('errorCount' in data) || (data.errorCount is number && data.errorCount >= 0))
+        && (!('warningCount' in data) || (data.warningCount is number && data.warningCount >= 0))
+        && (!('verificationPassed' in data) || data.verificationPassed is bool)
+        && data.startedAt is string && data.startedAt.size() <= 64
+        && data.completedAt is string && data.completedAt.size() <= 64
+        && (!('sheetSummaries' in data) || (data.sheetSummaries is list && data.sheetSummaries.size() <= 15));
+    }
+
+    // 1. competencyDomains
+    match /competencyDomains/{domainId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(domainId) && isAdmin() && isValidCompetencyDomain(incoming()) && incoming().id == domainId;
+      allow update: if isValidId(domainId) && isAdmin() && isValidCompetencyDomain(incoming()) && incoming().id == resource.data.id;
+      allow delete: if isValidId(domainId) && isAdmin();
+    }
+
+    // 2. proficiencyLevels
+    match /proficiencyLevels/{levelId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(levelId) && isAdmin() && isValidProficiencyLevel(incoming()) && incoming().id == levelId;
+      allow update: if isValidId(levelId) && isAdmin() && isValidProficiencyLevel(incoming()) && incoming().id == resource.data.id;
+      allow delete: if isValidId(levelId) && isAdmin();
+    }
+
+    // 3. competencies (FK -> competencyDomains)
+    match /competencies/{competencyId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(competencyId) && isAdmin() && isValidCompetency(incoming()) && incoming().id == competencyId
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId));
+      allow update: if isValidId(competencyId) && isAdmin() && isValidCompetency(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId));
+      allow delete: if isValidId(competencyId) && isAdmin();
+    }
+
+    // 4. competencyRubrics (FK -> competencies)
+    match /competencyRubrics/{rubricId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(rubricId) && isAdmin() && isValidCompetencyRubric(incoming()) && incoming().id == rubricId
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow update: if isValidId(rubricId) && isAdmin() && isValidCompetencyRubric(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow delete: if isValidId(rubricId) && isAdmin();
+    }
+
+    // 5. courses (FK -> competencyDomains, competencies)
+    match /courses/{courseId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(courseId) && isAdmin() && isValidCourse(incoming()) && incoming().id == courseId
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow update: if isValidId(courseId) && isAdmin() && isValidCourse(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow delete: if isValidId(courseId) && isAdmin();
+    }
+
+    // 6. questionBank (FK -> courses, competencies)
+    match /questionBank/{questionId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(questionId) && isAdmin() && isValidQuestion(incoming()) && incoming().id == questionId
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow update: if isValidId(questionId) && isAdmin() && isValidQuestion(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow delete: if isValidId(questionId) && isAdmin();
+    }
+
+    // 7. practicalAssignments (FK -> courses, competencies)
+    match /practicalAssignments/{assignmentId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(assignmentId) && isAdmin() && isValidPracticalAssignment(incoming()) && incoming().id == assignmentId
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow update: if isValidId(assignmentId) && isAdmin() && isValidPracticalAssignment(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow delete: if isValidId(assignmentId) && isAdmin();
+    }
+
+    // 8. annualTrainingMatrix (FK -> competencyDomains, courses, competencies)
+    match /annualTrainingMatrix/{matrixId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(matrixId) && isAdmin() && isValidAnnualTrainingMatrixEntry(incoming()) && incoming().id == matrixId
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow update: if isValidId(matrixId) && isAdmin() && isValidAnnualTrainingMatrixEntry(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
+        && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
+        && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
+      allow delete: if isValidId(matrixId) && isAdmin();
+    }
+
+    // 9. careerPaths
+    match /careerPaths/{pathId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isValidId(pathId) && isAdmin() && isValidCareerPath(incoming()) && incoming().id == pathId;
+      allow update: if isValidId(pathId) && isAdmin() && isValidCareerPath(incoming()) && incoming().id == resource.data.id;
+      allow delete: if isValidId(pathId) && isAdmin();
+    }
+
+    // 10. importLogs
+    match /importLogs/{logId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(logId) && isAdmin() && isValidImportLog(incoming()) && incoming().id == logId;
+      allow update, delete: if false;
+    }
+
+    // ========================================================================
+    // COMPETENCY GAP ENGINE & IDP MODULE RULES
+    // ========================================================================
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'employeeId', 'name', 'role', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'employeeId', 'name', 'role', 'position', 'department', 'property', 'supervisorUid', 'updatedAt'])
+        && isValidId(data.uid)
+        && isValidId(data.employeeId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && data.role in ['super_admin', 'lnd_manager', 'financial_controller', 'learner', 'general_manager']
+        && (!('position' in data) || (data.position is string && data.position.size() <= 150))
+        && (!('department' in data) || (data.department is string && data.department.size() <= 150))
+        && (!('property' in data) || (data.property is string && data.property.size() <= 200))
+        && (!('supervisorUid' in data) || isValidId(data.supervisorUid))
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidCompetencyAssessment(data) {
+      return data.keys().hasAll(['id', 'version', 'employeeId', 'employeeUid', 'employeeName', 'targetPosition', 'assessmentPeriod', 'assessorId', 'assessorType', 'status', 'results', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'version', 'supersedesId', 'employeeId', 'employeeUid', 'employeeName', 'property', 'department', 'currentPosition', 'targetPosition', 'assessmentPeriod', 'assessorId', 'assessorUid', 'assessorName', 'assessorType', 'status', 'submittedAt', 'approvedById', 'approvedByName', 'approvedAt', 'rejectionReason', 'overallComments', 'results', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.version is number && data.version >= 1
+        && (!('supersedesId' in data) || isValidId(data.supersedesId))
+        && isValidId(data.employeeId)
+        && isValidId(data.employeeUid)
+        && data.employeeName is string && data.employeeName.size() >= 1 && data.employeeName.size() <= 150
+        && data.targetPosition is string && data.targetPosition.size() >= 1 && data.targetPosition.size() <= 150
+        && data.assessmentPeriod is string && data.assessmentPeriod.size() >= 1 && data.assessmentPeriod.size() <= 32
+        && isValidId(data.assessorId)
+        && data.assessorType in ['self', 'supervisor', 'financial_controller', 'hr_lnd', 'final_validated']
+        && data.status in ['draft', 'submitted', 'approved', 'rejected']
+        && (!('overallComments' in data) || (data.overallComments is string && data.overallComments.size() <= 2000))
+        && data.results is map
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidDevelopmentActivity(data) {
+      return data.keys().hasAll(['id', 'employeeId', 'employeeUid', 'competencyCode', 'category', 'ratioCategory', 'titleEn', 'status', 'validationStatus', 'evidenceRequired', 'dueDate', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'idpId', 'objectiveId', 'employeeId', 'employeeUid', 'competencyId', 'competencyCode', 'domainId', 'category', 'ratioCategory', 'titleEn', 'titleVi', 'descriptionEn', 'descriptionVi', 'sourceType', 'sourceRecordId', 'sourceCode', 'targetLevel', 'estimatedHours', 'dueDate', 'status', 'validationStatus', 'evidenceRequired', 'evidenceNotes', 'evidenceFileName', 'evidenceUrl', 'validatedById', 'validatedByName', 'validatedAt', 'validatorFeedback', 'assignedById', 'assignedByName', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.employeeId)
+        && isValidId(data.employeeUid)
+        && data.competencyCode is string && data.competencyCode.size() >= 1 && data.competencyCode.size() <= 32
+        && data.category in ['A_Formal_Learning', 'B_On_The_Job', 'C_Practical_Assignment', 'D_Coaching_Mentoring', 'E_Self_Learning']
+        && data.ratioCategory in ['70_experiential', '20_social', '10_formal']
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 300
+        && data.status in ['planned', 'in_progress', 'evidence_submitted', 'completed', 'cancelled']
+        && data.validationStatus in ['not_required', 'pending_validation', 'approved', 'revision_requested']
+        && data.evidenceRequired is bool
+        && (!('evidenceNotes' in data) || (data.evidenceNotes is string && data.evidenceNotes.size() <= 2000))
+        && (!('evidenceFileName' in data) || (data.evidenceFileName is string && data.evidenceFileName.size() <= 255))
+        && data.dueDate is string && data.dueDate.size() <= 32
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidIndividualDevelopmentPlan(data) {
+      return data.keys().hasAll(['id', 'version', 'employeeId', 'employeeUid', 'employeeName', 'targetPosition', 'sourceAssessmentId', 'managerId', 'status', 'objectives', 'createdBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'version', 'employeeId', 'employeeUid', 'employeeName', 'property', 'department', 'currentPosition', 'targetPosition', 'sourceAssessmentId', 'sourceAssessmentPeriod', 'managerId', 'managerUid', 'managerName', 'status', 'periodStart', 'periodEnd', 'overallGoalEn', 'overallGoalVi', 'ratioTarget', 'objectives', 'submittedAt', 'managerReviewedBy', 'managerReviewedAt', 'lndApprovedBy', 'lndApprovedAt', 'activatedAt', 'completedAt', 'closedAt', 'rejectionNotes', 'createdBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.version is number && data.version >= 1
+        && isValidId(data.employeeId)
+        && isValidId(data.employeeUid)
+        && data.employeeName is string && data.employeeName.size() >= 1 && data.employeeName.size() <= 150
+        && data.targetPosition is string && data.targetPosition.size() >= 1 && data.targetPosition.size() <= 150
+        && isValidId(data.sourceAssessmentId)
+        && isValidId(data.managerId)
+        && data.status in ['draft', 'submitted', 'manager_review', 'lnd_approved', 'active', 'in_progress', 'completed', 'reassessment', 'closed']
+        && data.objectives is list && data.objectives.size() <= 40
+        && isValidId(data.createdBy)
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidIdpReviewLog(data) {
+      return data.keys().hasAll(['id', 'idpId', 'employeeId', 'action', 'toStatus', 'actorId', 'actorName', 'comment', 'timestamp'])
+        && data.keys().hasOnly(['id', 'idpId', 'employeeId', 'employeeUid', 'action', 'fromStatus', 'toStatus', 'actorId', 'actorName', 'actorRole', 'comment', 'timestamp'])
+        && isValidId(data.id)
+        && isValidId(data.idpId)
+        && isValidId(data.employeeId)
+        && data.action is string && data.action.size() <= 64
+        && data.toStatus is string && data.toStatus.size() <= 64
+        && isValidId(data.actorId)
+        && data.actorName is string && data.actorName.size() <= 150
+        && data.comment is string && data.comment.size() <= 1000
+        && data.timestamp is string && data.timestamp.size() <= 64;
+    }
+
+    function isValidCompetencyReassessment(data) {
+      return data.keys().hasAll(['id', 'employeeId', 'idpId', 'baselineAssessmentId', 'beforeAchievementPct', 'afterAchievementPct', 'assessorId', 'createdAt'])
+        && data.keys().hasOnly(['id', 'employeeId', 'employeeUid', 'employeeName', 'idpId', 'baselineAssessmentId', 'newApprovedAssessmentId', 'targetPosition', 'reassessmentDate', 'assessorId', 'assessorName', 'assessorRole', 'beforeAchievementPct', 'afterAchievementPct', 'netImprovementPct', 'gapsClosedCount', 'remainingGapsCount', 'items', 'summaryFeedback', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.employeeId)
+        && isValidId(data.idpId)
+        && isValidId(data.baselineAssessmentId)
+        && data.beforeAchievementPct is number && data.beforeAchievementPct >= 0 && data.beforeAchievementPct <= 100
+        && data.afterAchievementPct is number && data.afterAchievementPct >= 0 && data.afterAchievementPct <= 100
+        && isValidId(data.assessorId)
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidCareerReadinessReview(data) {
+      return data.keys().hasAll(['id', 'employeeId', 'targetPosition', 'computedStatus', 'finalStatus', 'achievementPct', 'idpCompletionPct', 'reviewerId', 'reviewedAt'])
+        && data.keys().hasOnly(['id', 'employeeId', 'employeeUid', 'employeeName', 'property', 'department', 'currentPosition', 'targetPosition', 'sourceAssessmentId', 'sourceIdpId', 'computedStatus', 'finalStatus', 'achievementPct', 'weightedAchievementPct', 'idpCompletionPct', 'criticalAchievementPct', 'criticalBlockers', 'recommendedNextSteps', 'reviewerId', 'reviewerName', 'reviewerRole', 'reviewNotes', 'reviewedAt'])
+        && isValidId(data.id)
+        && isValidId(data.employeeId)
+        && data.targetPosition is string && data.targetPosition.size() <= 150
+        && data.computedStatus in ['Not Ready', 'Developing', 'Nearly Ready', 'Ready for Review']
+        && data.finalStatus in ['Not Ready', 'Developing', 'Nearly Ready', 'Ready for Review']
+        && data.achievementPct is number && data.achievementPct >= 0 && data.achievementPct <= 100
+        && data.idpCompletionPct is number && data.idpCompletionPct >= 0 && data.idpCompletionPct <= 100
+        && isValidId(data.reviewerId)
+        && data.reviewedAt is string && data.reviewedAt.size() <= 64;
+    }
+
+    function isValidTalentConfig(data) {
+      return data.keys().hasAll(['id', 'weightMode', 'ratio702010', 'readinessThresholds', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'weightMode', 'competencyOverrides', 'customPositionTargets', 'ratio702010', 'readinessThresholds', 'updatedBy', 'updatedAt'])
+        && isValidId(data.id)
+        && data.weightMode in ['default_equal', 'custom_weighted']
+        && data.ratio702010 is map
+        && data.readinessThresholds is map
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    // 11. userProfiles (PII & role isolation)
+    match /userProfiles/{userId} {
+      allow get: if isVerifiedUser() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && isVerifiedUser() && isValidUserProfile(incoming())
+        && (isAdmin() || (request.auth.uid == userId && incoming().uid == userId && incoming().role == 'learner'));
+      allow update: if isValidId(userId) && isVerifiedUser() && isValidUserProfile(incoming())
+        && incoming().uid == resource.data.uid
+        && (isAdmin() || (request.auth.uid == userId && incoming().role == resource.data.role));
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // 12. competencyAssessments (Immutable once approved)
+    match /competencyAssessments/{assessmentId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || resource.data.assessorUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || resource.data.assessorUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(assessmentId) && isVerifiedUser() && isValidCompetencyAssessment(incoming())
+        && incoming().id == assessmentId
+        && (isAdmin() || (incoming().employeeUid == request.auth.uid && incoming().status in ['draft', 'submitted']));
+      allow update: if isValidId(assessmentId) && isVerifiedUser() && isValidCompetencyAssessment(incoming())
+        && resource.data.status != 'approved'
+        && incoming().id == resource.data.id
+        && incoming().employeeId == resource.data.employeeId
+        && incoming().createdAt == resource.data.createdAt
+        && (isAdmin() || (
+          resource.data.employeeUid == request.auth.uid
+          && incoming().status in ['draft', 'submitted']
+          && incoming().diff(resource.data).affectedKeys().hasOnly(['results', 'overallComments', 'status', 'submittedAt', 'updatedAt'])
+        ));
+      allow delete: if false;
+    }
+
+    // 13. developmentActivities (Evidence gate enforced)
+    match /developmentActivities/{activityId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(activityId) && isVerifiedUser() && isValidDevelopmentActivity(incoming())
+        && incoming().id == activityId
+        && (isAdmin() || (incoming().employeeUid == request.auth.uid && incoming().validationStatus in ['not_required', 'pending_validation']));
+      allow update: if isValidId(activityId) && isVerifiedUser() && isValidDevelopmentActivity(incoming())
+        && incoming().id == resource.data.id
+        && incoming().employeeId == resource.data.employeeId
+        && incoming().createdAt == resource.data.createdAt
+        && (isAdmin() || (
+          resource.data.employeeUid == request.auth.uid
+          && incoming().validationStatus == resource.data.validationStatus
+          && (incoming().status != 'completed' || !incoming().evidenceRequired || resource.data.validationStatus == 'approved')
+          && incoming().diff(resource.data).affectedKeys().hasOnly(['status', 'evidenceNotes', 'evidenceFileName', 'evidenceUrl', 'updatedAt'])
+        ));
+      allow delete: if isValidId(activityId) && isAdmin();
+    }
+
+    // 14. individualDevelopmentPlans (Learner cannot self-approve)
+    match /individualDevelopmentPlans/{idpId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || resource.data.managerUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || resource.data.managerUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(idpId) && isVerifiedUser() && isValidIndividualDevelopmentPlan(incoming())
+        && incoming().id == idpId
+        && exists(/databases/$(database)/documents/competencyAssessments/$(incoming().sourceAssessmentId))
+        && (isAdmin() || (incoming().employeeUid == request.auth.uid && incoming().status == 'draft'));
+      allow update: if isValidId(idpId) && isVerifiedUser() && isValidIndividualDevelopmentPlan(incoming())
+        && incoming().id == resource.data.id
+        && incoming().employeeId == resource.data.employeeId
+        && incoming().createdAt == resource.data.createdAt
+        && (isAdmin()
+          || (resource.data.managerUid == request.auth.uid && incoming().status in ['draft', 'manager_review', 'active', 'in_progress', 'reassessment', 'closed'])
+          || (resource.data.employeeUid == request.auth.uid
+              && incoming().status in ['draft', 'submitted', 'in_progress']
+              && incoming().diff(resource.data).affectedKeys().hasOnly(['objectives', 'overallGoalEn', 'overallGoalVi', 'status', 'submittedAt', 'updatedAt']))
+        );
+      allow delete: if isValidId(idpId) && isAdmin();
+    }
+
+    // 15. idpReviewLogs (Append-only immutable audit trail)
+    match /idpReviewLogs/{logId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(logId) && isVerifiedUser() && isValidIdpReviewLog(incoming())
+        && incoming().id == logId
+        && (isAdmin() || incoming().actorId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // 16. competencyReassessments (Immutable post-IDP delta records)
+    match /competencyReassessments/{reassessmentId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(reassessmentId) && isAdmin() && isValidCompetencyReassessment(incoming()) && incoming().id == reassessmentId;
+      allow update, delete: if false;
+    }
+
+    // 17. careerReadinessReviews
+    match /careerReadinessReviews/{reviewId} {
+      allow get: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(reviewId) && isAdmin() && isValidCareerReadinessReview(incoming()) && incoming().id == reviewId;
+      allow update, delete: if isValidId(reviewId) && isAdmin();
+    }
+
+    // 18. talentConfig
+    match /talentConfig/{configId} {
+      allow get: if isVerifiedUser();
+      allow list: if isAdmin();
+      allow create, update: if isValidId(configId) && isAdmin() && isValidTalentConfig(incoming()) && incoming().id == configId;
+      allow delete: if false;
+    }
+  }
+}

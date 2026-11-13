@@ -26,7 +26,45 @@ import type {
   Certificate,
   AuditLogEntry,
   ProficiencyLevel,
+  CompetencyAssessmentDoc,
+  IndividualDevelopmentPlanDoc,
+  DevelopmentObjective,
+  DevelopmentActivityDoc,
+  CompetencyReassessmentDoc,
+  CareerReadinessReviewDoc,
+  IdpReviewLogDoc,
+  TalentConfigDoc,
+  LmsNotificationItem,
 } from './src/types/index.ts';
+import {
+  DEFAULT_TALENT_CONFIG,
+  calculateGapAnalysis,
+  evaluateIdpProgress,
+  evaluateCareerReadiness,
+  resolvePositionTargetMatrix,
+  isCompetencyCritical,
+} from './src/lib/talentEngine.ts';
+import {
+  createSeedTalentState,
+  buildTalentReportWorkbook,
+  type TalentReportType,
+} from './server/talentData.ts';
+
+import { create2027TemplateBuffer } from './src/data/dataset2027.ts';
+import {
+  IMPORT_ORDER_SPEC,
+  detectWorkbookSheets,
+  parseAndValidateWorkbook,
+  loadDemoCurriculumStore,
+  saveDemoCurriculumStore,
+  getDemoExistingIds,
+  loadFirebaseConfigJson,
+  getAuthorizedAdminFirestore,
+  verifyNormalizedDataset,
+  buildErrorReportBuffer,
+  type DuplicateStrategy,
+  type ValidationIssue,
+} from './server/importEngine.ts';
 
 dotenv.config();
 
@@ -36,7 +74,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 // Initialize Google GenAI
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -248,15 +286,26 @@ interface AcademyDB {
   idps: IndividualDevelopmentPlan[];
   certificates: Certificate[];
   auditLogs: AuditLogEntry[];
+  talentConfig: TalentConfigDoc;
+  competencyAssessments: CompetencyAssessmentDoc[];
+  talentIdps: IndividualDevelopmentPlanDoc[];
+  developmentActivities: DevelopmentActivityDoc[];
+  competencyReassessments: CompetencyReassessmentDoc[];
+  careerReadinessReviews: CareerReadinessReviewDoc[];
+  idpReviewLogs: IdpReviewLogDoc[];
+  talentNotifications: LmsNotificationItem[];
 }
 
 const DATA_DIR = path.join(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'academy-db.json');
 
 function getSeedDB(): AcademyDB {
+  const users = JSON.parse(JSON.stringify(INITIAL_USERS));
+  const competencies = JSON.parse(JSON.stringify(COMPETENCIES));
+  const talentSeed = createSeedTalentState(users, competencies);
   return {
-    users: JSON.parse(JSON.stringify(INITIAL_USERS)),
-    competencies: JSON.parse(JSON.stringify(COMPETENCIES)),
+    users,
+    competencies,
     enrollments: JSON.parse(JSON.stringify(DEFAULT_ENROLLMENTS)),
     quizAttempts: JSON.parse(JSON.stringify(DEFAULT_QUIZ_ATTEMPTS)),
     submissions: JSON.parse(JSON.stringify(DEFAULT_SUBMISSIONS)),
@@ -264,6 +313,7 @@ function getSeedDB(): AcademyDB {
     idps: JSON.parse(JSON.stringify(INITIAL_IDPS)),
     certificates: JSON.parse(JSON.stringify(INITIAL_CERTIFICATES)),
     auditLogs: JSON.parse(JSON.stringify(DEFAULT_AUDIT_LOGS)),
+    ...talentSeed,
   };
 }
 
@@ -276,9 +326,15 @@ function loadDB(): AcademyDB {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.users) && Array.isArray(parsed.assessments)) {
-        return {
-          users: parsed.users,
-          competencies: parsed.competencies || JSON.parse(JSON.stringify(COMPETENCIES)),
+        const users = parsed.users;
+        const competencies = parsed.competencies || JSON.parse(JSON.stringify(COMPETENCIES));
+        const hasTalentSeed =
+          Array.isArray(parsed.competencyAssessments) && parsed.competencyAssessments.length > 0;
+        const talentSeed = hasTalentSeed ? null : createSeedTalentState(users, competencies);
+
+        const loaded: AcademyDB = {
+          users,
+          competencies,
           enrollments: parsed.enrollments || [],
           quizAttempts: parsed.quizAttempts || [],
           submissions: parsed.submissions || [],
@@ -286,7 +342,40 @@ function loadDB(): AcademyDB {
           idps: parsed.idps || [],
           certificates: parsed.certificates || [],
           auditLogs: parsed.auditLogs || JSON.parse(JSON.stringify(DEFAULT_AUDIT_LOGS)),
+          talentConfig: parsed.talentConfig || talentSeed?.talentConfig || DEFAULT_TALENT_CONFIG,
+          competencyAssessments:
+            hasTalentSeed
+              ? parsed.competencyAssessments
+              : talentSeed?.competencyAssessments || [],
+          talentIdps:
+            Array.isArray(parsed.talentIdps) && parsed.talentIdps.length > 0
+              ? parsed.talentIdps
+              : talentSeed?.talentIdps || [],
+          developmentActivities:
+            Array.isArray(parsed.developmentActivities) && parsed.developmentActivities.length > 0
+              ? parsed.developmentActivities
+              : talentSeed?.developmentActivities || [],
+          competencyReassessments:
+            Array.isArray(parsed.competencyReassessments) && parsed.competencyReassessments.length > 0
+              ? parsed.competencyReassessments
+              : talentSeed?.competencyReassessments || [],
+          careerReadinessReviews:
+            Array.isArray(parsed.careerReadinessReviews) && parsed.careerReadinessReviews.length > 0
+              ? parsed.careerReadinessReviews
+              : talentSeed?.careerReadinessReviews || [],
+          idpReviewLogs:
+            Array.isArray(parsed.idpReviewLogs) && parsed.idpReviewLogs.length > 0
+              ? parsed.idpReviewLogs
+              : talentSeed?.idpReviewLogs || [],
+          talentNotifications:
+            Array.isArray(parsed.talentNotifications) && parsed.talentNotifications.length > 0
+              ? parsed.talentNotifications
+              : talentSeed?.talentNotifications || [],
         };
+        if (!hasTalentSeed) {
+          persistDB(loaded);
+        }
+        return loaded;
       }
     }
   } catch (err) {
@@ -1569,6 +1658,1876 @@ app.post('/api/idps/generate', (req, res) => {
     res.json({ success: true, idp: newIDP });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// DATA IMPORT CENTER API ENDPOINTS (RBAC: super_admin & lnd_manager ONLY)
+// ============================================================================
+
+function requireImportAdmin(req: express.Request, res: express.Response): User | null {
+  const actorId =
+    (req.headers['x-user-id'] as string) ||
+    (req.query.userId as string) ||
+    req.body?.actorId;
+  if (!actorId) {
+    res.status(401).json({ error: 'Authentication required for Data Import Center.' });
+    return null;
+  }
+  const actor = db.users.find((u) => u.id === actorId);
+  if (!actor) {
+    res.status(401).json({ error: 'Invalid user session.' });
+    return null;
+  }
+  if (actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
+    res.status(403).json({
+      error: 'Access Denied: Only Super Administrator and authorized L&D Managers can access Data Import Center.',
+    });
+    return null;
+  }
+  return actor;
+}
+
+function decodeBase64Workbook(rawBase64: string): Buffer {
+  const cleaned = String(rawBase64 || '').replace(/^data:[^;]+;base64,/, '');
+  return Buffer.from(cleaned, 'base64');
+}
+
+app.get('/api/import/status', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const firebaseConfig = loadFirebaseConfigJson();
+  const adminStatus = await getAuthorizedAdminFirestore();
+  const demoStore = loadDemoCurriculumStore();
+
+  const demoCounts: Record<string, number> = {};
+  for (const spec of IMPORT_ORDER_SPEC) {
+    demoCounts[spec.collectionName] = Object.keys(demoStore.collections[spec.collectionName] || {}).length;
+  }
+
+  let adminCounts: Record<string, number> | null = null;
+  if (adminStatus.available && adminStatus.db) {
+    adminCounts = {};
+    for (const spec of IMPORT_ORDER_SPEC) {
+      const snap = await adminStatus.db.collection(spec.collectionName).get();
+      adminCounts[spec.collectionName] = snap.size;
+    }
+  }
+
+  return res.json({
+    firebaseConfigured: !!firebaseConfig,
+    firebaseConfig,
+    adminSdkAvailable: adminStatus.available,
+    adminSdkReason: adminStatus.reason,
+    importOrderSpec: IMPORT_ORDER_SPEC,
+    demoCounts,
+    adminCounts,
+    recentDemoLogs: demoStore.importLogs.slice(0, 15),
+  });
+});
+
+app.get('/api/import/template', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const buffer = create2027TemplateBuffer();
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader(
+    'Content-Disposition',
+    'attachment; filename="FC_Learning_Academy_Training_Dataset_2027_Template.xlsx"'
+  );
+  return res.send(buffer);
+});
+
+app.post('/api/import/parse-validate', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  try {
+    const {
+      fileName = 'FC_Learning_Academy_Training_Dataset_2027.xlsx',
+      fileBase64,
+      selectedSheets,
+      existingIdsByCollection,
+      targetMode = 'auto',
+    } = req.body || {};
+
+    if (!fileBase64 || typeof fileBase64 !== 'string') {
+      return res.status(400).json({ error: 'Excel file content (fileBase64) is required.' });
+    }
+
+    const buffer = decodeBase64Workbook(fileBase64);
+    const sheetDetection = detectWorkbookSheets(buffer);
+
+    let resolvedExistingIds: Record<string, string[]> = existingIdsByCollection || {};
+    if (!existingIdsByCollection) {
+      const adminStatus = targetMode === 'demo_local' ? null : await getAuthorizedAdminFirestore();
+      if (adminStatus?.available && adminStatus.db) {
+        const fetched: Record<string, string[]> = {};
+        for (const spec of IMPORT_ORDER_SPEC) {
+          const snap = await adminStatus.db.collection(spec.collectionName).select().get();
+          fetched[spec.collectionName] = snap.docs.map((d) => d.id);
+        }
+        resolvedExistingIds = fetched;
+      } else {
+        resolvedExistingIds = getDemoExistingIds();
+      }
+    }
+
+    const validation = parseAndValidateWorkbook({
+      buffer,
+      fileName: String(fileName),
+      selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
+      existingIdsByCollection: resolvedExistingIds,
+    });
+
+    return res.json({
+      success: true,
+      sheetDetection,
+      validation,
+    });
+  } catch (err: any) {
+    console.error('Error in /api/import/parse-validate:', err);
+    return res.status(400).json({
+      error: `Failed to parse Excel workbook: ${err?.message || 'Invalid .xlsx binary'}`,
+    });
+  }
+});
+
+app.post('/api/import/execute', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const startedAt = new Date().toISOString();
+
+  try {
+    const {
+      fileName = 'FC_Learning_Academy_Training_Dataset_2027.xlsx',
+      fileBase64,
+      selectedSheets,
+      duplicateStrategy = 'skip',
+      mode = 'auto',
+      allowPartialOnErrors = false,
+    } = req.body || {};
+
+    if (!fileBase64 || typeof fileBase64 !== 'string') {
+      return res.status(400).json({ error: 'Excel file content (fileBase64) is required.' });
+    }
+    if (!['skip', 'update', 'reject'].includes(duplicateStrategy)) {
+      return res.status(400).json({ error: 'duplicateStrategy must be skip, update, or reject.' });
+    }
+
+    const buffer = decodeBase64Workbook(fileBase64);
+    const adminStatus = await getAuthorizedAdminFirestore();
+    const useFirebaseAdmin =
+      mode === 'firebase_admin' || (mode === 'auto' && adminStatus.available && !!adminStatus.db);
+
+    if (mode === 'firebase_admin' && (!adminStatus.available || !adminStatus.db)) {
+      return res.status(400).json({
+        error: `Firebase Admin SDK unavailable: ${adminStatus.reason}`,
+        adminSdkAvailable: false,
+      });
+    }
+
+    if (mode === 'auto' && !useFirebaseAdmin) {
+      return res.status(422).json({
+        error:
+          'Server Firebase Admin credentials are not configured; commit via authenticated Firebase Google Auth client or choose Demo Local Mode.',
+        adminSdkAvailable: false,
+        reason: adminStatus.reason,
+      });
+    }
+
+    // Gather existing IDs for duplicate resolution
+    const existingIdsByCollection: Record<string, string[]> = {};
+    const demoStore = useFirebaseAdmin ? null : loadDemoCurriculumStore();
+
+    if (useFirebaseAdmin && adminStatus.db) {
+      for (const spec of IMPORT_ORDER_SPEC) {
+        const snap = await adminStatus.db.collection(spec.collectionName).select().get();
+        existingIdsByCollection[spec.collectionName] = snap.docs.map((d) => d.id);
+      }
+    } else if (demoStore) {
+      for (const spec of IMPORT_ORDER_SPEC) {
+        existingIdsByCollection[spec.collectionName] = Object.keys(
+          demoStore.collections[spec.collectionName] || {}
+        );
+      }
+    }
+
+    const validation = parseAndValidateWorkbook({
+      buffer,
+      fileName: String(fileName),
+      selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
+      existingIdsByCollection,
+    });
+
+    if (validation.errorCount > 0 && !allowPartialOnErrors) {
+      return res.status(400).json({
+        error: `Workbook contains ${validation.errorCount} validation error(s) across ${validation.invalidRecords} row(s). Resolve errors or enable valid-records-only partial import.`,
+        validation,
+      });
+    }
+
+    let createdCount = 0;
+    let skippedCount = 0;
+    let updatedCount = 0;
+    let failedCount = validation.invalidRecords;
+    const runtimeFailures: ValidationIssue[] = [...validation.errors];
+    const executionSheetResults: Array<{
+      sheetName: string;
+      collectionName: string;
+      created: number;
+      updated: number;
+      skipped: number;
+      failed: number;
+    }> = [];
+
+    for (const spec of IMPORT_ORDER_SPEC) {
+      const records = validation.sanitizedByCollection[spec.collectionName] || [];
+      const summaryRow = validation.sheetSummaries.find((s) => s.sheetName === spec.sheetName);
+      if (!summaryRow) continue;
+
+      let sheetCreated = 0;
+      let sheetUpdated = 0;
+      let sheetSkipped = 0;
+      let sheetFailed = summaryRow.invalidRows;
+
+      const existingSet = new Set(existingIdsByCollection[spec.collectionName] || []);
+      const toWrite: Array<{ record: Record<string, any>; mode: 'create' | 'update' }> = [];
+
+      for (const rec of records) {
+        const recId = String(rec.id);
+        if (existingSet.has(recId)) {
+          if (duplicateStrategy === 'skip') {
+            sheetSkipped++;
+            skippedCount++;
+          } else if (duplicateStrategy === 'reject') {
+            sheetFailed++;
+            failedCount++;
+            runtimeFailures.push({
+              sheet: spec.sheetName,
+              collection: spec.collectionName,
+              row: 0,
+              field: 'id',
+              recordId: recId,
+              severity: 'error',
+              reason: `Duplicate ID "${recId}" already exists (rejected by policy).`,
+            });
+          } else {
+            toWrite.push({ record: rec, mode: 'update' });
+          }
+        } else {
+          toWrite.push({ record: rec, mode: 'create' });
+        }
+      }
+
+      if (useFirebaseAdmin && adminStatus.db) {
+        const CHUNK_SIZE = 350;
+        for (let i = 0; i < toWrite.length; i += CHUNK_SIZE) {
+          const chunk = toWrite.slice(i, i + CHUNK_SIZE);
+          const batch = adminStatus.db.batch();
+          for (const item of chunk) {
+            const ref = adminStatus.db.collection(spec.collectionName).doc(String(item.record.id));
+            batch.set(ref, item.record, { merge: item.mode === 'update' });
+          }
+          try {
+            await batch.commit();
+            for (const item of chunk) {
+              if (item.mode === 'update') {
+                sheetUpdated++;
+                updatedCount++;
+              } else {
+                sheetCreated++;
+                createdCount++;
+              }
+            }
+          } catch {
+            // Isolate individual failures within chunk
+            for (const item of chunk) {
+              try {
+                await adminStatus.db
+                  .collection(spec.collectionName)
+                  .doc(String(item.record.id))
+                  .set(item.record, { merge: item.mode === 'update' });
+                if (item.mode === 'update') {
+                  sheetUpdated++;
+                  updatedCount++;
+                } else {
+                  sheetCreated++;
+                  createdCount++;
+                }
+              } catch (rowErr: any) {
+                sheetFailed++;
+                failedCount++;
+                runtimeFailures.push({
+                  sheet: spec.sheetName,
+                  collection: spec.collectionName,
+                  row: 0,
+                  field: 'write',
+                  recordId: String(item.record.id),
+                  severity: 'error',
+                  reason: rowErr?.message || 'Firestore write failed.',
+                });
+              }
+            }
+          }
+        }
+      } else if (demoStore) {
+        if (!demoStore.collections[spec.collectionName]) {
+          demoStore.collections[spec.collectionName] = {};
+        }
+        for (const item of toWrite) {
+          demoStore.collections[spec.collectionName][String(item.record.id)] = item.record;
+          if (item.mode === 'update') {
+            sheetUpdated++;
+            updatedCount++;
+          } else {
+            sheetCreated++;
+            createdCount++;
+          }
+        }
+      }
+
+      executionSheetResults.push({
+        sheetName: spec.sheetName,
+        collectionName: spec.collectionName,
+        created: sheetCreated,
+        updated: sheetUpdated,
+        skipped: sheetSkipped,
+        failed: sheetFailed,
+      });
+    }
+
+    // Post-import verification
+    let verification;
+    if (useFirebaseAdmin && adminStatus.db) {
+      const liveMap: Record<string, Record<string, Record<string, any>>> = {};
+      for (const spec of IMPORT_ORDER_SPEC) {
+        const snap = await adminStatus.db.collection(spec.collectionName).get();
+        liveMap[spec.collectionName] = {};
+        snap.docs.forEach((d) => {
+          liveMap[spec.collectionName][d.id] = d.data();
+        });
+      }
+      verification = verifyNormalizedDataset(liveMap, 'firebase_admin');
+    } else {
+      verification = verifyNormalizedDataset(demoStore!.collections, 'demo_local');
+    }
+
+    const completedAt = new Date().toISOString();
+    const logEntry = {
+      id: `imp_${Date.now()}`,
+      fileName: String(fileName),
+      performedByUid: actor.id,
+      performedByEmail: actor.email,
+      performedByName: actor.name,
+      performedByRole: actor.role,
+      duplicateStrategy: duplicateStrategy as DuplicateStrategy,
+      selectedSheets: validation.selectedSheets,
+      status: useFirebaseAdmin
+        ? failedCount > 0
+          ? createdCount + updatedCount > 0
+            ? 'partial_failure'
+            : 'failed'
+          : 'completed'
+        : 'demo_mode',
+      totalRowsDetected: validation.totalRowsDetected,
+      validRecords: validation.validRecords,
+      invalidRecords: validation.invalidRecords,
+      createdCount,
+      skippedCount,
+      updatedCount,
+      failedCount,
+      errorCount: runtimeFailures.length,
+      warningCount: validation.warningCount,
+      verificationPassed: verification.verificationPassed,
+      startedAt,
+      completedAt,
+      sheetSummaries: executionSheetResults,
+    };
+
+    if (useFirebaseAdmin && adminStatus.db) {
+      await adminStatus.db.collection('importLogs').doc(logEntry.id).set(logEntry);
+    } else if (demoStore) {
+      demoStore.importLogs.unshift(logEntry);
+      if (demoStore.importLogs.length > 50) {
+        demoStore.importLogs = demoStore.importLogs.slice(0, 50);
+      }
+      saveDemoCurriculumStore(demoStore);
+    }
+
+    recordAudit(
+      useFirebaseAdmin ? 'DATA_IMPORT_FIRESTORE' : 'DATA_IMPORT_DEMO',
+      `${actor.name} (${actor.role})`,
+      String(fileName),
+      `Strategy: ${duplicateStrategy} | Created: ${createdCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`
+    );
+    persistDB(db);
+
+    return res.json({
+      success: true,
+      mode: useFirebaseAdmin ? 'firebase_admin' : 'demo_local',
+      log: logEntry,
+      validation,
+      runtimeFailures,
+      verification,
+    });
+  } catch (err: any) {
+    console.error('Error in /api/import/execute:', err);
+    return res.status(500).json({ error: err?.message || 'Import execution failed.' });
+  }
+});
+
+app.post('/api/import/verify', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  try {
+    const { source = 'demo_local', collectionsSnapshot } = req.body || {};
+
+    if (source === 'firebase_client' && collectionsSnapshot && typeof collectionsSnapshot === 'object') {
+      const result = verifyNormalizedDataset(collectionsSnapshot, 'firebase_client');
+      return res.json({ verification: result });
+    }
+
+    if (source === 'firebase_admin') {
+      const adminStatus = await getAuthorizedAdminFirestore();
+      if (!adminStatus.available || !adminStatus.db) {
+        return res.status(400).json({ error: adminStatus.reason });
+      }
+      const liveMap: Record<string, Record<string, Record<string, any>>> = {};
+      for (const spec of IMPORT_ORDER_SPEC) {
+        const snap = await adminStatus.db.collection(spec.collectionName).get();
+        liveMap[spec.collectionName] = {};
+        snap.docs.forEach((d) => {
+          liveMap[spec.collectionName][d.id] = d.data();
+        });
+      }
+      return res.json({ verification: verifyNormalizedDataset(liveMap, 'firebase_admin') });
+    }
+
+    const demoStore = loadDemoCurriculumStore();
+    return res.json({ verification: verifyNormalizedDataset(demoStore.collections, 'demo_local') });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Verification failed.' });
+  }
+});
+
+app.post('/api/import/log-audit', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { fileName, summary } = req.body || {};
+  recordAudit(
+    'DATA_IMPORT_FIRESTORE',
+    `${actor.name} (${actor.role})`,
+    String(fileName || 'Workbook'),
+    String(summary || 'Imported curriculum dataset into Firebase Firestore')
+  );
+  persistDB(db);
+  return res.json({ success: true });
+});
+
+app.get('/api/import/logs', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const demoStore = loadDemoCurriculumStore();
+  const adminStatus = await getAuthorizedAdminFirestore();
+  let firebaseLogs: any[] = [];
+  if (adminStatus.available && adminStatus.db) {
+    try {
+      const snap = await adminStatus.db
+        .collection('importLogs')
+        .orderBy('startedAt', 'desc')
+        .limit(25)
+        .get();
+      firebaseLogs = snap.docs.map((d) => d.data());
+    } catch {
+      firebaseLogs = [];
+    }
+  }
+
+  return res.json({
+    firebaseLogs,
+    demoLogs: demoStore.importLogs,
+  });
+});
+
+app.post('/api/import/export-errors', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { issues = [], format = 'xlsx' } = req.body || {};
+  const fmt = format === 'csv' ? 'csv' : 'xlsx';
+  const buf = buildErrorReportBuffer(Array.isArray(issues) ? issues : [], fmt);
+
+  if (fmt === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="FC_Import_Error_Report.csv"');
+  } else {
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', 'attachment; filename="FC_Import_Error_Report.xlsx"');
+  }
+  return res.send(buf);
+});
+
+// ============================================================================
+// COMPETENCY GAP ENGINE & INDIVIDUAL DEVELOPMENT PLAN (IDP) API ENDPOINTS
+// ============================================================================
+
+function requireTalentActor(req: express.Request, res: express.Response): User | null {
+  const actor = getRequestActor(req);
+  if (!actor) {
+    res.status(401).json({ error: 'Authentication required (x-user-id header).' });
+    return null;
+  }
+  return actor;
+}
+
+function canViewEmployeeTalentData(actor: User, employeeId: string): boolean {
+  if (actor.id === employeeId) return true;
+  if (['super_admin', 'lnd_manager', 'general_manager'].includes(actor.role)) return true;
+  if (actor.role === 'financial_controller') {
+    const emp = db.users.find((u) => u.id === employeeId);
+    if (!emp) return false;
+    return emp.supervisorId === actor.id || emp.property === actor.property;
+  }
+  return false;
+}
+
+function pushTalentNotification(
+  recipientId: string,
+  type: LmsNotificationItem['type'],
+  title: string,
+  message: string,
+  relatedId?: string
+) {
+  db.talentNotifications.unshift({
+    id: `tnotif_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    recipientId,
+    type,
+    title,
+    message,
+    relatedId,
+    time: new Date().toISOString().split('T')[0],
+    read: false,
+  });
+  if (db.talentNotifications.length > 100) {
+    db.talentNotifications = db.talentNotifications.slice(0, 100);
+  }
+}
+
+app.get('/api/talent/bootstrap', (req, res) => {
+  const actor = getRequestActor(req);
+  // Scope sensitive employee records by actor role when x-user-id is supplied
+  const scopeFilter = <T extends { employeeId: string }>(arr: T[]) => {
+    if (!actor) return [];
+    return arr.filter((item) => canViewEmployeeTalentData(actor, item.employeeId));
+  };
+
+  return res.json({
+    talentConfig: db.talentConfig,
+    competencyAssessments: actor ? scopeFilter(db.competencyAssessments) : db.competencyAssessments,
+    talentIdps: actor ? scopeFilter(db.talentIdps) : db.talentIdps,
+    developmentActivities: actor ? scopeFilter(db.developmentActivities) : db.developmentActivities,
+    competencyReassessments: actor
+      ? scopeFilter(db.competencyReassessments)
+      : db.competencyReassessments,
+    careerReadinessReviews: actor
+      ? scopeFilter(db.careerReadinessReviews)
+      : db.careerReadinessReviews,
+    idpReviewLogs: actor ? scopeFilter(db.idpReviewLogs) : db.idpReviewLogs,
+    talentNotifications: actor
+      ? db.talentNotifications.filter(
+          (n) => n.recipientId === 'all' || n.recipientId === actor.id || canViewEmployeeTalentData(actor, n.recipientId)
+        )
+      : [],
+  });
+});
+
+app.put('/api/talent/config', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+  if (actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
+    return res.status(403).json({
+      error: 'Access Denied: Only Super Administrator or L&D Manager can modify competency weights, criticality, or readiness thresholds.',
+    });
+  }
+
+  const incoming = req.body || {};
+  const ratio = incoming.ratio702010 || db.talentConfig.ratio702010;
+  if (
+    Number(ratio.experiential) + Number(ratio.social) + Number(ratio.formal) !== 100
+  ) {
+    return res.status(400).json({ error: '70-20-10 ratios must total 100%.' });
+  }
+
+  db.talentConfig = {
+    ...db.talentConfig,
+    weightMode: incoming.weightMode || db.talentConfig.weightMode,
+    competencyOverrides: incoming.competencyOverrides ?? db.talentConfig.competencyOverrides,
+    customPositionTargets: incoming.customPositionTargets ?? db.talentConfig.customPositionTargets,
+    ratio702010: {
+      experiential: Number(ratio.experiential),
+      social: Number(ratio.social),
+      formal: Number(ratio.formal),
+    },
+    readinessThresholds: {
+      ...db.talentConfig.readinessThresholds,
+      ...(incoming.readinessThresholds || {}),
+    },
+    updatedBy: actor.name,
+    updatedAt: new Date().toISOString(),
+  };
+
+  recordAudit(
+    'UPDATE_TALENT_CONFIG',
+    `${actor.name} (${actor.role})`,
+    'Talent Engine Configuration',
+    `Weight mode: ${db.talentConfig.weightMode}, 70-20-10: ${db.talentConfig.ratio702010.experiential}/${db.talentConfig.ratio702010.social}/${db.talentConfig.ratio702010.formal}`
+  );
+  persistDB(db);
+  return res.json({ success: true, talentConfig: db.talentConfig });
+});
+
+app.post('/api/talent/assessments', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const body = req.body || {};
+  const {
+    id,
+    employeeId,
+    targetPosition,
+    assessmentPeriod,
+    assessorType = actor.role === 'learner' ? 'self' : actor.role === 'financial_controller' ? 'financial_controller' : 'hr_lnd',
+    overallComments,
+    results,
+    createNewVersion = false,
+  } = body;
+
+  if (!employeeId || !targetPosition || !assessmentPeriod) {
+    return res.status(400).json({
+      error: 'employeeId, targetPosition, and assessmentPeriod are required.',
+    });
+  }
+
+  const employee = db.users.find((u) => u.id === employeeId);
+  if (!employee) {
+    return res.status(404).json({ error: 'Employee not found.' });
+  }
+  if (!canViewEmployeeTalentData(actor, employeeId)) {
+    return res.status(403).json({ error: 'Access Denied for this employee.' });
+  }
+
+  // Verify target position has defined competency requirements
+  const targetMatrix = resolvePositionTargetMatrix(db.competencies, targetPosition, db.talentConfig);
+  if (!targetMatrix.hasValidTargets) {
+    return res.status(400).json({ error: targetMatrix.error });
+  }
+
+  // Enforce immutable historical approved records
+  const existingIdx = id ? db.competencyAssessments.findIndex((a) => a.id === id) : -1;
+  if (existingIdx >= 0 && !createNewVersion) {
+    const existing = db.competencyAssessments[existingIdx];
+    if (existing.status === 'approved') {
+      return res.status(409).json({
+        error: 'Approved assessments are immutable historical records and cannot be edited. Create a new version instead.',
+      });
+    }
+    if (actor.role === 'learner' && existing.employeeId !== actor.id) {
+      return res.status(403).json({ error: 'Cannot edit another employee assessment.' });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const normalizedResults: Record<string, any> = {};
+  for (const [code, entry] of Object.entries(results || {}) as Array<[string, any]>) {
+    const reqTarget = targetMatrix.targetsByCode[code];
+    if (!reqTarget) continue;
+    const rawCurr = entry?.currentLevel;
+    const currLevel =
+      rawCurr === null || rawCurr === undefined || rawCurr === 0
+        ? null
+        : (Math.max(1, Math.min(4, Number(rawCurr))) as ProficiencyLevel);
+    normalizedResults[code] = {
+      competencyId: entry.competencyId || db.competencies.find((c) => c.code === code)?.id || code,
+      competencyCode: code,
+      domainId: entry.domainId || db.competencies.find((c) => c.code === code)?.domainId || 'dom_1',
+      currentLevel: currLevel,
+      targetLevel: reqTarget,
+      gap: currLevel === null ? reqTarget : Math.max(0, reqTarget - currLevel),
+      selfLevel: entry.selfLevel ?? (assessorType === 'self' ? currLevel : null),
+      supervisorLevel: entry.supervisorLevel ?? (assessorType !== 'self' ? currLevel : null),
+      assessorNotes: String(entry.assessorNotes || ''),
+      evidenceText: String(entry.evidenceText || ''),
+    };
+  }
+
+  const previousVersions = db.competencyAssessments.filter(
+    (a) => a.employeeId === employeeId && a.assessmentPeriod === assessmentPeriod
+  );
+  const nextVersion =
+    existingIdx >= 0 && !createNewVersion
+      ? db.competencyAssessments[existingIdx].version
+      : previousVersions.reduce((m, a) => Math.max(m, a.version || 1), 0) + 1;
+
+  const docRecord: CompetencyAssessmentDoc = {
+    id: existingIdx >= 0 && !createNewVersion ? id : `casmt_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    version: nextVersion,
+    supersedesId: createNewVersion ? id : existingIdx >= 0 ? db.competencyAssessments[existingIdx].supersedesId : undefined,
+    employeeId,
+    employeeName: employee.name,
+    property: employee.property,
+    department: employee.department,
+    currentPosition: employee.position,
+    targetPosition,
+    assessmentPeriod,
+    assessorId: actor.id,
+    assessorName: actor.name,
+    assessorType,
+    status: 'draft',
+    overallComments: String(overallComments || ''),
+    results: normalizedResults,
+    createdAt: existingIdx >= 0 && !createNewVersion ? db.competencyAssessments[existingIdx].createdAt : now,
+    updatedAt: now,
+  };
+
+  if (existingIdx >= 0 && !createNewVersion) {
+    db.competencyAssessments[existingIdx] = docRecord;
+  } else {
+    db.competencyAssessments.unshift(docRecord);
+  }
+
+  recordAudit(
+    'SAVE_COMPETENCY_ASSESSMENT',
+    `${actor.name} (${actor.role})`,
+    `${employee.name} (${assessmentPeriod} v${docRecord.version})`,
+    `Saved assessment (${assessorType}) for target ${targetPosition}`
+  );
+  persistDB(db);
+  return res.status(201).json({ success: true, assessment: docRecord });
+});
+
+app.post('/api/talent/assessments/:id/transition', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { id } = req.params;
+  const { targetStatus, rejectionReason } = req.body || {};
+  const idx = db.competencyAssessments.findIndex((a) => a.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: 'Assessment record not found.' });
+  }
+
+  const existing = db.competencyAssessments[idx];
+  if (existing.status === 'approved') {
+    return res.status(409).json({
+      error: 'Approved assessments are immutable and cannot transition or be edited.',
+    });
+  }
+
+  if (!['submitted', 'approved', 'rejected', 'draft'].includes(targetStatus)) {
+    return res.status(400).json({ error: 'Invalid target assessment status.' });
+  }
+
+  if (targetStatus === 'approved' || targetStatus === 'rejected') {
+    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+      return res.status(403).json({
+        error: 'Learners/employees cannot approve or reject their own competency assessment.',
+      });
+    }
+    if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
+      return res.status(403).json({ error: 'Insufficient permissions to approve/reject assessments.' });
+    }
+  } else if (actor.role === 'learner' && actor.id !== existing.employeeId) {
+    return res.status(403).json({ error: 'Cannot submit another employee assessment.' });
+  }
+
+  const now = new Date().toISOString();
+  const updated: CompetencyAssessmentDoc = {
+    ...existing,
+    status: targetStatus,
+    submittedAt: targetStatus === 'submitted' ? now : existing.submittedAt,
+    approvedById: targetStatus === 'approved' ? actor.id : existing.approvedById,
+    approvedByName: targetStatus === 'approved' ? actor.name : existing.approvedByName,
+    approvedAt: targetStatus === 'approved' ? now : existing.approvedAt,
+    rejectionReason: targetStatus === 'rejected' ? String(rejectionReason || 'Returned for revision') : existing.rejectionReason,
+    updatedAt: now,
+  };
+
+  db.competencyAssessments[idx] = updated;
+  if (targetStatus === 'approved') {
+    pushTalentNotification(
+      existing.employeeId,
+      'idp_approved',
+      'Competency Assessment Approved',
+      `${actor.name} approved your ${existing.assessmentPeriod} assessment (v${existing.version}). Gap Engine updated.`,
+      existing.id
+    );
+  } else if (targetStatus === 'submitted') {
+    const supId = db.users.find((u) => u.id === existing.employeeId)?.supervisorId || 'user_fc1';
+    pushTalentNotification(
+      supId,
+      'idp_submitted',
+      'Assessment Submitted for Review',
+      `${existing.employeeName} submitted ${existing.assessmentPeriod} competency assessment for validation.`,
+      existing.id
+    );
+  }
+
+  recordAudit(
+    `ASSESSMENT_${String(targetStatus).toUpperCase()}`,
+    `${actor.name} (${actor.role})`,
+    `${existing.employeeName} (${existing.assessmentPeriod} v${existing.version})`,
+    targetStatus === 'rejected' ? `Rejected: ${updated.rejectionReason}` : `Transitioned to ${targetStatus}`
+  );
+  persistDB(db);
+  return res.json({ success: true, assessment: updated });
+});
+
+app.get('/api/talent/gap-analysis', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const employeeId = String(req.query.employeeId || actor.id);
+  if (!canViewEmployeeTalentData(actor, employeeId)) {
+    return res.status(403).json({ error: 'Access Denied: Cannot view another employee gap analysis.' });
+  }
+
+  const emp = db.users.find((u) => u.id === employeeId);
+  if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+  const targetPosition = String(req.query.targetPosition || 'Assistant Financial Controller');
+  const periodFilter = req.query.period ? String(req.query.period) : undefined;
+
+  const summary = calculateGapAnalysis({
+    assessments: db.competencyAssessments,
+    employeeId,
+    targetPosition,
+    competencies: db.competencies,
+    domains: COMPETENCY_DOMAINS,
+    config: db.talentConfig,
+    periodFilter,
+  });
+
+  if (!summary.hasValidTargetPosition) {
+    return res.status(400).json({ error: summary.targetPositionError, summary });
+  }
+
+  return res.json({ summary });
+});
+
+app.post('/api/talent/activities', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const body = req.body || {};
+  const { employeeId, competencyCode, titleEn, titleVi, category, ratioCategory } = body;
+  if (!employeeId || !competencyCode || (!titleEn && !titleVi)) {
+    return res.status(400).json({ error: 'employeeId, competencyCode, and title are required.' });
+  }
+
+  if (actor.role === 'learner' && actor.id !== employeeId) {
+    return res.status(403).json({ error: 'Cannot create development activities for another employee.' });
+  }
+  if (
+    body.sourceType === 'custom_lnd' &&
+    !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+  ) {
+    return res.status(403).json({ error: 'Only L&D Manager, Super Admin, or FC can create custom mapped activities.' });
+  }
+
+  const comp = db.competencies.find((c) => c.code === competencyCode);
+  const now = new Date().toISOString();
+  const act: DevelopmentActivityDoc = {
+    id: `tact_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    idpId: body.idpId,
+    objectiveId: body.objectiveId,
+    employeeId,
+    competencyId: comp?.id || body.competencyId || competencyCode,
+    competencyCode,
+    domainId: comp?.domainId || body.domainId || 'dom_1',
+    category: category || 'B_On_The_Job',
+    ratioCategory: ratioCategory || '70_experiential',
+    titleEn: String(titleEn || titleVi),
+    titleVi: String(titleVi || titleEn),
+    descriptionEn: String(body.descriptionEn || titleEn || ''),
+    descriptionVi: String(body.descriptionVi || titleVi || ''),
+    sourceType: body.sourceType || 'custom_lnd',
+    sourceRecordId: body.sourceRecordId,
+    sourceCode: body.sourceCode || 'LND-CUSTOM',
+    targetLevel: (Number(body.targetLevel) || 3) as ProficiencyLevel,
+    estimatedHours: Math.max(1, Number(body.estimatedHours) || 8),
+    dueDate: body.dueDate || new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0],
+    status: 'planned',
+    validationStatus: body.evidenceRequired === false ? 'not_required' : 'pending_validation',
+    evidenceRequired: body.evidenceRequired !== false,
+    assignedById: actor.id,
+    assignedByName: actor.name,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.developmentActivities.unshift(act);
+  recordAudit(
+    'CREATE_DEVELOPMENT_ACTIVITY',
+    `${actor.name} (${actor.role})`,
+    `${employeeId} (${competencyCode})`,
+    `Assigned activity: ${act.titleEn}`
+  );
+  persistDB(db);
+  return res.status(201).json({ success: true, activity: act });
+});
+
+app.patch('/api/talent/activities/:id', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { id } = req.params;
+  const idx = db.developmentActivities.findIndex((a) => a.id === id);
+  if (idx < 0) return res.status(404).json({ error: 'Development activity not found.' });
+
+  const existing = db.developmentActivities[idx];
+  if (!canViewEmployeeTalentData(actor, existing.employeeId)) {
+    return res.status(403).json({ error: 'Access Denied.' });
+  }
+
+  const { status, validationStatus, evidenceNotes, evidenceFileName, validatorFeedback } = req.body || {};
+
+  // Learners CANNOT validate/approve their own activities
+  if (validationStatus && ['approved', 'revision_requested'].includes(validationStatus)) {
+    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+      return res.status(403).json({
+        error: 'Employees cannot validate or approve their own development activity evidence.',
+      });
+    }
+  }
+
+  const nextEvidenceNotes = evidenceNotes !== undefined ? String(evidenceNotes).trim() : existing.evidenceNotes;
+  const nextEvidenceFile = evidenceFileName !== undefined ? String(evidenceFileName).trim() : existing.evidenceFileName;
+  const hasEvidence = Boolean(nextEvidenceNotes || nextEvidenceFile);
+
+  // Evidence required gate before marking completed
+  if (status === 'completed' && existing.evidenceRequired && !hasEvidence) {
+    return res.status(400).json({
+      error: 'Evidence notes or deliverable file name are required before completing this activity.',
+    });
+  }
+
+  // Non-course activities require supervisor validation to reach completed
+  const nextValidation = validationStatus || existing.validationStatus;
+  if (
+    status === 'completed' &&
+    existing.category !== 'A_Formal_Learning' &&
+    nextValidation !== 'approved'
+  ) {
+    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+      return res.status(400).json({
+        error: 'Activity requires supervisor/FC validation before final completion. Submit evidence for validation instead.',
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updated: DevelopmentActivityDoc = {
+    ...existing,
+    status: status || existing.status,
+    validationStatus: nextValidation,
+    evidenceNotes: nextEvidenceNotes,
+    evidenceFileName: nextEvidenceFile,
+    validatorFeedback: validatorFeedback !== undefined ? String(validatorFeedback) : existing.validatorFeedback,
+    validatedById:
+      validationStatus === 'approved' || validationStatus === 'revision_requested' ? actor.id : existing.validatedById,
+    validatedByName:
+      validationStatus === 'approved' || validationStatus === 'revision_requested' ? actor.name : existing.validatedByName,
+    validatedAt:
+      validationStatus === 'approved' || validationStatus === 'revision_requested' ? now : existing.validatedAt,
+    updatedAt: now,
+  };
+
+  db.developmentActivities[idx] = updated;
+  if (validationStatus === 'approved') {
+    pushTalentNotification(
+      existing.employeeId,
+      'activity_validated',
+      'Activity Evidence Validated',
+      `${actor.name} approved your evidence for ${existing.competencyCode}: ${existing.titleEn}.`,
+      existing.id
+    );
+  }
+  persistDB(db);
+  return res.json({ success: true, activity: updated });
+});
+
+app.get('/api/talent/idps/:employeeId', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { employeeId } = req.params;
+  if (!canViewEmployeeTalentData(actor, employeeId)) {
+    return res.status(403).json({
+      error: 'Access Denied: Employees cannot view another employee Individual Development Plan.',
+    });
+  }
+
+  const idps = db.talentIdps.filter((i) => i.employeeId === employeeId);
+  return res.json({ idps });
+});
+
+app.post('/api/talent/idps', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const body = req.body || {};
+  const {
+    employeeId,
+    targetPosition,
+    sourceAssessmentId,
+    periodStart,
+    periodEnd,
+    overallGoalEn,
+    overallGoalVi,
+    objectives = [],
+    confirmDuplicate = false,
+  } = body;
+
+  if (!employeeId || !targetPosition) {
+    return res.status(400).json({ error: 'employeeId and targetPosition are required.' });
+  }
+  if (actor.role === 'learner' && actor.id !== employeeId) {
+    return res.status(403).json({ error: 'Cannot create IDP for another employee.' });
+  }
+
+  const employee = db.users.find((u) => u.id === employeeId);
+  if (!employee) return res.status(404).json({ error: 'Employee not found.' });
+
+  const targetCheck = resolvePositionTargetMatrix(db.competencies, targetPosition, db.talentConfig);
+  if (!targetCheck.hasValidTargets) {
+    return res.status(400).json({ error: targetCheck.error });
+  }
+
+  const approvedAsmt = sourceAssessmentId
+    ? db.competencyAssessments.find((a) => a.id === sourceAssessmentId && a.status === 'approved')
+    : db.competencyAssessments.find((a) => a.employeeId === employeeId && a.status === 'approved');
+
+  if (!approvedAsmt) {
+    return res.status(400).json({
+      error: 'An approved competency assessment is required before generating or creating an IDP.',
+    });
+  }
+
+  // Duplicate active/open IDP guard (requires explicit confirmation)
+  const existingOpen = db.talentIdps.find(
+    (i) =>
+      i.employeeId === employeeId &&
+      i.sourceAssessmentId === approvedAsmt.id &&
+      !['closed', 'completed'].includes(i.status)
+  );
+  if (existingOpen && !confirmDuplicate) {
+    return res.status(409).json({
+      code: 'DUPLICATE_IDP_CONFIRM_REQUIRED',
+      error: `An open IDP (${existingOpen.id}, status: ${existingOpen.status}) already exists for assessment ${approvedAsmt.assessmentPeriod}. Pass confirmDuplicate: true to create a new version.`,
+      existingIdpId: existingOpen.id,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const sup = db.users.find((u) => u.id === employee.supervisorId) || db.users.find((u) => u.id === 'user_fc1');
+  const nextVersion =
+    db.talentIdps
+      .filter((i) => i.employeeId === employeeId)
+      .reduce((m, i) => Math.max(m, i.version || 1), 0) + 1;
+
+  const idpId = `tidp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const sanitizedObjectives: DevelopmentObjective[] = (Array.isArray(objectives) ? objectives : []).map(
+    (o: any, i: number) => ({
+      id: o.id || `tobj_${Date.now()}_${i}`,
+      competencyId: o.competencyId || db.competencies.find((c) => c.code === o.competencyCode)?.id || o.competencyCode,
+      competencyCode: String(o.competencyCode),
+      domainId: o.domainId || db.competencies.find((c) => c.code === o.competencyCode)?.domainId || 'dom_1',
+      baselineLevel: (Number(o.baselineLevel) || 2) as ProficiencyLevel,
+      targetLevel: (Number(o.targetLevel) || 3) as ProficiencyLevel,
+      gap: Math.max(0, Number(o.gap) || 1),
+      isCritical: Boolean(o.isCritical),
+      priority: o.priority || 'High',
+      titleEn: String(o.titleEn || o.titleVi || `Develop ${o.competencyCode}`),
+      titleVi: String(o.titleVi || o.titleEn || `Phát triển ${o.competencyCode}`),
+      category: o.category || 'B_On_The_Job',
+      ratioCategory: o.ratioCategory || '70_experiential',
+      linkedCourseId: o.linkedCourseId,
+      linkedCourseCode: o.linkedCourseCode,
+      linkedPracticalId: o.linkedPracticalId,
+      linkedPracticalCode: o.linkedPracticalCode,
+      activityIds: Array.isArray(o.activityIds) ? o.activityIds : [],
+      targetDate: o.targetDate || new Date(Date.now() + (i + 1) * 30 * 86400000).toISOString().split('T')[0],
+      successMeasure: String(o.successMeasure || `Reach Target Level ${o.targetLevel || 3}`),
+      status: 'not_started',
+      progressPercent: 0,
+      supervisorValidationStatus: o.category === 'A_Formal_Learning' ? 'not_required' : 'pending_validation',
+    })
+  );
+
+  const newIdp: IndividualDevelopmentPlanDoc = {
+    id: idpId,
+    version: nextVersion,
+    employeeId,
+    employeeName: employee.name,
+    property: employee.property,
+    department: employee.department,
+    currentPosition: employee.position,
+    targetPosition,
+    sourceAssessmentId: approvedAsmt.id,
+    sourceAssessmentPeriod: approvedAsmt.assessmentPeriod,
+    managerId: sup?.id || 'user_fc1',
+    managerName: sup?.name || 'David Tran',
+    status: 'draft',
+    periodStart: periodStart || now.split('T')[0],
+    periodEnd: periodEnd || new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
+    overallGoalEn:
+      overallGoalEn ||
+      `Close ${sanitizedObjectives.length} priority competency gaps to qualify for ${targetPosition}.`,
+    overallGoalVi:
+      overallGoalVi ||
+      `Thu hẹp ${sanitizedObjectives.length} khoảng trống năng lực trọng tâm để đạt chuẩn vị trí ${targetPosition}.`,
+    ratioTarget: {
+      experiential70: db.talentConfig.ratio702010.experiential,
+      social20: db.talentConfig.ratio702010.social,
+      formal10: db.talentConfig.ratio702010.formal,
+    },
+    objectives: sanitizedObjectives,
+    createdBy: actor.id,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.talentIdps.unshift(newIdp);
+  db.idpReviewLogs.unshift({
+    id: `rlog_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    idpId: newIdp.id,
+    employeeId,
+    action: 'CREATED',
+    toStatus: 'draft',
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    comment: `Created IDP v${newIdp.version} for ${targetPosition} (${sanitizedObjectives.length} objectives).`,
+    timestamp: now,
+  });
+
+  recordAudit(
+    'CREATE_TALENT_IDP',
+    `${actor.name} (${actor.role})`,
+    employee.name,
+    `Created IDP ${newIdp.id} for ${targetPosition}`
+  );
+  persistDB(db);
+  return res.status(201).json({ success: true, idp: newIdp });
+});
+
+app.post('/api/talent/idps/:id/transition', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { id } = req.params;
+  const { targetStatus, comment = '' } = req.body || {};
+  const idx = db.talentIdps.findIndex((i) => i.id === id);
+  if (idx < 0) return res.status(404).json({ error: 'IDP not found.' });
+
+  const existing = db.talentIdps[idx];
+  const validStatuses = [
+    'draft',
+    'submitted',
+    'manager_review',
+    'lnd_approved',
+    'active',
+    'in_progress',
+    'completed',
+    'reassessment',
+    'closed',
+  ];
+  if (!validStatuses.includes(targetStatus)) {
+    return res.status(400).json({ error: 'Invalid IDP workflow status.' });
+  }
+
+  // Strict RBAC: Employees CANNOT approve their own IDP or force L&D/Manager/Closed transitions
+  const approvalOrCloseStatuses = ['manager_review', 'lnd_approved', 'active', 'closed'];
+  if (approvalOrCloseStatuses.includes(targetStatus)) {
+    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+      return res.status(403).json({
+        error: 'Access Denied: Employees cannot approve or close their own Individual Development Plan.',
+      });
+    }
+    if (targetStatus === 'lnd_approved' && !['lnd_manager', 'super_admin'].includes(actor.role)) {
+      return res.status(403).json({
+        error: 'Only L&D Manager or Super Administrator can grant L&D Approval.',
+      });
+    }
+    if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
+      return res.status(403).json({ error: 'Insufficient role for IDP approval transition.' });
+    }
+  } else if (actor.role === 'learner' && actor.id !== existing.employeeId) {
+    return res.status(403).json({ error: 'Cannot modify another employee IDP.' });
+  }
+
+  if (targetStatus === 'completed') {
+    const metrics = evaluateIdpProgress({
+      idp: existing,
+      enrollments: db.enrollments,
+      quizAttempts: db.quizAttempts,
+      submissions: db.submissions,
+      courses: COURSES,
+      activities: db.developmentActivities,
+    });
+    if (metrics.completionPct < 100 && actor.role === 'learner') {
+      return res.status(400).json({
+        error: `Cannot mark IDP completed: strict objective completion is ${metrics.completionPct}% (requires 100%).`,
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updated: IndividualDevelopmentPlanDoc = {
+    ...existing,
+    status: targetStatus,
+    submittedAt: targetStatus === 'submitted' ? now : existing.submittedAt,
+    managerReviewedBy: targetStatus === 'manager_review' ? actor.name : existing.managerReviewedBy,
+    managerReviewedAt: targetStatus === 'manager_review' ? now : existing.managerReviewedAt,
+    lndApprovedBy: targetStatus === 'lnd_approved' ? actor.name : existing.lndApprovedBy,
+    lndApprovedAt: targetStatus === 'lnd_approved' ? now : existing.lndApprovedAt,
+    activatedAt: targetStatus === 'active' ? now : existing.activatedAt,
+    completedAt: targetStatus === 'completed' ? now : existing.completedAt,
+    closedAt: targetStatus === 'closed' ? now : existing.closedAt,
+    rejectionNotes: targetStatus === 'draft' && comment ? String(comment) : existing.rejectionNotes,
+    updatedAt: now,
+  };
+
+  db.talentIdps[idx] = updated;
+
+  const actionLabel: IdpReviewLogDoc['action'] =
+    targetStatus === 'submitted'
+      ? 'SUBMITTED'
+      : targetStatus === 'manager_review'
+      ? 'MANAGER_APPROVED'
+      : targetStatus === 'lnd_approved'
+      ? 'LND_APPROVED'
+      : targetStatus === 'active'
+      ? 'ACTIVATED'
+      : targetStatus === 'completed'
+      ? 'COMPLETED'
+      : targetStatus === 'reassessment'
+      ? 'REASSESSMENT_TRIGGERED'
+      : targetStatus === 'closed'
+      ? 'CLOSED'
+      : targetStatus === 'draft'
+      ? 'RETURNED_FOR_REVISION'
+      : 'PROGRESS_UPDATED';
+
+  db.idpReviewLogs.unshift({
+    id: `rlog_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    idpId: updated.id,
+    employeeId: updated.employeeId,
+    action: actionLabel,
+    fromStatus: existing.status,
+    toStatus: targetStatus,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    comment: String(comment || `Status transitioned from ${existing.status} to ${targetStatus}.`),
+    timestamp: now,
+  });
+
+  if (targetStatus === 'submitted') {
+    pushTalentNotification(
+      updated.managerId,
+      'idp_submitted',
+      'IDP Submitted for Manager Review',
+      `${updated.employeeName} submitted IDP v${updated.version} for ${updated.targetPosition}.`,
+      updated.id
+    );
+  } else if (['manager_review', 'lnd_approved', 'active'].includes(targetStatus)) {
+    pushTalentNotification(
+      updated.employeeId,
+      'idp_approved',
+      `IDP ${targetStatus.replace('_', ' ').toUpperCase()}`,
+      `${actor.name} updated your IDP status to ${targetStatus}.`,
+      updated.id
+    );
+  } else if (targetStatus === 'draft' && comment) {
+    pushTalentNotification(
+      updated.employeeId,
+      'idp_feedback',
+      'IDP Revision Feedback',
+      `${actor.name} requested IDP revisions: ${comment}`,
+      updated.id
+    );
+  }
+
+  recordAudit(
+    `IDP_${actionLabel}`,
+    `${actor.name} (${actor.role})`,
+    updated.employeeName,
+    `${existing.status} -> ${targetStatus}${comment ? ` (${comment})` : ''}`
+  );
+  persistDB(db);
+  return res.json({ success: true, idp: updated });
+});
+
+app.patch('/api/talent/idps/:id/objectives/:objId', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { id, objId } = req.params;
+  const idx = db.talentIdps.findIndex((i) => i.id === id);
+  if (idx < 0) return res.status(404).json({ error: 'IDP not found.' });
+
+  const idp = db.talentIdps[idx];
+  if (!canViewEmployeeTalentData(actor, idp.employeeId)) {
+    return res.status(403).json({ error: 'Access Denied.' });
+  }
+  if (actor.role === 'learner' && actor.id !== idp.employeeId) {
+    return res.status(403).json({ error: 'Cannot update another employee IDP.' });
+  }
+
+  const objIdx = idp.objectives.findIndex((o) => o.id === objId);
+  if (objIdx < 0) return res.status(404).json({ error: 'Objective not found in IDP.' });
+
+  const existingObj = idp.objectives[objIdx];
+  const { status, progressPercent, evidenceNotes, evidenceFileName, supervisorValidationStatus } = req.body || {};
+
+  if (supervisorValidationStatus && ['approved', 'revision_requested'].includes(supervisorValidationStatus)) {
+    if (actor.role === 'learner' || actor.id === idp.employeeId) {
+      return res.status(403).json({ error: 'Employees cannot validate their own objective evidence.' });
+    }
+  }
+
+  const nextEvNotes = evidenceNotes !== undefined ? String(evidenceNotes).trim() : existingObj.evidenceNotes;
+  const nextEvFile = evidenceFileName !== undefined ? String(evidenceFileName).trim() : existingObj.evidenceFileName;
+  const nextValStatus = supervisorValidationStatus || existingObj.supervisorValidationStatus;
+
+  if (status === 'completed' && existingObj.category !== 'A_Formal_Learning') {
+    if (!nextEvNotes && !nextEvFile) {
+      return res.status(400).json({
+        error: 'Evidence notes or deliverable file are required before completing this objective.',
+      });
+    }
+    if (nextValStatus !== 'approved') {
+      return res.status(400).json({
+        error: 'OJT/Practical/Coaching objectives require supervisor validation approval before completion.',
+      });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const updatedObj: DevelopmentObjective = {
+    ...existingObj,
+    status: status || existingObj.status,
+    progressPercent:
+      progressPercent !== undefined ? Math.max(0, Math.min(100, Number(progressPercent))) : existingObj.progressPercent,
+    evidenceNotes: nextEvNotes,
+    evidenceFileName: nextEvFile,
+    supervisorValidationStatus: nextValStatus,
+    supervisorValidatedBy:
+      supervisorValidationStatus === 'approved' ? actor.name : existingObj.supervisorValidatedBy,
+    supervisorValidatedAt:
+      supervisorValidationStatus === 'approved' ? now : existingObj.supervisorValidatedAt,
+    completedAt: status === 'completed' ? now : existingObj.completedAt,
+  };
+
+  const nextObjectives = [...idp.objectives];
+  nextObjectives[objIdx] = updatedObj;
+  const nextIdpStatus =
+    idp.status === 'active' && (updatedObj.progressPercent > 0 || updatedObj.status !== 'not_started')
+      ? 'in_progress'
+      : idp.status;
+
+  db.talentIdps[idx] = {
+    ...idp,
+    status: nextIdpStatus,
+    objectives: nextObjectives,
+    updatedAt: now,
+  };
+
+  db.idpReviewLogs.unshift({
+    id: `rlog_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    idpId: idp.id,
+    employeeId: idp.employeeId,
+    action: supervisorValidationStatus === 'approved' ? 'EVIDENCE_VALIDATED' : 'PROGRESS_UPDATED',
+    toStatus: nextIdpStatus,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    comment: `${updatedObj.competencyCode}: ${updatedObj.status} (${updatedObj.progressPercent}%)${nextEvFile ? ` • File: ${nextEvFile}` : ''}`,
+    timestamp: now,
+  });
+
+  persistDB(db);
+  return res.json({ success: true, idp: db.talentIdps[idx], objective: updatedObj });
+});
+
+app.post('/api/talent/reassessments', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
+    return res.status(403).json({
+      error: 'Only Financial Controller, L&D Manager, GM, or Super Admin can submit validated competency reassessments.',
+    });
+  }
+
+  const { employeeId, idpId, updatedLevels = {}, summaryFeedback = '', newPeriod } = req.body || {};
+  if (!employeeId) return res.status(400).json({ error: 'employeeId is required.' });
+
+  const emp = db.users.find((u) => u.id === employeeId);
+  if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+  const idp = idpId
+    ? db.talentIdps.find((i) => i.id === idpId)
+    : db.talentIdps.find((i) => i.employeeId === employeeId);
+  const targetPosition = idp?.targetPosition || 'Assistant Financial Controller';
+
+  const baselineGap = calculateGapAnalysis({
+    assessments: db.competencyAssessments,
+    employeeId,
+    targetPosition,
+    competencies: db.competencies,
+    domains: COMPETENCY_DOMAINS,
+    config: db.talentConfig,
+  });
+
+  if (!baselineGap.hasApprovedAssessment || !baselineGap.assessmentId) {
+    return res.status(400).json({ error: 'No baseline approved assessment found for comparison.' });
+  }
+
+  const baselineAsmt = db.competencyAssessments.find((a) => a.id === baselineGap.assessmentId)!;
+  const now = new Date().toISOString();
+  const nextPeriod = newPeriod || `${baselineAsmt.assessmentPeriod}-REVAL`;
+
+  const newResults: Record<string, any> = {};
+  const comparisonItems: CompetencyReassessmentDoc['items'] = [];
+
+  for (const row of baselineGap.rows) {
+    const before = row.currentLevel ?? 1;
+    const rawAfter = updatedLevels[row.competencyCode];
+    const after = (
+      rawAfter !== undefined && rawAfter !== null
+        ? Math.max(1, Math.min(4, Number(rawAfter)))
+        : before
+    ) as ProficiencyLevel;
+    newResults[row.competencyCode] = {
+      competencyId: row.competencyId,
+      competencyCode: row.competencyCode,
+      domainId: row.domainId,
+      currentLevel: after,
+      targetLevel: row.targetLevel,
+      gap: Math.max(0, row.targetLevel - after),
+      selfLevel: baselineAsmt.results[row.competencyCode]?.selfLevel ?? after,
+      supervisorLevel: after,
+      assessorNotes: `Reassessed on ${now.split('T')[0]} by ${actor.name}.`,
+    };
+    comparisonItems.push({
+      competencyCode: row.competencyCode,
+      competencyNameEn: row.nameEn,
+      competencyNameVi: row.nameVi,
+      domainId: row.domainId,
+      beforeLevel: before,
+      afterLevel: after,
+      targetLevel: row.targetLevel,
+      delta: after - before,
+      remainingGap: Math.max(0, row.targetLevel - after),
+    });
+  }
+
+  const nextVersion =
+    db.competencyAssessments
+      .filter((a) => a.employeeId === employeeId)
+      .reduce((m, a) => Math.max(m, a.version || 1), 0) + 1;
+
+  const newApprovedAsmt: CompetencyAssessmentDoc = {
+    id: `casmt_reval_${Date.now()}`,
+    version: nextVersion,
+    supersedesId: baselineAsmt.id,
+    employeeId,
+    employeeName: emp.name,
+    property: emp.property,
+    department: emp.department,
+    currentPosition: emp.position,
+    targetPosition,
+    assessmentPeriod: nextPeriod,
+    assessorId: actor.id,
+    assessorName: actor.name,
+    assessorType: actor.role === 'financial_controller' ? 'financial_controller' : 'final_validated',
+    status: 'approved',
+    submittedAt: now,
+    approvedById: actor.id,
+    approvedByName: actor.name,
+    approvedAt: now,
+    overallComments: summaryFeedback || 'Formal post-IDP competency reassessment.',
+    results: newResults,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  db.competencyAssessments.unshift(newApprovedAsmt);
+
+  const afterGap = calculateGapAnalysis({
+    assessments: db.competencyAssessments,
+    employeeId,
+    targetPosition,
+    competencies: db.competencies,
+    domains: COMPETENCY_DOMAINS,
+    config: db.talentConfig,
+    specificAssessmentId: newApprovedAsmt.id,
+  });
+
+  const beforeClosed = baselineGap.rows.filter((r) => r.gap === 0).length;
+  const afterClosed = afterGap.rows.filter((r) => r.gap === 0).length;
+
+  const reassessmentDoc: CompetencyReassessmentDoc = {
+    id: `reasmt_${Date.now()}`,
+    employeeId,
+    employeeName: emp.name,
+    idpId: idp?.id || 'none',
+    baselineAssessmentId: baselineAsmt.id,
+    newApprovedAssessmentId: newApprovedAsmt.id,
+    targetPosition,
+    reassessmentDate: now.split('T')[0],
+    assessorId: actor.id,
+    assessorName: actor.name,
+    assessorRole: actor.role,
+    beforeAchievementPct: baselineGap.achievementPct,
+    afterAchievementPct: afterGap.achievementPct,
+    netImprovementPct: afterGap.achievementPct - baselineGap.achievementPct,
+    gapsClosedCount: Math.max(0, afterClosed - beforeClosed),
+    remainingGapsCount: afterGap.rows.filter((r) => r.gap > 0).length,
+    items: comparisonItems,
+    summaryFeedback: String(summaryFeedback || ''),
+    createdAt: now,
+  };
+
+  db.competencyReassessments.unshift(reassessmentDoc);
+
+  if (idp) {
+    const idpIdx = db.talentIdps.findIndex((i) => i.id === idp.id);
+    if (idpIdx >= 0) {
+      db.talentIdps[idpIdx] = {
+        ...db.talentIdps[idpIdx],
+        status: afterGap.achievementPct >= 95 && afterGap.criticalBlockers.length === 0 ? 'closed' : 'reassessment',
+        updatedAt: now,
+      };
+      db.idpReviewLogs.unshift({
+        id: `rlog_${Date.now()}_re`,
+        idpId: idp.id,
+        employeeId,
+        action: 'REASSESSMENT_TRIGGERED',
+        fromStatus: idp.status,
+        toStatus: db.talentIdps[idpIdx].status,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        comment: `Reassessment completed: ${baselineGap.achievementPct}% -> ${afterGap.achievementPct}% (+${reassessmentDoc.netImprovementPct}%).`,
+        timestamp: now,
+      });
+    }
+  }
+
+  pushTalentNotification(
+    employeeId,
+    'reassessment',
+    'Competency Reassessment Completed',
+    `${actor.name} completed your reassessment: Achievement moved from ${baselineGap.achievementPct}% to ${afterGap.achievementPct}%.`,
+    reassessmentDoc.id
+  );
+
+  recordAudit(
+    'COMPETENCY_REASSESSMENT',
+    `${actor.name} (${actor.role})`,
+    emp.name,
+    `Baseline ${baselineGap.achievementPct}% -> New ${afterGap.achievementPct}% (v${newApprovedAsmt.version})`
+  );
+  persistDB(db);
+  return res.status(201).json({
+    success: true,
+    reassessment: reassessmentDoc,
+    newAssessment: newApprovedAsmt,
+  });
+});
+
+app.post('/api/talent/readiness', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+  if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
+    return res.status(403).json({ error: 'Only supervisors, L&D, GM, or Admins can submit career readiness reviews.' });
+  }
+
+  const { employeeId, targetPosition, reviewNotes = '', requestedStatus } = req.body || {};
+  if (!employeeId || !targetPosition) {
+    return res.status(400).json({ error: 'employeeId and targetPosition are required.' });
+  }
+
+  const emp = db.users.find((u) => u.id === employeeId);
+  if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+  const gapSummary = calculateGapAnalysis({
+    assessments: db.competencyAssessments,
+    employeeId,
+    targetPosition,
+    competencies: db.competencies,
+    domains: COMPETENCY_DOMAINS,
+    config: db.talentConfig,
+  });
+
+  if (!gapSummary.hasValidTargetPosition) {
+    return res.status(400).json({ error: gapSummary.targetPositionError });
+  }
+  if (!gapSummary.hasApprovedAssessment || !gapSummary.assessmentId) {
+    return res.status(400).json({ error: 'Employee has no approved competency assessment.' });
+  }
+
+  const idp = db.talentIdps.find((i) => i.employeeId === employeeId) || null;
+  const idpMetrics = idp
+    ? evaluateIdpProgress({
+        idp,
+        enrollments: db.enrollments,
+        quizAttempts: db.quizAttempts,
+        submissions: db.submissions,
+        courses: COURSES,
+        activities: db.developmentActivities,
+      })
+    : null;
+
+  const evalResult = evaluateCareerReadiness({
+    gapSummary,
+    idpMetrics,
+    config: db.talentConfig,
+  });
+
+  // Enforce mandatory critical competency minimum gate
+  if (
+    requestedStatus === 'Ready for Review' &&
+    db.talentConfig.readinessThresholds.requireAllCriticalAtTarget &&
+    gapSummary.criticalBlockers.length > 0
+  ) {
+    return res.status(400).json({
+      error: `Cannot mark Ready for Review: mandatory critical competencies below target (${gapSummary.criticalBlockers
+        .map((b) => `${b.competencyCode}: L${b.currentLevel ?? 0}/L${b.targetLevel}`)
+        .join(', ')}).`,
+      evaluation: evalResult,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const review: CareerReadinessReviewDoc = {
+    id: `crr_${Date.now()}`,
+    employeeId,
+    employeeName: emp.name,
+    property: emp.property,
+    department: emp.department,
+    currentPosition: emp.position,
+    targetPosition,
+    sourceAssessmentId: gapSummary.assessmentId,
+    sourceIdpId: idp?.id,
+    computedStatus: evalResult.status,
+    finalStatus: requestedStatus || evalResult.status,
+    achievementPct: evalResult.achievementPct,
+    weightedAchievementPct: evalResult.weightedAchievementPct,
+    idpCompletionPct: evalResult.idpCompletionPct,
+    criticalAchievementPct: evalResult.criticalAchievementPct,
+    criticalBlockers: gapSummary.criticalBlockers.map(
+      (b) => `${b.competencyCode}: L${b.currentLevel ?? 0}/L${b.targetLevel}`
+    ),
+    recommendedNextSteps: evalResult.recommendedNextSteps,
+    reviewerId: actor.id,
+    reviewerName: actor.name,
+    reviewerRole: actor.role,
+    reviewNotes: String(reviewNotes || evalResult.blockingReasons.join(' | ') || 'Readiness review recorded.'),
+    reviewedAt: now,
+  };
+
+  db.careerReadinessReviews.unshift(review);
+  recordAudit(
+    'CAREER_READINESS_REVIEW',
+    `${actor.name} (${actor.role})`,
+    emp.name,
+    `${targetPosition}: ${review.finalStatus} (Achievement ${review.achievementPct}%, IDP ${review.idpCompletionPct}%)`
+  );
+  persistDB(db);
+  return res.status(201).json({ success: true, review, evaluation: evalResult });
+});
+
+app.post('/api/talent/notifications/read', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+  db.talentNotifications = db.talentNotifications.map((n) =>
+    n.recipientId === actor.id || n.recipientId === 'all' ? { ...n, read: true } : n
+  );
+  persistDB(db);
+  return res.json({ success: true });
+});
+
+app.post('/api/talent/export-report', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { reportType = 'competency_gap_summary', filters = {} } = req.body || {};
+  const scopedFilters = {
+    ...filters,
+    employeeId: actor.role === 'learner' ? actor.id : filters.employeeId,
+  };
+
+  const { buffer, filename } = buildTalentReportWorkbook({
+    reportType: reportType as TalentReportType,
+    users: db.users,
+    competencies: db.competencies,
+    domains: COMPETENCY_DOMAINS,
+    courses: COURSES,
+    ojtAssignments: OJT_ASSIGNMENTS,
+    enrollments: db.enrollments,
+    quizAttempts: db.quizAttempts,
+    submissions: db.submissions,
+    competencyAssessments: db.competencyAssessments,
+    talentIdps: db.talentIdps,
+    developmentActivities: db.developmentActivities,
+    competencyReassessments: db.competencyReassessments,
+    talentConfig: db.talentConfig,
+    filters: scopedFilters,
+  });
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  return res.send(buffer);
+});
+
+// 8. Gemini AI Development Coach for Competency Gap Engine & IDP (Strictly Advisory)
+app.post('/api/gemini/talent-coach', async (req, res) => {
+  try {
+    const actor = requireTalentActor(req, res);
+    if (!actor) return;
+    if (!ai) {
+      return res.status(503).json({ error: 'Gemini API key is not configured on the server.' });
+    }
+
+    const {
+      employeeId,
+      targetPosition = 'Assistant Financial Controller',
+      mode = 'explain_gaps',
+      language = 'vi',
+      customPrompt = '',
+    } = req.body || {};
+
+    if (!employeeId) return res.status(400).json({ error: 'employeeId is required.' });
+    if (!canViewEmployeeTalentData(actor, employeeId)) {
+      return res.status(403).json({ error: 'Access Denied for this employee.' });
+    }
+
+    const emp = db.users.find((u) => u.id === employeeId);
+    if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+    const gapSummary = calculateGapAnalysis({
+      assessments: db.competencyAssessments,
+      employeeId,
+      targetPosition,
+      competencies: db.competencies,
+      domains: COMPETENCY_DOMAINS,
+      config: db.talentConfig,
+    });
+
+    const activeIdp = db.talentIdps.find((i) => i.employeeId === employeeId) || null;
+    const idpMetrics = activeIdp
+      ? evaluateIdpProgress({
+          idp: activeIdp,
+          enrollments: db.enrollments,
+          quizAttempts: db.quizAttempts,
+          submissions: db.submissions,
+          courses: COURSES,
+          activities: db.developmentActivities,
+        })
+      : null;
+
+    const readiness = evaluateCareerReadiness({
+      gapSummary,
+      idpMetrics,
+      config: db.talentConfig,
+    });
+
+    const knowledgeBase = buildCurriculumKnowledgeBase();
+    const prompt = `You are the AI Development Coach for FC Learning Academy.
+CRITICAL SAFETY RULE: You are strictly an advisory coach and drafter. Never invent nonexistent course IDs or alter official assessment scores/approvals. Ground every recommendation strictly in the approved LMS catalog and employee records below.
+
+${knowledgeBase}
+
+EMPLOYEE CONTEXT:
+- Employee: ${emp.name} (${emp.position} -> Target: ${targetPosition})
+- Property: ${emp.property}
+- Approved Gap Analysis Summary: Achievement ${gapSummary.achievementPct}%, Critical Score ${gapSummary.criticalAchievementPct}%, Avg Gap ${gapSummary.averageGap}, Unassessed ${gapSummary.unassessedCount}
+- Priority Competency Gaps: ${JSON.stringify(gapSummary.priorityDevelopmentList.slice(0, 8))}
+- Critical Blockers: ${JSON.stringify(gapSummary.criticalBlockers.map((b) => `${b.competencyCode}: L${b.currentLevel}/L${b.targetLevel}`))}
+- Active IDP Progress: ${idpMetrics ? `${idpMetrics.completionPct}% (${idpMetrics.completedObjectives}/${idpMetrics.totalObjectives} objectives)` : 'No active IDP yet'}
+- Computed Readiness Status: ${readiness.status} (Blocking reasons: ${readiness.blockingReasons.join('; ') || 'None'})
+
+REQUESTED COACHING MODE: ${mode}
+Mode Instructions:
+- explain_gaps: Explain competency gap results clearly, why the critical competencies affect hotel P&L/internal control/GM partnership, and prioritize the sequence.
+- draft_90day_idp: Draft an editable 90-day 70-20-10 IDP action plan referencing exact approved HFC-* courses and OJT-* assignments above.
+- recommend_activities: Suggest tailored 70% OJT / 20% coaching / 10% formal activities for the top 4 gaps.
+- coaching_questions: Generate 5 sharp coaching & behavioral mentoring questions for the Financial Controller / manager to use in 1-on-1 reviews.
+- reassessment_guide: Generate a structured reassessment verification & interview guide testing whether the employee truly moved up a proficiency level.
+- career_report: Generate an executive career development & promotion readiness narrative for HR/L&D and General Manager.
+${customPrompt ? `Extra Coach Context: ${customPrompt}` : ''}
+
+Output Language: ${language === 'vi' ? 'Vietnamese (Tiếng Việt) with key USALI/finance terms' : 'English'}.
+Include a clear advisory disclaimer noting outputs are editable suggestions requiring human review.`;
+
+    const response = await generateContentWithRetry({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            headline: { type: Type.STRING },
+            advisoryDisclaimer: { type: Type.STRING },
+            executiveInsights: { type: Type.STRING },
+            actionItems: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  competencyCode: { type: Type.STRING },
+                  ratioTag: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  rationale: { type: Type.STRING },
+                  mappedResourceCode: { type: Type.STRING },
+                  successMetric: { type: Type.STRING },
+                },
+                required: ['competencyCode', 'ratioTag', 'title', 'rationale', 'successMetric'],
+              },
+            },
+            coachingQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ['headline', 'advisoryDisclaimer', 'executiveInsights', 'actionItems', 'coachingQuestions'],
+        },
+      },
+    });
+
+    const coaching = parseJsonResponse(response.text);
+    return res.json({ coaching, computedReadiness: readiness.status });
+  } catch (error: any) {
+    console.error('Error in /api/gemini/talent-coach:', error);
+    return res.status(502).json({ error: error.message || 'AI Development Coach failed.' });
   }
 });
 

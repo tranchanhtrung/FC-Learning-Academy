@@ -19,6 +19,13 @@ import { AIAssistantView } from './components/ai/AIAssistantView';
 import { CertificationsView } from './components/certifications/CertificationsView';
 import { ReportsView } from './components/reports/ReportsView';
 import { AdminManagementView } from './components/admin/AdminManagementView';
+import { DataImportCenterView } from './components/admin/DataImportCenterView';
+import { TalentAssessmentView } from './components/talent/TalentAssessmentView';
+import { TalentGapAnalysisView } from './components/talent/TalentGapAnalysisView';
+import { TalentActivitiesView } from './components/talent/TalentActivitiesView';
+import { TalentIdpView } from './components/talent/TalentIdpView';
+import { TalentProgressView } from './components/talent/TalentProgressView';
+import { TalentReadinessView } from './components/talent/TalentReadinessView';
 import { CertificateModal } from './components/common/CertificateModal';
 import { Course } from './types';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
@@ -45,7 +52,7 @@ const MainAppContent: React.FC = () => {
     const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
     const isLearner = currentUser.role === 'learner';
 
-    if (activeTab === 'administration' && !isAdminOrLnd) {
+    if ((activeTab === 'administration' || activeTab === 'dataImportCenter') && !isAdminOrLnd) {
       setActiveTab('dashboard');
     } else if (activeTab === 'reports' && isLearner) {
       setActiveTab('dashboard');
@@ -90,6 +97,12 @@ const MainAppContent: React.FC = () => {
           {activeTab === 'courses' && <CourseCatalogView />}
           {activeTab === 'competencyFramework' && <CompetencyFrameworkView />}
           {activeTab === 'assessments' && <AssessmentView />}
+          {activeTab === 'talentAssessment' && <TalentAssessmentView />}
+          {activeTab === 'talentGapAnalysis' && <TalentGapAnalysisView />}
+          {activeTab === 'talentActivities' && <TalentActivitiesView />}
+          {activeTab === 'talentIdp' && <TalentIdpView />}
+          {activeTab === 'talentProgress' && <TalentProgressView />}
+          {activeTab === 'talentReadiness' && <TalentReadinessView />}
           {activeTab === 'ojtProjects' && <OJTProjectsView />}
           {activeTab === 'aiAssistant' && <AIAssistantView />}
           {activeTab === 'certifications' && <CertificationsView />}
@@ -97,6 +110,10 @@ const MainAppContent: React.FC = () => {
           {activeTab === 'administration' &&
             (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
               <AdminManagementView />
+            )}
+          {activeTab === 'dataImportCenter' &&
+            (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
+              <DataImportCenterView />
             )}
         </main>
       </div>

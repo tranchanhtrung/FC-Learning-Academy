@@ -303,3 +303,338 @@ export interface AuditLogEntry {
   details: string;
 }
 
+// ============================================================================
+// COMPETENCY GAP ENGINE & INDIVIDUAL DEVELOPMENT PLAN (IDP) MODULE TYPES
+// ============================================================================
+
+export type AssessorType =
+  | 'self'
+  | 'supervisor'
+  | 'financial_controller'
+  | 'hr_lnd'
+  | 'final_validated';
+
+export type CompetencyAssessmentStatus =
+  | 'draft'
+  | 'submitted'
+  | 'approved'
+  | 'rejected';
+
+export interface CompetencyResultEntry {
+  competencyId: string;
+  competencyCode: string;
+  domainId: string;
+  currentLevel: ProficiencyLevel | null; // null = unassessed
+  targetLevel: ProficiencyLevel;
+  gap: number;
+  selfLevel?: ProficiencyLevel | null;
+  supervisorLevel?: ProficiencyLevel | null;
+  assessorNotes?: string;
+  evidenceText?: string;
+}
+
+export interface CompetencyAssessmentDoc {
+  id: string;
+  version: number;
+  supersedesId?: string;
+  employeeId: string;
+  employeeUid?: string;
+  employeeName: string;
+  property: string;
+  department: string;
+  currentPosition: string;
+  targetPosition: string;
+  assessmentPeriod: string; // e.g., "2026-Q2"
+  assessorId: string;
+  assessorUid?: string;
+  assessorName: string;
+  assessorType: AssessorType;
+  status: CompetencyAssessmentStatus;
+  submittedAt?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  overallComments?: string;
+  results: Record<string, CompetencyResultEntry>; // keyed by competencyCode
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DevelopmentCategory =
+  | 'A_Formal_Learning'
+  | 'B_On_The_Job'
+  | 'C_Practical_Assignment'
+  | 'D_Coaching_Mentoring'
+  | 'E_Self_Learning';
+
+export type ActivityType702010 = '70_experiential' | '20_social' | '10_formal';
+
+export type DevelopmentActivityStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'evidence_submitted'
+  | 'completed'
+  | 'cancelled';
+
+export type ActivityValidationStatus =
+  | 'not_required'
+  | 'pending_validation'
+  | 'approved'
+  | 'revision_requested';
+
+export interface DevelopmentActivityDoc {
+  id: string;
+  idpId?: string;
+  objectiveId?: string;
+  employeeId: string;
+  employeeUid?: string;
+  competencyId: string;
+  competencyCode: string;
+  domainId: string;
+  category: DevelopmentCategory;
+  ratioCategory: ActivityType702010;
+  titleEn: string;
+  titleVi: string;
+  descriptionEn: string;
+  descriptionVi: string;
+  sourceType: 'course' | 'practical_assignment' | 'ojt' | 'coaching' | 'rubric_self_study' | 'custom_lnd';
+  sourceRecordId?: string;
+  sourceCode?: string;
+  targetLevel: ProficiencyLevel;
+  estimatedHours: number;
+  dueDate: string;
+  status: DevelopmentActivityStatus;
+  validationStatus: ActivityValidationStatus;
+  evidenceRequired: boolean;
+  evidenceNotes?: string;
+  evidenceFileName?: string;
+  evidenceUrl?: string;
+  validatedById?: string;
+  validatedByName?: string;
+  validatedAt?: string;
+  validatorFeedback?: string;
+  assignedById: string;
+  assignedByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type IdpWorkflowStatus =
+  | 'draft'
+  | 'submitted'
+  | 'manager_review'
+  | 'lnd_approved'
+  | 'active'
+  | 'in_progress'
+  | 'completed'
+  | 'reassessment'
+  | 'closed';
+
+export interface DevelopmentObjective {
+  id: string;
+  competencyId: string;
+  competencyCode: string;
+  domainId: string;
+  baselineLevel: ProficiencyLevel;
+  targetLevel: ProficiencyLevel;
+  gap: number;
+  isCritical: boolean;
+  priority: 'Critical' | 'High' | 'Medium' | 'Low';
+  titleEn: string;
+  titleVi: string;
+  category: DevelopmentCategory;
+  ratioCategory: ActivityType702010;
+  linkedCourseId?: string;
+  linkedCourseCode?: string;
+  linkedPracticalId?: string;
+  linkedPracticalCode?: string;
+  activityIds: string[];
+  targetDate: string;
+  successMeasure: string;
+  status: 'not_started' | 'in_progress' | 'pending_validation' | 'completed';
+  progressPercent: number;
+  evidenceNotes?: string;
+  evidenceFileName?: string;
+  supervisorValidationStatus: ActivityValidationStatus;
+  supervisorValidatedBy?: string;
+  supervisorValidatedAt?: string;
+  completedAt?: string;
+}
+
+export interface IndividualDevelopmentPlanDoc {
+  id: string;
+  version: number;
+  employeeId: string;
+  employeeUid?: string;
+  employeeName: string;
+  property: string;
+  department: string;
+  currentPosition: string;
+  targetPosition: string;
+  sourceAssessmentId: string;
+  sourceAssessmentPeriod: string;
+  managerId: string;
+  managerUid?: string;
+  managerName: string;
+  status: IdpWorkflowStatus;
+  periodStart: string;
+  periodEnd: string;
+  overallGoalEn: string;
+  overallGoalVi: string;
+  ratioTarget: {
+    experiential70: number;
+    social20: number;
+    formal10: number;
+  };
+  objectives: DevelopmentObjective[];
+  submittedAt?: string;
+  managerReviewedBy?: string;
+  managerReviewedAt?: string;
+  lndApprovedBy?: string;
+  lndApprovedAt?: string;
+  activatedAt?: string;
+  completedAt?: string;
+  closedAt?: string;
+  rejectionNotes?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IdpReviewLogDoc {
+  id: string;
+  idpId: string;
+  employeeId: string;
+  action:
+    | 'CREATED'
+    | 'UPDATED'
+    | 'SUBMITTED'
+    | 'MANAGER_APPROVED'
+    | 'LND_APPROVED'
+    | 'ACTIVATED'
+    | 'RETURNED_FOR_REVISION'
+    | 'PROGRESS_UPDATED'
+    | 'EVIDENCE_VALIDATED'
+    | 'COMPLETED'
+    | 'REASSESSMENT_TRIGGERED'
+    | 'CLOSED';
+  fromStatus?: string;
+  toStatus: string;
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  comment: string;
+  timestamp: string;
+}
+
+export interface ReassessmentItemComparison {
+  competencyCode: string;
+  competencyNameEn: string;
+  competencyNameVi: string;
+  domainId: string;
+  beforeLevel: number;
+  afterLevel: number;
+  targetLevel: number;
+  delta: number;
+  remainingGap: number;
+  evidenceRef?: string;
+}
+
+export interface CompetencyReassessmentDoc {
+  id: string;
+  employeeId: string;
+  employeeUid?: string;
+  employeeName: string;
+  idpId: string;
+  baselineAssessmentId: string;
+  newApprovedAssessmentId?: string;
+  targetPosition: string;
+  reassessmentDate: string;
+  assessorId: string;
+  assessorName: string;
+  assessorRole: UserRole;
+  beforeAchievementPct: number;
+  afterAchievementPct: number;
+  netImprovementPct: number;
+  gapsClosedCount: number;
+  remainingGapsCount: number;
+  items: ReassessmentItemComparison[];
+  summaryFeedback: string;
+  createdAt: string;
+}
+
+export type CareerReadinessStatus =
+  | 'Not Ready'
+  | 'Developing'
+  | 'Nearly Ready'
+  | 'Ready for Review';
+
+export interface CareerReadinessReviewDoc {
+  id: string;
+  employeeId: string;
+  employeeUid?: string;
+  employeeName: string;
+  property: string;
+  department: string;
+  currentPosition: string;
+  targetPosition: string;
+  sourceAssessmentId: string;
+  sourceIdpId?: string;
+  computedStatus: CareerReadinessStatus;
+  finalStatus: CareerReadinessStatus;
+  achievementPct: number;
+  weightedAchievementPct: number;
+  idpCompletionPct: number;
+  criticalAchievementPct: number;
+  criticalBlockers: string[];
+  recommendedNextSteps: string[];
+  reviewerId: string;
+  reviewerName: string;
+  reviewerRole: UserRole;
+  reviewNotes: string;
+  reviewedAt: string;
+}
+
+export interface CompetencyConfigOverride {
+  competencyCode: string;
+  weightPercent: number;
+  isCritical: boolean;
+  positionTargets?: Record<string, ProficiencyLevel>;
+}
+
+export interface TalentConfigDoc {
+  id: string;
+  weightMode: 'default_equal' | 'custom_weighted';
+  competencyOverrides: Record<string, CompetencyConfigOverride>;
+  customPositionTargets: Record<string, Record<string, ProficiencyLevel>>;
+  ratio702010: {
+    experiential: number;
+    social: number;
+    formal: number;
+  };
+  readinessThresholds: {
+    readyForReviewMinAchievement: number; // e.g., 90
+    readyForReviewMinIdp: number; // e.g., 80
+    readyForReviewMinCritical: number; // e.g., 85
+    nearlyReadyMinAchievement: number; // e.g., 75
+    nearlyReadyMinIdp: number; // e.g., 60
+    developingMinAchievement: number; // e.g., 50
+    requireAllCriticalAtTarget: boolean; // default true
+  };
+  updatedBy: string;
+  updatedAt: string;
+}
+
+export interface LmsNotificationItem {
+  id: string;
+  recipientId: string; // 'all' or userId
+  type: 'idp_submitted' | 'idp_approved' | 'idp_feedback' | 'due_soon' | 'reassessment' | 'readiness' | 'activity_validated';
+  title: string;
+  message: string;
+  relatedId?: string;
+  time: string;
+  read: boolean;
+}
+
+

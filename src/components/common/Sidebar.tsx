@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   LayoutDashboard,
@@ -12,6 +12,13 @@ import {
   FileBarChart2,
   Settings,
   Sparkles,
+  Database,
+  ChevronRight,
+  ChevronDown,
+  BarChart3,
+  FileSpreadsheet,
+  TrendingUp,
+  Target,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,8 +38,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
     ojtAssignments,
   } = useApp();
 
+  const [talentExpanded, setTalentExpanded] = useState(true);
+
   const isLearner = currentUser.role === 'learner';
   const isAdminOrManager = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+
+  const talentSubItems = [
+    { id: 'talentAssessment', label: t.nav.talentAssessment, icon: ClipboardCheck },
+    { id: 'talentGapAnalysis', label: t.nav.talentGapAnalysis, icon: BarChart3 },
+    { id: 'talentActivities', label: t.nav.talentActivities, icon: BookOpen },
+    { id: 'talentIdp', label: t.nav.talentIdp, icon: FileSpreadsheet },
+    { id: 'talentProgress', label: t.nav.talentProgress, icon: TrendingUp },
+    { id: 'talentReadiness', label: t.nav.talentReadiness, icon: Target },
+  ];
 
   const navItems = [
     {
@@ -143,47 +161,134 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
             const isActive = activeTab === item.id;
 
             return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  onNavigate?.();
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
-                    : item.highlight
-                    ? 'text-amber-300 hover:bg-slate-800/80 bg-amber-500/10 border border-amber-500/20'
-                    : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive
-                        ? 'text-slate-950'
-                        : item.highlight
-                        ? 'text-amber-400'
-                        : 'text-slate-400'
-                    }`}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </div>
+              <React.Fragment key={item.id}>
+                <button
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    onNavigate?.();
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                      : item.highlight
+                      ? 'text-amber-300 hover:bg-slate-800/80 bg-amber-500/10 border border-amber-500/20'
+                      : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <Icon
+                      className={`w-4 h-4 shrink-0 ${
+                        isActive
+                          ? 'text-slate-950'
+                          : item.highlight
+                          ? 'text-amber-400'
+                          : 'text-slate-400'
+                      }`}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </div>
 
-                {item.badge && (
-                  <span
-                    className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold shrink-0 ${
-                      isActive
-                        ? 'bg-slate-950/20 text-slate-950'
-                        : item.highlight
-                        ? 'bg-amber-400/20 text-amber-300'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
+                  {item.badge && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold shrink-0 ${
+                        isActive
+                          ? 'bg-slate-950/20 text-slate-950'
+                          : item.highlight
+                          ? 'bg-amber-400/20 text-amber-300'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+
+                {item.id === 'assessments' && (
+                  <div className="pt-1 pb-1">
+                    <button
+                      onClick={() => setTalentExpanded((p) => !p)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400/90 hover:text-amber-300 cursor-pointer"
+                    >
+                      <span className="truncate">
+                        {t.nav.talentDevelopment} · {t.nav.competencyAndDev}
+                      </span>
+                      {talentExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                    </button>
+
+                    {talentExpanded && (
+                      <div className="ml-3 pl-3 border-l border-slate-700/70 space-y-1 pt-1">
+                        {talentSubItems.map((sub) => {
+                          const SubIcon = sub.icon;
+                          const subActive = activeTab === sub.id;
+                          return (
+                            <button
+                              key={sub.id}
+                              onClick={() => {
+                                setActiveTab(sub.id);
+                                onNavigate?.();
+                              }}
+                              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                                subActive
+                                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                                  : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                              }`}
+                            >
+                              <SubIcon
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  subActive ? 'text-slate-950' : 'text-amber-400'
+                                }`}
+                              />
+                              <span className="truncate">{sub.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
-              </button>
+
+                {item.id === 'administration' && isAdminOrManager && (
+                  <div className="ml-3 pl-3 border-l border-slate-700/70 space-y-1 pt-1">
+                    <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <ChevronRight className="w-3 h-3" />
+                      <span>{t.nav.dataManagement}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveTab('dataImportCenter');
+                        onNavigate?.();
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                        activeTab === 'dataImportCenter'
+                          ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                          : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <Database
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            activeTab === 'dataImportCenter' ? 'text-slate-950' : 'text-amber-400'
+                          }`}
+                        />
+                        <span className="truncate">{t.nav.dataImportCenter}</span>
+                      </div>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                          activeTab === 'dataImportCenter'
+                            ? 'bg-slate-950/20 text-slate-950'
+                            : 'bg-slate-800 text-amber-300'
+                        }`}
+                      >
+                        XLSX
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </React.Fragment>
             );
           })}
       </nav>

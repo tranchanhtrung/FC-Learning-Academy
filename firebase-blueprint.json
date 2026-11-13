@@ -1,0 +1,476 @@
+{
+  "entities": {
+    "CompetencyDomain": {
+      "title": "CompetencyDomain",
+      "description": "Six hospitality financial controller competency domains based on USALI and international luxury benchmarks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "nameVi": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "descriptionEn": { "type": "string", "maxLength": 1000 },
+        "descriptionVi": { "type": "string", "maxLength": 1000 },
+        "weightPercent": { "type": "number" },
+        "sortOrder": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "nameEn", "nameVi", "weightPercent", "sortOrder", "importedAt", "importBatchId"]
+    },
+    "ProficiencyLevel": {
+      "title": "ProficiencyLevel",
+      "description": "Four competency proficiency tiers from Foundation (1) to Strategic FC Partner (4).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "level": { "type": "number" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "nameVi": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "descriptionEn": { "type": "string", "maxLength": 1000 },
+        "descriptionVi": { "type": "string", "maxLength": 1000 },
+        "targetRole": { "type": "string", "maxLength": 150 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "level", "code", "nameEn", "nameVi", "importedAt", "importBatchId"]
+    },
+    "Competency": {
+      "title": "Competency",
+      "description": "Individual hospitality finance competency mapped to a parent competency domain.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "domainId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "nameVi": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "definitionEn": { "type": "string", "maxLength": 1500 },
+        "definitionVi": { "type": "string", "maxLength": 1500 },
+        "targetLevel": { "type": "number" },
+        "weightPercent": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "domainId", "nameEn", "nameVi", "targetLevel", "importedAt", "importBatchId"]
+    },
+    "CompetencyRubric": {
+      "title": "CompetencyRubric",
+      "description": "Level-by-level behavioral rubric entry for a competency (30 competencies x 4 levels = 120 rubrics).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "proficiencyLevel": { "type": "number" },
+        "proficiencyLevelId": { "type": "string", "maxLength": 128 },
+        "criteriaEn": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "criteriaVi": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "observableBehavior": { "type": "string", "maxLength": 1000 },
+        "evidenceRequired": { "type": "string", "maxLength": 500 },
+        "assessmentWeight": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "competencyId", "proficiencyLevel", "criteriaEn", "criteriaVi", "assessmentWeight", "importedAt", "importBatchId"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Structured hospitality FC Academy training course.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "domainId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "titleVi": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "descriptionEn": { "type": "string", "maxLength": 2000 },
+        "descriptionVi": { "type": "string", "maxLength": 2000 },
+        "targetLevel": { "type": "number" },
+        "durationHours": { "type": "number" },
+        "passingScore": { "type": "number" },
+        "assessmentWeightQuiz": { "type": "number" },
+        "assessmentWeightPractical": { "type": "number" },
+        "deliveryMode": { "type": "string", "maxLength": 100 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "domainId", "competencyId", "titleEn", "titleVi", "targetLevel", "durationHours", "passingScore", "assessmentWeightQuiz", "assessmentWeightPractical", "importedAt", "importBatchId"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Assessment question linked to a course and competency.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "questionType": { "type": "string", "enum": ["multiple_choice", "numeric", "true_false", "single_choice"] },
+        "questionTextEn": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "questionTextVi": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "optionA": { "type": "string", "maxLength": 500 },
+        "optionB": { "type": "string", "maxLength": 500 },
+        "optionC": { "type": "string", "maxLength": 500 },
+        "optionD": { "type": "string", "maxLength": 500 },
+        "correctAnswer": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "explanationEn": { "type": "string", "maxLength": 2000 },
+        "explanationVi": { "type": "string", "maxLength": 2000 },
+        "proficiencyLevel": { "type": "number" },
+        "points": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "courseId", "competencyId", "questionType", "questionTextEn", "questionTextVi", "correctAnswer", "proficiencyLevel", "points", "importedAt", "importBatchId"]
+    },
+    "PracticalAssignment": {
+      "title": "PracticalAssignment",
+      "description": "On-the-job practical hospitality finance assignment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "titleVi": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "scenarioEn": { "type": "string", "maxLength": 2500 },
+        "scenarioVi": { "type": "string", "maxLength": 2500 },
+        "deliverables": { "type": "string", "maxLength": 1500 },
+        "maxScore": { "type": "number" },
+        "passingScore": { "type": "number" },
+        "weightPercent": { "type": "number" },
+        "dueDateDays": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "courseId", "competencyId", "titleEn", "titleVi", "maxScore", "passingScore", "importedAt", "importBatchId"]
+    },
+    "AnnualTrainingMatrixEntry": {
+      "title": "AnnualTrainingMatrixEntry",
+      "description": "Monthly 2027 annual training matrix schedule entry.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "month": { "type": "number" },
+        "targetDate": { "type": "string", "maxLength": 32 },
+        "targetRole": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "domainId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deliveryFormat": { "type": "string", "maxLength": 100 },
+        "mandatory": { "type": "boolean" },
+        "cohortSize": { "type": "number" },
+        "assessmentWeight": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "month", "targetDate", "targetRole", "domainId", "courseId", "competencyId", "mandatory", "importedAt", "importBatchId"]
+    },
+    "CareerPath": {
+      "title": "CareerPath",
+      "description": "Progressive hospitality finance career progression path.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "code": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "nameVi": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "fromRole": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "toRole": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "targetLevel": { "type": "number" },
+        "durationMonths": { "type": "number" },
+        "requiredCourseIds": { "type": "array" },
+        "requiredCompetencyIds": { "type": "array" },
+        "requiredPracticalIds": { "type": "array" },
+        "minAssessmentScore": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "code", "nameEn", "nameVi", "fromRole", "toRole", "targetLevel", "durationMonths", "requiredCourseIds", "requiredCompetencyIds", "minAssessmentScore", "importedAt", "importBatchId"]
+    },
+    "ImportLog": {
+      "title": "ImportLog",
+      "description": "Audit trail and summary record of an Excel-to-Firestore curriculum import.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "performedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "performedByEmail": { "type": "string", "maxLength": 200 },
+        "performedByName": { "type": "string", "maxLength": 200 },
+        "performedByRole": { "type": "string", "maxLength": 64 },
+        "duplicateStrategy": { "type": "string", "enum": ["skip", "update", "reject"] },
+        "selectedSheets": { "type": "array" },
+        "status": { "type": "string", "enum": ["completed", "partial_failure", "failed", "demo_mode"] },
+        "totalRowsDetected": { "type": "number" },
+        "validRecords": { "type": "number" },
+        "invalidRecords": { "type": "number" },
+        "createdCount": { "type": "number" },
+        "skippedCount": { "type": "number" },
+        "updatedCount": { "type": "number" },
+        "failedCount": { "type": "number" },
+        "errorCount": { "type": "number" },
+        "warningCount": { "type": "number" },
+        "verificationPassed": { "type": "boolean" },
+        "startedAt": { "type": "string", "maxLength": 64 },
+        "completedAt": { "type": "string", "maxLength": 64 },
+        "sheetSummaries": { "type": "array" }
+      },
+      "required": ["id", "fileName", "performedByUid", "duplicateStrategy", "status", "totalRowsDetected", "validRecords", "invalidRecords", "createdCount", "skippedCount", "updatedCount", "failedCount", "startedAt", "completedAt"]
+    },
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Trusted administrator UIDs authorized for Data Import Center.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 200 },
+        "role": { "type": "string", "enum": ["super_admin", "lnd_manager"] },
+        "grantedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "email", "role", "grantedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User role binding and reporting hierarchy profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "role": { "type": "string", "enum": ["super_admin", "lnd_manager", "financial_controller", "learner", "general_manager"] },
+        "position": { "type": "string", "maxLength": 150 },
+        "department": { "type": "string", "maxLength": 150 },
+        "property": { "type": "string", "maxLength": 200 },
+        "supervisorUid": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "employeeId", "name", "role", "updatedAt"]
+    },
+    "CompetencyAssessment": {
+      "title": "CompetencyAssessment",
+      "description": "Versioned multi-assessor competency assessment record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "number" },
+        "supersedesId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "property": { "type": "string", "maxLength": 200 },
+        "department": { "type": "string", "maxLength": 150 },
+        "currentPosition": { "type": "string", "maxLength": 150 },
+        "targetPosition": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "assessmentPeriod": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "assessorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assessorUid": { "type": "string", "maxLength": 128 },
+        "assessorName": { "type": "string", "maxLength": 150 },
+        "assessorType": { "type": "string", "enum": ["self", "supervisor", "financial_controller", "hr_lnd", "final_validated"] },
+        "status": { "type": "string", "enum": ["draft", "submitted", "approved", "rejected"] },
+        "overallComments": { "type": "string", "maxLength": 2000 },
+        "results": { "type": "object" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "version", "employeeId", "employeeUid", "employeeName", "targetPosition", "assessmentPeriod", "assessorId", "assessorType", "status", "results", "createdAt", "updatedAt"]
+    },
+    "DevelopmentActivity": {
+      "title": "DevelopmentActivity",
+      "description": "Assigned 70-20-10 development activity with evidence tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "idpId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "category": { "type": "string", "enum": ["A_Formal_Learning", "B_On_The_Job", "C_Practical_Assignment", "D_Coaching_Mentoring", "E_Self_Learning"] },
+        "ratioCategory": { "type": "string", "enum": ["70_experiential", "20_social", "10_formal"] },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "titleVi": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "status": { "type": "string", "enum": ["planned", "in_progress", "evidence_submitted", "completed", "cancelled"] },
+        "validationStatus": { "type": "string", "enum": ["not_required", "pending_validation", "approved", "revision_requested"] },
+        "evidenceRequired": { "type": "boolean" },
+        "evidenceNotes": { "type": "string", "maxLength": 2000 },
+        "evidenceFileName": { "type": "string", "maxLength": 255 },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "employeeId", "employeeUid", "competencyCode", "category", "ratioCategory", "titleEn", "status", "validationStatus", "evidenceRequired", "dueDate", "createdAt", "updatedAt"]
+    },
+    "IndividualDevelopmentPlan": {
+      "title": "IndividualDevelopmentPlan",
+      "description": "70-20-10 Individual Development Plan with 9-stage workflow.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "number" },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "targetPosition": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "sourceAssessmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "managerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "managerUid": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["draft", "submitted", "manager_review", "lnd_approved", "active", "in_progress", "completed", "reassessment", "closed"] },
+        "objectives": { "type": "array" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "version", "employeeId", "employeeUid", "employeeName", "targetPosition", "sourceAssessmentId", "managerId", "status", "objectives", "createdBy", "createdAt", "updatedAt"]
+    },
+    "IdpReviewLog": {
+      "title": "IdpReviewLog",
+      "description": "Immutable append-only review and approval log for IDPs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "idpId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 64 },
+        "toStatus": { "type": "string", "maxLength": 64 },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "actorRole": { "type": "string", "maxLength": 64 },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "timestamp": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "idpId", "employeeId", "action", "toStatus", "actorId", "actorName", "comment", "timestamp"]
+    },
+    "CompetencyReassessment": {
+      "title": "CompetencyReassessment",
+      "description": "Post-IDP competency reassessment comparing before/after achievement.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "maxLength": 128 },
+        "idpId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "baselineAssessmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "beforeAchievementPct": { "type": "number" },
+        "afterAchievementPct": { "type": "number" },
+        "netImprovementPct": { "type": "number" },
+        "assessorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "employeeId", "idpId", "baselineAssessmentId", "beforeAchievementPct", "afterAchievementPct", "assessorId", "createdAt"]
+    },
+    "CareerReadinessReview": {
+      "title": "CareerReadinessReview",
+      "description": "Career progression readiness evaluation and promotion sign-off.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "maxLength": 128 },
+        "targetPosition": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "computedStatus": { "type": "string", "enum": ["Not Ready", "Developing", "Nearly Ready", "Ready for Review"] },
+        "finalStatus": { "type": "string", "enum": ["Not Ready", "Developing", "Nearly Ready", "Ready for Review"] },
+        "achievementPct": { "type": "number" },
+        "idpCompletionPct": { "type": "number" },
+        "reviewerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "reviewedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "employeeId", "targetPosition", "computedStatus", "finalStatus", "achievementPct", "idpCompletionPct", "reviewerId", "reviewedAt"]
+    },
+    "TalentConfig": {
+      "title": "TalentConfig",
+      "description": "Configurable weights, critical gates, 70-20-10 ratios, and readiness thresholds.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "weightMode": { "type": "string", "enum": ["default_equal", "custom_weighted"] },
+        "competencyOverrides": { "type": "object" },
+        "customPositionTargets": { "type": "object" },
+        "ratio702010": { "type": "object" },
+        "readinessThresholds": { "type": "object" },
+        "updatedBy": { "type": "string", "maxLength": 150 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "weightMode", "ratio702010", "readinessThresholds", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/competencyDomains/{domainId}": {
+      "schema": { "$ref": "#/entities/CompetencyDomain" },
+      "description": "Curriculum competency domains"
+    },
+    "/proficiencyLevels/{levelId}": {
+      "schema": { "$ref": "#/entities/ProficiencyLevel" },
+      "description": "Proficiency levels 1-4"
+    },
+    "/competencies/{competencyId}": {
+      "schema": { "$ref": "#/entities/Competency" },
+      "description": "Hospitality FC competencies"
+    },
+    "/competencyRubrics/{rubricId}": {
+      "schema": { "$ref": "#/entities/CompetencyRubric" },
+      "description": "Competency assessment rubrics per level"
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Academy courses catalog"
+    },
+    "/questionBank/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Assessment question bank"
+    },
+    "/practicalAssignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/PracticalAssignment" },
+      "description": "OJT practical assignments"
+    },
+    "/annualTrainingMatrix/{matrixId}": {
+      "schema": { "$ref": "#/entities/AnnualTrainingMatrixEntry" },
+      "description": "2027 annual training matrix"
+    },
+    "/careerPaths/{pathId}": {
+      "schema": { "$ref": "#/entities/CareerPath" },
+      "description": "Career progression paths"
+    },
+    "/importLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ImportLog" },
+      "description": "Audit logs of workbook imports"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Verified administrator role bindings"
+    },
+    "/userProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Employee profile and reporting line bindings"
+    },
+    "/competencyAssessments/{assessmentId}": {
+      "schema": { "$ref": "#/entities/CompetencyAssessment" },
+      "description": "Versioned competency assessment history"
+    },
+    "/developmentActivities/{activityId}": {
+      "schema": { "$ref": "#/entities/DevelopmentActivity" },
+      "description": "Assigned 70-20-10 development activities and evidence"
+    },
+    "/individualDevelopmentPlans/{idpId}": {
+      "schema": { "$ref": "#/entities/IndividualDevelopmentPlan" },
+      "description": "Individual Development Plans with 9-stage workflow"
+    },
+    "/idpReviewLogs/{logId}": {
+      "schema": { "$ref": "#/entities/IdpReviewLog" },
+      "description": "Immutable IDP review and approval audit logs"
+    },
+    "/competencyReassessments/{reassessmentId}": {
+      "schema": { "$ref": "#/entities/CompetencyReassessment" },
+      "description": "Before vs After competency reassessment records"
+    },
+    "/careerReadinessReviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/CareerReadinessReview" },
+      "description": "Career readiness verdicts and promotion sign-offs"
+    },
+    "/talentConfig/{configId}": {
+      "schema": { "$ref": "#/entities/TalentConfig" },
+      "description": "Gap Engine and IDP global configuration"
+    }
+  }
+}
