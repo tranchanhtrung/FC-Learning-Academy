@@ -19,6 +19,7 @@ export const ReportsView: React.FC = () => {
   const {
     users,
     courses,
+    competencies,
     enrollments,
     assessments,
     submissions,
@@ -33,7 +34,6 @@ export const ReportsView: React.FC = () => {
   >('succession');
 
   const [selectedPropertyFilter, setSelectedPropertyFilter] = useState<string>('all');
-  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
 
   const properties = [
     'all',
@@ -42,6 +42,63 @@ export const ReportsView: React.FC = () => {
     'Marina Bay Heritage Hotel Hanoi',
     'Emerald Bay Luxury Suites Nha Trang',
   ];
+
+  const filteredCandidates = React.useMemo(() => {
+    return successionCandidates.filter((cand) => {
+      if (selectedPropertyFilter === 'all') return true;
+      const u = users.find((user) => user.id === cand.userId);
+      return u?.property === selectedPropertyFilter;
+    });
+  }, [successionCandidates, users, selectedPropertyFilter]);
+
+  const filteredEnrollments = React.useMemo(() => {
+    return enrollments.filter((enr) => {
+      if (selectedPropertyFilter === 'all') return true;
+      const u = users.find((user) => user.id === enr.userId);
+      return u?.property === selectedPropertyFilter;
+    });
+  }, [enrollments, users, selectedPropertyFilter]);
+
+  // Compute Cluster Competency Gap Matrix dynamically from latest assessment per learner
+  const clusterGapMatrix = React.useMemo(() => {
+    const latestByLearner = new Map<string, typeof assessments[0]>();
+    assessments.forEach((asmt) => {
+      const learner = users.find((u) => u.id === asmt.learnerId);
+      if (selectedPropertyFilter !== 'all' && learner?.property !== selectedPropertyFilter) return;
+      const existing = latestByLearner.get(asmt.learnerId);
+      if (!existing || new Date(asmt.date).getTime() >= new Date(existing.date).getTime()) {
+        latestByLearner.set(asmt.learnerId, asmt);
+      }
+    });
+
+    const latestAssessments = Array.from(latestByLearner.values());
+    return competencies
+      .map((comp) => {
+        let sumGap = 0;
+        let count = 0;
+        latestAssessments.forEach((asmt) => {
+          const scoreObj = asmt.scores?.[comp.code];
+          if (scoreObj !== undefined) {
+            sumGap += scoreObj.gap || 0;
+            count++;
+          }
+        });
+        const avgGap = count > 0 ? Number((sumGap / count).toFixed(1)) : 0;
+        const priority = avgGap >= 1.5 ? 'High' : avgGap >= 0.8 ? 'Medium' : 'Low';
+        return {
+          code: comp.code,
+          title: language === 'vi' ? comp.nameVi : comp.nameEn,
+          avgGap,
+          priority,
+          sampleSize: count,
+        };
+      })
+      .filter((item) => item.sampleSize > 0)
+      .sort((a, b) => b.avgGap - a.avgGap);
+  }, [assessments, competencies, users, selectedPropertyFilter, language]);
+
+  const readyNowCount = filteredCandidates.filter((c) => c.readiness === 'Ready Now').length;
+  const readySoonCount = filteredCandidates.filter((c) => c.readiness === 'Ready in 1-2 Years').length;
 
   const handleExportCSV = (filename: string, headers: string[], rows: string[][]) => {
     const csvContent =
@@ -58,18 +115,38 @@ export const ReportsView: React.FC = () => {
 
   const handleExportCurrentReport = () => {
     if (activeReportTab === 'succession') {
-      const headers = ['Candidate Name', 'Current Position', 'Target Role', 'Readiness', 'Competency Attainment', 'OJT Completed'];
-      const rows = successionCandidates.map((c) => {
+      const headers = ['Candidate Name', 'Current Position', 'Property', 'Target Role', 'Readiness', 'Competency Attainment', 'OJT Completed'];
+      const rows = filteredCandidates.map((c) => {
         const u = users.find((user) => user.id === c.userId);
-        return [`"${u?.name}"`, `"${c.currentRole}"`, `"${c.targetRole}"`, `"${c.readiness}"`, `"${c.competencyScorePercent}%"`, `"${c.completedOJTCount}"`];
+        return [`"${u?.name || ''}"`, `"${c.currentRole}"`, `"${u?.property || ''}"`, `"${c.targetRole}"`, `"${c.readiness}"`, `"${c.competencyScorePercent}%"`, `"${c.completedOJTCount}"`];
       });
       handleExportCSV('FC_Succession_Pipeline_Report', headers, rows);
+    } else if (activeReportTab === 'gap') {
+      const headers = ['Competency Code', 'Competency Title', 'Average Gap (Levels)', 'Priority', 'Learners Assessed'];
+      const rows = clusterGapMatrix.map((item) => [
+        `"${item.code}"`,
+        `"${item.title}"`,
+        `"${item.avgGap}"`,
+        `"${item.priority}"`,
+        `"${item.sampleSize}"`,
+      ]);
+      handleExportCSV('Cluster_Competency_Gap_Matrix', headers, rows);
+    } else if (activeReportTab === 'investment') {
+      const headers = ['Metric', 'Value', 'Notes'];
+      const rows = [
+        ['"Total Training Investment"', '"$18,500"', '"Curriculum, certification, and OJT audits"'],
+        ['"Estimated Cost Savings"', '"$142,000"', '"F&B leakage reduction & overtime optimization"'],
+        ['"Approved OJT Projects"', `"${submissions.filter((s) => s.status === 'approved').length}"`, '"Audited deliverables"'],
+        ['"Certificates Issued"', `"${certificates.length}"`, '"Verified academy credentials"'],
+        ['"Calculated Training ROI"', '"668%"', '"Annualized cluster impact"'],
+      ];
+      handleExportCSV('FC_Academy_Training_ROI_Report', headers, rows);
     } else {
-      const headers = ['Learner Name', 'Course Code', 'Progress %', 'Status', 'Enrolled Date', 'Quiz Score'];
-      const rows = enrollments.map((e) => {
+      const headers = ['Learner Name', 'Property', 'Course Code', 'Progress %', 'Status', 'Enrolled Date', 'Quiz Score'];
+      const rows = filteredEnrollments.map((e) => {
         const u = users.find((user) => user.id === e.userId);
         const c = courses.find((course) => course.id === e.courseId);
-        return [`"${u?.name}"`, `"${c?.code}"`, `"${e.progressPercent}%"`, `"${e.status}"`, `"${e.enrolledDate}"`, `"${e.quizScore || 'N/A'}"`];
+        return [`"${u?.name || ''}"`, `"${u?.property || ''}"`, `"${c?.code || ''}"`, `"${e.progressPercent}%"`, `"${e.status}"`, `"${e.enrolledDate}"`, `"${e.quizScore || 'N/A'}"`];
       });
       handleExportCSV('Training_Completion_Analytics_Report', headers, rows);
     }
@@ -110,48 +187,64 @@ export const ReportsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold overflow-x-auto">
-        <button
-          onClick={() => setActiveReportTab('succession')}
-          className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-            activeReportTab === 'succession'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {t.reports.tabSuccession}
-        </button>
-        <button
-          onClick={() => setActiveReportTab('completion')}
-          className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-            activeReportTab === 'completion'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {t.reports.tabCompletion}
-        </button>
-        <button
-          onClick={() => setActiveReportTab('gap')}
-          className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-            activeReportTab === 'gap'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {language === 'vi' ? 'Ma Trận Khoảng Trống Toàn Cụm' : 'Cluster Competency Gap Matrix'}
-        </button>
-        <button
-          onClick={() => setActiveReportTab('investment')}
-          className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-            activeReportTab === 'investment'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {t.reports.tabInvestment}
-        </button>
+      {/* Navigation Sub-Tabs + Property Filter */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2 text-xs font-bold overflow-x-auto">
+          <button
+            onClick={() => setActiveReportTab('succession')}
+            className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeReportTab === 'succession'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {t.reports.tabSuccession}
+          </button>
+          <button
+            onClick={() => setActiveReportTab('completion')}
+            className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeReportTab === 'completion'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {t.reports.tabCompletion}
+          </button>
+          <button
+            onClick={() => setActiveReportTab('gap')}
+            className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeReportTab === 'gap'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {language === 'vi' ? 'Ma Trận Khoảng Trống Toàn Cụm' : 'Cluster Competency Gap Matrix'}
+          </button>
+          <button
+            onClick={() => setActiveReportTab('investment')}
+            className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              activeReportTab === 'investment'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {t.reports.tabInvestment}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <select
+            value={selectedPropertyFilter}
+            onChange={(e) => setSelectedPropertyFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold text-xs focus:outline-none"
+          >
+            <option value="all">{language === 'vi' ? 'Tất cả khách sạn (Cluster)' : 'All Properties (Cluster)'}</option>
+            {properties.slice(1).map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Report 1: Succession Pipeline Readiness Matrix */}
@@ -169,10 +262,10 @@ export const ReportsView: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                1 Ready Now
+                {readyNowCount} Ready Now
               </span>
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">
-                3 Ready in 1-2 Years
+                {readySoonCount} Ready in 1-2 Years
               </span>
             </div>
           </div>
@@ -192,7 +285,7 @@ export const ReportsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {successionCandidates.map((cand) => {
+                {filteredCandidates.map((cand) => {
                   const u = users.find((user) => user.id === cand.userId);
                   return (
                     <tr key={cand.userId} className="hover:bg-slate-50/80">
@@ -244,7 +337,7 @@ export const ReportsView: React.FC = () => {
               Báo Cáo Tiến Độ Hoàn Thành Khóa Học Các Đơn Vị
             </h3>
             <span className="text-xs text-slate-500 font-bold">
-              Tổng số lượt học: {enrollments.length}
+              Tổng số lượt học: {filteredEnrollments.length}
             </span>
           </div>
 
@@ -261,7 +354,7 @@ export const ReportsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {enrollments.map((enr) => {
+                {filteredEnrollments.map((enr) => {
                   const u = users.find((user) => user.id === enr.userId);
                   const c = courses.find((course) => course.id === enr.courseId);
                   return (
@@ -318,15 +411,8 @@ export const ReportsView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-            {[
-              { code: 'FAR-01', title: 'USALI Principles', avgGap: 0.6, priority: 'Low' },
-              { code: 'FAR-02', title: 'Month-End Closing Day 3', avgGap: 1.4, priority: 'High' },
-              { code: 'FCA-01', title: 'Internal Control & Fraud', avgGap: 1.2, priority: 'Medium' },
-              { code: 'FPM-01', title: 'Zero-Based Budgeting', avgGap: 1.6, priority: 'High' },
-              { code: 'BPA-01', title: 'Flow-Through & Flex', avgGap: 1.5, priority: 'High' },
-              { code: 'SBP-02', title: 'GM Decision Support', avgGap: 1.8, priority: 'High' },
-            ].map((item, i) => (
-              <div key={i} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
+            {clusterGapMatrix.map((item) => (
+              <div key={item.code} className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-bold text-blue-800">{item.code}</span>
                   <span
@@ -343,7 +429,7 @@ export const ReportsView: React.FC = () => {
                 </div>
                 <h4 className="font-bold text-slate-900">{item.title}</h4>
                 <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-slate-200">
-                  <span>Khoảng trống bình quân:</span>
+                  <span>Khoảng trống bình quân ({item.sampleSize} hồ sơ):</span>
                   <span className="font-bold text-slate-900 font-mono">{item.avgGap} Levels</span>
                 </div>
               </div>

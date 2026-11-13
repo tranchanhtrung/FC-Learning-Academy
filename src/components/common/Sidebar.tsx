@@ -14,12 +14,25 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser, t, language } = useApp();
+interface SidebarProps {
+  onNavigate?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
+  const {
+    activeTab,
+    setActiveTab,
+    currentUser,
+    t,
+    language,
+    learningPaths,
+    courses,
+    competencies,
+    ojtAssignments,
+  } = useApp();
 
   const isLearner = currentUser.role === 'learner';
   const isAdminOrManager = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
-  const isFC = currentUser.role === 'financial_controller';
 
   const navItems = [
     {
@@ -38,19 +51,19 @@ export const Sidebar: React.FC = () => {
       id: 'learningPaths',
       label: t.nav.learningPaths,
       icon: GitBranch,
-      badge: '3 Paths',
+      badge: `${learningPaths.length} Paths`,
     },
     {
       id: 'courses',
       label: t.nav.courses,
       icon: BookOpen,
-      badge: '18 Courses',
+      badge: `${courses.length} Courses`,
     },
     {
       id: 'competencyFramework',
       label: t.nav.competencyFramework,
       icon: Award,
-      badge: '30 Comps',
+      badge: `${competencies.length} Comps`,
     },
     {
       id: 'assessments',
@@ -62,7 +75,7 @@ export const Sidebar: React.FC = () => {
       id: 'ojtProjects',
       label: t.nav.ojtProjects,
       icon: Briefcase,
-      badge: '6 Real Cases',
+      badge: `${ojtAssignments.length} Real Cases`,
     },
     {
       id: 'aiAssistant',
@@ -82,13 +95,14 @@ export const Sidebar: React.FC = () => {
       label: t.nav.reports,
       icon: FileBarChart2,
       badge: null,
+      hidden: isLearner,
     },
     {
       id: 'administration',
       label: t.nav.administration,
       icon: Settings,
       badge: isAdminOrManager ? 'Admin' : null,
-      hidden: !isAdminOrManager && !isFC,
+      hidden: !isAdminOrManager,
     },
   ];
 
@@ -115,7 +129,7 @@ export const Sidebar: React.FC = () => {
             {language === 'vi' ? 'Cấp độ năng lực:' : 'Proficiency:'}
           </span>
           <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold text-[10px]">
-            Level {currentUser.currentLevel} / 4
+            Level {currentUser.currentLevel} / {currentUser.targetLevel}
           </span>
         </div>
       </div>
@@ -131,7 +145,10 @@ export const Sidebar: React.FC = () => {
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  onNavigate?.();
+                }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-amber-500 text-slate-950 shadow-md font-bold'

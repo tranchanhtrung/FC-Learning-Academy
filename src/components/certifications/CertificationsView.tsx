@@ -17,16 +17,40 @@ import {
 export const CertificationsView: React.FC = () => {
   const {
     certificates,
+    users,
+    courses,
+    ojtAssignments,
+    enrollments,
+    submissions,
     currentUser,
     issueCertificate,
     setSelectedCertificateForView,
     language,
     t,
+    showToast,
   } = useApp();
+
+  const isAuthorizedIssuer =
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'lnd_manager' ||
+    currentUser.role === 'financial_controller';
+
+  const [selectedUserId, setSelectedUserId] = useState<string>(() =>
+    currentUser.role === 'learner' ? currentUser.id : 'user_learner1'
+  );
+
+  React.useEffect(() => {
+    if (currentUser.role === 'learner') {
+      setSelectedUserId(currentUser.id);
+    }
+  }, [currentUser.id, currentUser.role]);
+
+  const targetUser = users.find((u) => u.id === selectedUserId) || currentUser;
 
   const [verifyCodeInput, setVerifyCodeInput] = useState<string>('');
   const [verificationResult, setVerificationResult] = useState<Certificate | null>(null);
   const [hasSearched, setHasSearched] = useState<boolean>(false);
+  const [issuingLevel, setIssuingLevel] = useState<number | null>(null);
 
   const levels = [
     {
@@ -107,11 +131,32 @@ export const CertificationsView: React.FC = () => {
           </p>
         </div>
 
-        <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs max-w-xs">
-          <p className="text-slate-600 leading-tight">
-            <strong>Lưu ý quản trị:</strong> Chứng chỉ học viện công nhận năng lực học thuật & chuyên môn, là điều kiện tiên quyết nhưng tách biệt với quyết định bổ nhiệm nhân sự chính thức của Tập đoàn.
-          </p>
-        </div>
+        {isAuthorizedIssuer ? (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+            <span className="font-bold text-slate-700 shrink-0">
+              {language === 'vi' ? 'Hồ sơ cấp chứng chỉ:' : 'Candidate:'}
+            </span>
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-bold text-xs focus:outline-none"
+            >
+              {users
+                .filter((u) => u.role === 'learner' || u.id === currentUser.id)
+                .map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.position} • L{u.currentLevel})
+                  </option>
+                ))}
+            </select>
+          </div>
+        ) : (
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs max-w-xs">
+            <p className="text-slate-600 leading-tight">
+              <strong>Lưu ý quản trị:</strong> Chứng chỉ học viện công nhận năng lực học thuật & chuyên môn, là điều kiện tiên quyết nhưng tách biệt với quyết định bổ nhiệm nhân sự chính thức của Tập đoàn.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Verification Search Bar */}
@@ -154,9 +199,13 @@ export const CertificationsView: React.FC = () => {
                 <div className="flex items-center gap-2 text-emerald-300">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   <div>
-                    <span className="font-bold block">Chứng chỉ hợp lệ: {verificationResult.titleVi}</span>
-                    <span className="text-[11px] text-slate-400">
-                      Cấp cho: {verificationResult.userId} &bull; Ngày: {verificationResult.issueDate}
+                    <span className="font-bold block">Chứng chỉ hợp lệ: {language === 'vi' ? verificationResult.titleVi : verificationResult.titleEn}</span>
+                    <span className="text-[11px] text-slate-300">
+                      {language === 'vi' ? 'Cấp cho:' : 'Issued to:'}{' '}
+                      <strong>
+                        {users.find((u) => u.id === verificationResult.userId)?.name || verificationResult.userId}
+                      </strong>{' '}
+                      &bull; {language === 'vi' ? 'Ngày:' : 'Date:'} {verificationResult.issueDate} &bull; #{verificationResult.certificateNumber}
                     </span>
                   </div>
                 </div>
@@ -180,9 +229,42 @@ export const CertificationsView: React.FC = () => {
       <div className="space-y-4">
         {levels.map((lvl) => {
           const userHasCert = certificates.find(
-            (c) => c.userId === currentUser.id && c.level === lvl.level
+            (c) => c.userId === targetUser.id && c.level === lvl.level
           );
-          const isUnlocked = currentUser.currentLevel >= lvl.level;
+
+          const completedCourseCount = lvl.requiredCourses.filter((code) => {
+            const courseObj = courses.find((c) => c.code === code);
+            if (!courseObj) return false;
+            const enr = enrollments.find((e) => e.userId === targetUser.id && e.courseId === courseObj.id);
+            return enr && enr.progressPercent >= 100 && (enr.quizScore ?? 100) >= lvl.minScore;
+          }).length;
+
+          const approvedOjtCount = lvl.requiredOjt.filter((code) => {
+            const ojtObj = ojtAssignments.find((a) => a.code === code);
+            if (!ojtObj) return false;
+            const sub = submissions.find((s) => s.userId === targetUser.id && s.assignmentId === ojtObj.id);
+            return sub && sub.status === 'approved' && (sub.score ?? 100) >= lvl.minScore;
+          }).length;
+
+          const allRequirementsMet =
+            completedCourseCount === lvl.requiredCourses.length &&
+            approvedOjtCount === lvl.requiredOjt.length;
+          const isUnlocked = targetUser.currentLevel >= lvl.level || allRequirementsMet;
+          const canIssueNow = !userHasCert && (isUnlocked || isAuthorizedIssuer);
+
+          const handleIssue = async () => {
+            setIssuingLevel(lvl.level);
+            const issued = await issueCertificate(targetUser.id, lvl.level);
+            setIssuingLevel(null);
+            if (issued) {
+              showToast(
+                language === 'vi'
+                  ? `Đã cấp chứng chỉ Level ${lvl.level} cho ${targetUser.name}.`
+                  : `Issued Level ${lvl.level} certificate to ${targetUser.name}.`,
+                'success'
+              );
+            }
+          };
 
           return (
             <div
@@ -192,7 +274,7 @@ export const CertificationsView: React.FC = () => {
                   ? 'bg-gradient-to-r from-amber-50/60 to-white border-amber-300 shadow-sm ring-1 ring-amber-300/50'
                   : isUnlocked
                   ? 'bg-white border-slate-200'
-                  : 'bg-slate-50/70 border-slate-200 opacity-80'
+                  : 'bg-slate-50/70 border-slate-200 opacity-85'
               }`}
             >
               <div className="flex items-start gap-4">
@@ -225,9 +307,13 @@ export const CertificationsView: React.FC = () => {
                   </p>
 
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1">
-                    <span>Khóa học bắt buộc: <strong>{lvl.requiredCourses.join(', ')}</strong></span>
+                    <span>
+                      Khóa học bắt buộc: <strong>{lvl.requiredCourses.join(', ')}</strong> ({completedCourseCount}/{lvl.requiredCourses.length})
+                    </span>
                     <span>&bull;</span>
-                    <span>Dự án OJT: <strong>{lvl.requiredOjt.join(', ')}</strong></span>
+                    <span>
+                      Dự án OJT: <strong>{lvl.requiredOjt.join(', ')}</strong> ({approvedOjtCount}/{lvl.requiredOjt.length})
+                    </span>
                     <span>&bull;</span>
                     <span>Điểm chuẩn: <strong>{lvl.minScore}%</strong></span>
                   </div>
@@ -244,13 +330,18 @@ export const CertificationsView: React.FC = () => {
                     <Award className="w-4 h-4 text-amber-400" />
                     <span>{t.certifications.viewCert}</span>
                   </button>
-                ) : isUnlocked ? (
+                ) : canIssueNow ? (
                   <button
-                    onClick={() => issueCertificate(currentUser.id, lvl.level)}
-                    className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                    disabled={issuingLevel === lvl.level}
+                    onClick={handleIssue}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>Cấp chứng chỉ Level {lvl.level}</span>
+                    <span>
+                      {issuingLevel === lvl.level
+                        ? language === 'vi' ? 'Đang cấp...' : 'Issuing...'
+                        : language === 'vi' ? `Cấp chứng chỉ Level ${lvl.level}` : `Issue Level ${lvl.level}`}
+                    </span>
                   </button>
                 ) : (
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold px-3 py-2 bg-slate-100 rounded-xl">

@@ -16,9 +16,9 @@ import {
 export const AdminDashboard: React.FC = () => {
   const {
     users,
-    courses,
     enrollments,
-    assessments,
+    quizAttempts,
+    idps,
     successionCandidates,
     submissions,
     t,
@@ -26,13 +26,54 @@ export const AdminDashboard: React.FC = () => {
     setActiveTab,
   } = useApp();
 
-  const totalLearners = users.filter((u) => u.role === 'learner').length;
+  const learners = users.filter((u) => u.role === 'learner');
+  const totalLearners = learners.length;
   const totalEnrollments = enrollments.length;
   const completedEnrollments = enrollments.filter((e) => e.status === 'completed').length;
-  const completionRate = totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 74;
+  const completionRate = totalEnrollments > 0 ? Math.round((completedEnrollments / totalEnrollments) * 100) : 0;
+
+  const activeIdpCount = learners.filter((l) => idps.some((i) => i.learnerId === l.id)).length;
+  const activeIdpPct = totalLearners > 0 ? Math.round((activeIdpCount / totalLearners) * 100) : 0;
+
+  const scoredItems = [
+    ...quizAttempts.map((q) => q.score),
+    ...submissions.filter((s) => typeof s.score === 'number').map((s) => s.score as number),
+  ];
+  const avgAssessmentScore =
+    scoredItems.length > 0
+      ? (scoredItems.reduce((sum, s) => sum + s, 0) / scoredItems.length).toFixed(1)
+      : '0.0';
 
   const readyNowCount = successionCandidates.filter((c) => c.readiness === 'Ready Now').length;
   const ready1To2Count = successionCandidates.filter((c) => c.readiness === 'Ready in 1-2 Years').length;
+
+  const propertyNames = [
+    'Grand Horizon Saigon Hotel & Residences',
+    'Royal Palm Resort & Spa Danang',
+    'Marina Bay Heritage Hotel Hanoi',
+    'Emerald Bay Luxury Suites Nha Trang',
+  ];
+  const propertyColors = ['bg-blue-600', 'bg-emerald-600', 'bg-amber-600', 'bg-purple-600'];
+  const propertyStats = propertyNames.map((propName, idx) => {
+    const propLearners = learners.filter((u) => u.property === propName);
+    const propEnrollments = enrollments.filter((e) => propLearners.some((l) => l.id === e.userId));
+    const avgProgress =
+      propEnrollments.length > 0
+        ? Math.round(propEnrollments.reduce((acc, e) => acc + e.progressPercent, 0) / propEnrollments.length)
+        : propLearners.length > 0
+        ? Math.round(
+            (propLearners.reduce((acc, l) => acc + l.currentLevel / Math.max(1, l.targetLevel), 0) /
+              propLearners.length) *
+              100
+          )
+        : 0;
+    return {
+      name: propName,
+      count: propLearners.length,
+      rate: Math.min(100, avgProgress),
+      color: propertyColors[idx % propertyColors.length],
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -78,7 +119,9 @@ export const AdminDashboard: React.FC = () => {
             <Users className="w-5 h-5 text-blue-600" />
           </div>
           <div className="text-2xl font-black text-slate-900">{totalLearners}</div>
-          <p className="text-[11px] text-slate-500">100% {language === 'vi' ? 'đã kích hoạt IDP' : 'with active IDP'}</p>
+          <p className="text-[11px] text-slate-500">
+            {activeIdpPct}% {language === 'vi' ? 'đã kích hoạt IDP' : 'with active IDP'}
+          </p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-1">
@@ -87,7 +130,9 @@ export const AdminDashboard: React.FC = () => {
             <TrendingUp className="w-5 h-5 text-emerald-600" />
           </div>
           <div className="text-2xl font-black text-emerald-600">{completionRate}%</div>
-          <p className="text-[11px] text-emerald-600 font-semibold">+8% {language === 'vi' ? 'so với quý trước' : 'vs prior quarter'}</p>
+          <p className="text-[11px] text-emerald-600 font-semibold">
+            {completedEnrollments}/{totalEnrollments} {language === 'vi' ? 'lượt khóa học xong' : 'enrollments completed'}
+          </p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-1">
@@ -104,8 +149,8 @@ export const AdminDashboard: React.FC = () => {
             <span className="text-xs font-bold text-slate-500 uppercase">{t.dashboard.avgAssessmentScore}</span>
             <GraduationCap className="w-5 h-5 text-purple-600" />
           </div>
-          <div className="text-2xl font-black text-slate-900">88.5 / 100</div>
-          <p className="text-[11px] text-slate-500">{submissions.length} {language === 'vi' ? 'dự án OJT đã nộp' : 'OJT projects graded'}</p>
+          <div className="text-2xl font-black text-slate-900">{avgAssessmentScore} / 100</div>
+          <p className="text-[11px] text-slate-500">{submissions.length} {language === 'vi' ? 'dự án OJT đã nộp' : 'OJT projects submitted'}</p>
         </div>
       </div>
 
@@ -190,12 +235,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {[
-              { name: 'Grand Horizon Saigon Hotel', count: 4, rate: 82, color: 'bg-blue-600' },
-              { name: 'Royal Palm Resort Danang', count: 3, rate: 76, color: 'bg-emerald-600' },
-              { name: 'Marina Bay Heritage Hanoi', count: 2, rate: 68, color: 'bg-amber-600' },
-              { name: 'Emerald Bay Luxury Suites Nha Trang', count: 2, rate: 58, color: 'bg-purple-600' },
-            ].map((prop, idx) => (
+            {propertyStats.map((prop, idx) => (
               <div key={idx} className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-800">{prop.name}</span>

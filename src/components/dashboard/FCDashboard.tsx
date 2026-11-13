@@ -17,6 +17,7 @@ export const FCDashboard: React.FC = () => {
     currentUser,
     users,
     assessments,
+    competencies,
     submissions,
     successionCandidates,
     language,
@@ -27,22 +28,50 @@ export const FCDashboard: React.FC = () => {
   // My direct team members (those supervised by this FC or in the same property)
   const myTeam = users.filter((u) => u.role === 'learner' && (u.supervisorId === currentUser.id || u.property.includes('Grand Horizon')));
   const pendingSubmissions = submissions.filter((s) => s.status === 'submitted' || s.status === 'under_review');
-  const urgentCoachingList = [
-    {
-      name: 'Nguyễn Minh Thư',
-      role: 'Senior Accountant',
-      focusArea: 'Month-End Accruals & Fast-Close Timetable (FAR-02)',
-      gap: 2,
-      recommendation: 'Kèm cặp trực tiếp quy trình đối chiếu số dư và rút ngắn thời gian lập báo cáo Day 3.',
-    },
-    {
-      name: 'Đoàn Văn Phúc',
-      role: 'Assistant Cost Controller',
-      focusArea: 'F&B Potential Cost & Recipe Yield Audits (FCA-03)',
-      gap: 2,
-      recommendation: 'Hướng dẫn kiểm tra tỷ lệ hao hụt quầy bar và quy trình kiểm kê đột xuất.',
-    },
-  ];
+
+  // Compute live urgent coaching list from latest assessments for each team member
+  const urgentCoachingList = myTeam
+    .map((member) => {
+      const latestAsmt = assessments
+        .filter((a) => a.learnerId === member.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      if (!latestAsmt?.scores) {
+        const gap = Math.max(0, (member.targetLevel || 4) - member.currentLevel);
+        if (gap < 2) return null;
+        return {
+          name: member.name,
+          role: member.position,
+          focusArea: language === 'vi' ? 'Chưa có đánh giá năng lực định kỳ — cần thiết lập baseline' : 'Baseline competency evaluation pending',
+          gap,
+          recommendation:
+            language === 'vi'
+              ? 'Khởi tạo kỳ đánh giá năng lực đầu tiên và kích hoạt kế hoạch IDP.'
+              : 'Initialize competency assessment cycle and assign IDP.',
+        };
+      }
+      const worstEntry = Object.entries(latestAsmt.scores)
+        .map(([code, s]) => ({ code, ...s }))
+        .sort((a, b) => (b.gap || 0) - (a.gap || 0))[0];
+      if (!worstEntry || worstEntry.gap < 2) return null;
+      const comp = competencies.find((c) => c.code === worstEntry.code);
+      return {
+        name: member.name,
+        role: member.position,
+        focusArea: `${comp ? (language === 'vi' ? comp.nameVi : comp.nameEn) : worstEntry.code} (${worstEntry.code})`,
+        gap: worstEntry.gap,
+        recommendation:
+          worstEntry.supervisorNotes ||
+          (language === 'vi'
+            ? 'Kèm cặp trực tiếp tại khách sạn và giao bài tập thực hành OJT chuyên sâu.'
+            : 'Conduct direct OJT coaching and assign targeted practical deliverables.'),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const readyNowCandidates = successionCandidates.filter((c) => c.readiness === 'Ready Now');
+  const firstReadyUser = readyNowCandidates[0]
+    ? users.find((u) => u.id === readyNowCandidates[0].userId)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -89,13 +118,15 @@ export const FCDashboard: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-1">
           <span className="text-xs font-bold text-slate-500 uppercase">{language === 'vi' ? 'Cần kèm cặp ưu tiên' : 'Requires Coaching'}</span>
           <div className="text-2xl font-black text-rose-600">{urgentCoachingList.length}</div>
-          <p className="text-[11px] text-rose-600 font-semibold">{language === 'vi' ? 'Khoảng trống L2 &gt; 1 cấp' : 'Gap &gt; 1 level'}</p>
+          <p className="text-[11px] text-rose-600 font-semibold">{language === 'vi' ? 'Khoảng trống >= 2 cấp' : 'Gap >= 2 levels'}</p>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-1">
           <span className="text-xs font-bold text-slate-500 uppercase">{language === 'vi' ? 'Kế thừa sẵn sàng' : 'Succession Ready'}</span>
-          <div className="text-2xl font-black text-emerald-600">1</div>
-          <p className="text-[11px] text-slate-500">Lê Hoàng Nam (Ready Now)</p>
+          <div className="text-2xl font-black text-emerald-600">{readyNowCandidates.length}</div>
+          <p className="text-[11px] text-slate-500">
+            {firstReadyUser ? `${firstReadyUser.name} (Ready Now)` : language === 'vi' ? 'Đang bồi dưỡng' : 'In pipeline'}
+          </p>
         </div>
       </div>
 

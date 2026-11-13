@@ -27,6 +27,7 @@ export const OJTProjectsView: React.FC = () => {
     users,
     language,
     t,
+    showToast,
   } = useApp();
 
   const isSupervisorOrAdmin =
@@ -44,6 +45,7 @@ export const OJTProjectsView: React.FC = () => {
   const [fileName, setFileName] = useState<string>('OJT_Deliverable_Model.xlsx');
   const [isAiEvaluating, setIsAiEvaluating] = useState<boolean>(false);
   const [aiEvalResult, setAiEvalResult] = useState<any>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Grading Form State
   const [gradeScore, setGradeScore] = useState<number>(85);
@@ -60,12 +62,23 @@ export const OJTProjectsView: React.FC = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleAiPreAudit = async () => {
-    if (!selectedAssignment || !notes) return;
+    if (!selectedAssignment) return;
+    if (!notes.trim()) {
+      showToast(
+        language === 'vi'
+          ? 'Vui lòng nhập giải trình tóm tắt trước khi thẩm định AI.'
+          : 'Please enter an Executive Summary before running AI audit.',
+        'error'
+      );
+      return;
+    }
     try {
       setIsAiEvaluating(true);
+      setAiError(null);
       const res = await fetch('/api/gemini/evaluate-assignment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,32 +91,52 @@ export const OJTProjectsView: React.FC = () => {
         }),
       });
 
-      if (res.ok) {
-        const result = await res.json();
-        setAiEvalResult(result);
+      const result = await res.json();
+      if (!res.ok) {
+        const errMsg = result?.error || 'AI evaluation request failed';
+        setAiError(errMsg);
+        showToast(errMsg, 'error');
+        return;
       }
-    } catch (e) {
-      console.error('AI evaluation failed', e);
+      setAiEvalResult(result);
+    } catch (e: any) {
+      const errMsg = e?.message || 'AI evaluation failed';
+      setAiError(errMsg);
+      showToast(errMsg, 'error');
     } finally {
       setIsAiEvaluating(false);
     }
   };
 
-  const handleFinalSubmit = () => {
+  const handleFinalSubmit = async () => {
     if (!selectedAssignment) return;
-    submitAssignment(selectedAssignment.id, notes, fileName, aiEvalResult);
+    if (!notes.trim()) {
+      showToast(
+        language === 'vi'
+          ? 'Vui lòng nhập giải trình tóm tắt kết quả trước khi nộp bài.'
+          : 'Please provide an executive summary before submitting.',
+        'error'
+      );
+      return;
+    }
+    await submitAssignment(selectedAssignment.id, notes.trim(), fileName, aiEvalResult);
     setSubmissionModalOpen(false);
     setNotes('');
     setAiEvalResult(null);
-    alert(language === 'vi' ? 'Đã nộp bài tập OJT thành công!' : 'OJT project submitted successfully!');
+    setAiError(null);
+    showToast(
+      language === 'vi' ? 'Đã nộp bài tập OJT thành công!' : 'OJT project submitted successfully!',
+      'success'
+    );
   };
 
-  const handleSaveGrade = (status: 'approved' | 'revision_requested') => {
+  const handleSaveGrade = async (status: 'approved' | 'revision_requested') => {
     if (!selectedSubmissionForGrade) return;
-    gradeAssignment(selectedSubmissionForGrade.id, gradeScore, gradeFeedback, status);
+    const boundedScore = Math.max(0, Math.min(100, Number(gradeScore) || 0));
+    await gradeAssignment(selectedSubmissionForGrade.id, boundedScore, gradeFeedback, status);
     setGradingModalOpen(false);
     setSelectedSubmissionForGrade(null);
-    alert(language === 'vi' ? 'Đã lưu kết quả chấm bài!' : 'Grading submitted!');
+    showToast(language === 'vi' ? 'Đã lưu kết quả chấm bài!' : 'Grading submitted!', 'success');
   };
 
   return (
@@ -202,6 +235,10 @@ export const OJTProjectsView: React.FC = () => {
                 <button
                   onClick={() => {
                     setSelectedAssignment(assignment);
+                    setNotes(mySub?.submissionNotes || '');
+                    setFileName(mySub?.fileName || `${assignment.code}_Deliverable.xlsx`);
+                    setAiEvalResult(null);
+                    setAiError(null);
                     setSubmissionModalOpen(true);
                   }}
                   className="flex items-center gap-1.5 px-4 py-1.5 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
@@ -372,9 +409,17 @@ export const OJTProjectsView: React.FC = () => {
               </button>
             </div>
 
+            {/* AI Error Alert if Any */}
+            {aiError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-800">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{aiError}</span>
+              </div>
+            )}
+
             {/* AI Review Results if Available */}
             {aiEvalResult && (
-              <div className="p-4 bg-white rounded-xl border border-amber-300 space-y-2 text-xs">
+              <div className="p-4 bg-white rounded-xl border border-amber-300 space-y-3 text-xs">
                 <div className="flex items-center justify-between font-bold">
                   <span className="text-slate-900">Điểm dự kiến AI: {aiEvalResult.score} / 100</span>
                   <span className={aiEvalResult.passed ? 'text-emerald-700' : 'text-amber-700'}>
@@ -384,6 +429,36 @@ export const OJTProjectsView: React.FC = () => {
                 <p className="text-slate-600 text-[11px] leading-relaxed italic bg-slate-50 p-2.5 rounded-lg">
                   {aiEvalResult.feedback}
                 </p>
+
+                {Array.isArray(aiEvalResult.rubricBreakdown) && aiEvalResult.rubricBreakdown.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      {language === 'vi' ? 'Chi tiết chấm điểm Rubric:' : 'Rubric Breakdown:'}
+                    </span>
+                    {aiEvalResult.rubricBreakdown.map((item: any, idx: number) => (
+                      <div key={idx} className="p-2 rounded-lg bg-slate-50 border border-slate-200/70">
+                        <div className="flex items-center justify-between font-bold text-slate-800">
+                          <span>{item.criterion}</span>
+                          <span className="font-mono text-amber-700">{item.score}/{item.maxScore}</span>
+                        </div>
+                        {item.comments && <p className="text-[11px] text-slate-600 mt-0.5">{item.comments}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {Array.isArray(aiEvalResult.keyRecommendations) && aiEvalResult.keyRecommendations.length > 0 && (
+                  <div className="space-y-1 pt-2 border-t border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      {language === 'vi' ? 'Khuyến nghị hoàn thiện:' : 'Key Recommendations:'}
+                    </span>
+                    <ul className="list-disc list-inside text-[11px] text-slate-700 space-y-0.5">
+                      {aiEvalResult.keyRecommendations.map((rec: string, i: number) => (
+                        <li key={i}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 

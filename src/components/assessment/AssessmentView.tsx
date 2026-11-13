@@ -49,6 +49,7 @@ export const AssessmentView: React.FC = () => {
     idps,
     language,
     t,
+    showToast,
   } = useApp();
 
   const isSupervisor =
@@ -61,6 +62,14 @@ export const AssessmentView: React.FC = () => {
     if (currentUser.role === 'learner') return currentUser.id;
     return 'user_learner1'; // Default: Nguyễn Minh Thư
   });
+
+  // Sync selectedLearnerId if user switches persona to learner
+  React.useEffect(() => {
+    if (currentUser.role === 'learner') {
+      setSelectedLearnerId(currentUser.id);
+      setSelectedCycleId('');
+    }
+  }, [currentUser.id, currentUser.role]);
 
   const activeLearner = users.find((u) => u.id === selectedLearnerId) || currentUser;
 
@@ -135,9 +144,9 @@ export const AssessmentView: React.FC = () => {
         setSelectedCycleId(currentAssessment.id);
       }
     } else {
-      // Build baseline if none exists
+      // Build baseline across all competencies if none exists
       const initial: Record<string, any> = {};
-      competencies.slice(0, 10).forEach((c) => {
+      competencies.forEach((c) => {
         initial[c.code] = {
           selfLevel: 2,
           supervisorLevel: 2,
@@ -152,12 +161,17 @@ export const AssessmentView: React.FC = () => {
     }
   }, [currentAssessment, selectedLearnerId]);
 
+  const isApprovedLockedForLearner = !isSupervisor && currentAssessment?.status === 'approved';
+
   // Handle score change
   const handleScoreChange = (
     code: string,
     field: 'selfLevel' | 'supervisorLevel',
     value: ProficiencyLevel
   ) => {
+    if (field === 'supervisorLevel' && !isSupervisor) return;
+    if (field === 'selfLevel' && isApprovedLockedForLearner) return;
+
     setScores((prev) => {
       const currentObj = prev[code] || {
         selfLevel: 2,
@@ -169,8 +183,11 @@ export const AssessmentView: React.FC = () => {
       const newSelf = field === 'selfLevel' ? value : currentObj.selfLevel;
       const newSup = field === 'supervisorLevel' ? value : currentObj.supervisorLevel;
       const targetLevel = activeLearner.targetLevel || 4;
-      // Authoritative gap uses Supervisor level if evaluated; otherwise self level
-      const evaluatedLevel = currentAssessment?.status === 'pending_supervisor' ? newSelf : newSup;
+      // Authoritative gap uses self level while learner self-assesses pre-approval, otherwise supervisor level
+      const evaluatedLevel =
+        field === 'selfLevel' && !isSupervisor && currentAssessment?.status !== 'approved'
+          ? newSelf
+          : newSup;
       const newGap = Math.max(0, targetLevel - evaluatedLevel);
 
       return {
@@ -240,7 +257,10 @@ export const AssessmentView: React.FC = () => {
     const recordToSave: AssessmentRecord = {
       id: currentAssessment?.id || `asmt_${Date.now()}`,
       learnerId: selectedLearnerId,
-      supervisorId: currentUser.id,
+      supervisorId:
+        currentUser.role === 'learner'
+          ? currentAssessment?.supervisorId || activeLearner.supervisorId || 'user_fc1'
+          : currentUser.id,
       cycle: currentAssessment?.cycle || '2026 Q2 Competency Evaluation',
       status,
       date: new Date().toISOString().split('T')[0],
@@ -256,18 +276,18 @@ export const AssessmentView: React.FC = () => {
     let message = '';
     if (status === 'pending_supervisor') {
       message = language === 'vi'
-        ? `Tự đánh giá đã được gửi tới Giám Đốc Tài Chính (David Tran) để xem xét và chấm điểm thẩm định.`
+        ? `Tự đánh giá đã được gửi tới Giám Đốc Tài Chính để xem xét và chấm điểm thẩm định.`
         : `Self-assessment submitted to Financial Controller for review and sign-off.`;
     } else if (status === 'approved') {
       message = language === 'vi'
-        ? `Đã phê duyệt chính thức đánh giá năng lực cho ${activeLearner.name}! Hồ sơ đã lưu trữ vào hồ sơ nhân sự.`
-        : `Competency evaluation formally approved for ${activeLearner.name}! Recorded in HR file.`;
+        ? `Đã phê duyệt chính thức đánh giá năng lực cho ${activeLearner.name}!`
+        : `Competency evaluation formally approved for ${activeLearner.name}!`;
     } else {
       message = language === 'vi'
         ? `Đã lưu bản nháp đánh giá năng lực thành công.`
         : `Draft evaluation saved successfully.`;
     }
-    alert(message);
+    showToast(message, 'success');
   };
 
   // 1-Click IDP generation
@@ -275,26 +295,32 @@ export const AssessmentView: React.FC = () => {
     await generateIDPFromGap(
       selectedLearnerId,
       'Assistant Financial Controller (AFC)',
-      currentUser.role === 'learner' ? 'David Tran (Cluster FC)' : currentUser.name
+      currentUser.role === 'learner' ? 'David Tran (Cluster FC)' : currentUser.name,
+      currentAssessment?.id
     );
     setActiveTabSub('idp');
-    alert(
+    showToast(
       language === 'vi'
-        ? `Kế hoạch Phát Triển Cá Nhân (IDP) đã được hệ thống tự động sinh ra dựa trên các năng lực có khoảng cách lớn nhất!`
-        : `Individual Development Plan (IDP) generated based on top competency gaps!`
+        ? `Kế hoạch Phát Triển Cá Nhân (IDP) đã được sinh ra dựa trên các năng lực có khoảng cách lớn nhất.`
+        : `Individual Development Plan (IDP) generated based on top competency gaps.`,
+      'success'
     );
   };
 
   // Create new assessment cycle
   const handleCreateNewCycle = () => {
-    if (!newCycleName.trim()) return;
+    if (!newCycleName.trim()) {
+      showToast(language === 'vi' ? 'Vui lòng nhập tên kỳ đánh giá.' : 'Please enter cycle name.', 'error');
+      return;
+    }
     const newRecord = createAssessmentCycle(selectedLearnerId, newCycleName.trim());
     setSelectedCycleId(newRecord.id);
     setShowNewCycleModal(false);
-    alert(
+    showToast(
       language === 'vi'
-        ? `Đã khởi tạo thành công kỳ đánh giá mới: "${newCycleName}" cho ${activeLearner.name}.`
-        : `Successfully created new evaluation cycle: "${newCycleName}" for ${activeLearner.name}.`
+        ? `Đã khởi tạo kỳ đánh giá mới: "${newCycleName}" cho ${activeLearner.name}.`
+        : `Created new evaluation cycle: "${newCycleName}" for ${activeLearner.name}.`,
+      'success'
     );
   };
 
@@ -358,6 +384,25 @@ export const AssessmentView: React.FC = () => {
     if (idpPriorityFilter === 'All') return activeIDP.items;
     return activeIDP.items.filter((item) => item.priority === idpPriorityFilter);
   }, [activeIDP, idpPriorityFilter]);
+
+  // Live gap metrics
+  const scoreValues = Object.values(scores);
+  const liveAvgGap =
+    scoreValues.length > 0
+      ? (scoreValues.reduce((acc, s) => acc + (s.gap || 0), 0) / scoreValues.length).toFixed(1)
+      : '0.0';
+
+  // Local draft state for IDP evidence notes so typing doesn't spam API requests
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, string>>({});
+  React.useEffect(() => {
+    if (activeIDP?.items) {
+      const next: Record<string, string> = {};
+      activeIDP.items.forEach((item) => {
+        next[item.id] = item.evidenceNotes || '';
+      });
+      setEvidenceDrafts(next);
+    }
+  }, [activeIDP]);
 
   // IDP metrics
   const idpTotal = activeIDP?.items.length || 0;
@@ -622,7 +667,7 @@ export const AssessmentView: React.FC = () => {
                       Khoảng Trống Trung Bình:
                     </span>
                     <span className="text-lg font-extrabold text-amber-900 font-mono">
-                      {currentAssessment?.overallGapAverage || '1.2'} Levels
+                      {liveAvgGap} Levels
                     </span>
                   </div>
 
@@ -662,10 +707,10 @@ export const AssessmentView: React.FC = () => {
                 <textarea
                   value={learnerReflection}
                   onChange={(e) => setLearnerReflection(e.target.value)}
-                  disabled={isSupervisor && currentAssessment?.status === 'approved'}
+                  disabled={isApprovedLockedForLearner || (isSupervisor && currentAssessment?.status === 'approved')}
                   placeholder="Học viên ghi nhận cảm nhận về các năng lực tự tin nhất, các thách thức trong công việc hàng ngày..."
                   rows={3}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 disabled:opacity-60"
                 />
               </div>
 
@@ -677,9 +722,14 @@ export const AssessmentView: React.FC = () => {
                 <textarea
                   value={supervisorComments}
                   onChange={(e) => setSupervisorComments(e.target.value)}
-                  placeholder="Ghi nhận điểm mạnh chuyên môn, khuyến nghị các hoạt động OJT cụ thể, lộ trình chuẩn bị cho vị trí AFC/FC..."
+                  disabled={!isSupervisor}
+                  placeholder={
+                    isSupervisor
+                      ? 'Ghi nhận điểm mạnh chuyên môn, khuyến nghị các hoạt động OJT cụ thể, lộ trình chuẩn bị cho vị trí AFC/FC...'
+                      : 'Chỉ Giám đốc Tài chính / Quản lý thẩm định mới có quyền chỉnh sửa mục này'
+                  }
                   rows={3}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800"
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800 disabled:opacity-60"
                 />
               </div>
             </div>
@@ -700,15 +750,17 @@ export const AssessmentView: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleSaveAssessment('pending_self')}
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
-                >
-                  {t.common.save} Nháp
-                </button>
+                {!isApprovedLockedForLearner && (
+                  <button
+                    onClick={() => handleSaveAssessment('pending_self')}
+                    className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
+                  >
+                    {t.common.save} Nháp
+                  </button>
+                )}
 
                 {/* Learner submits to supervisor */}
-                {currentUser.role === 'learner' && (
+                {currentUser.role === 'learner' && !isApprovedLockedForLearner && (
                   <button
                     onClick={() => handleSaveAssessment('pending_supervisor')}
                     className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
@@ -829,8 +881,11 @@ export const AssessmentView: React.FC = () => {
                             <button
                               key={lvl}
                               type="button"
+                              disabled={isApprovedLockedForLearner}
                               onClick={() => handleScoreChange(comp.code, 'selfLevel', lvl as ProficiencyLevel)}
-                              className={`py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                              className={`py-1 rounded-md text-xs font-bold transition-all ${
+                                isApprovedLockedForLearner ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                              } ${
                                 scoreObj.selfLevel === lvl
                                   ? 'bg-blue-600 text-white shadow-xs'
                                   : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -857,8 +912,11 @@ export const AssessmentView: React.FC = () => {
                             <button
                               key={lvl}
                               type="button"
+                              disabled={!isSupervisor}
                               onClick={() => handleScoreChange(comp.code, 'supervisorLevel', lvl as ProficiencyLevel)}
-                              className={`py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                              className={`py-1 rounded-md text-xs font-bold transition-all ${
+                                !isSupervisor ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                              } ${
                                 scoreObj.supervisorLevel === lvl
                                   ? 'bg-[#0A192F] text-amber-400 ring-2 ring-amber-400/50 shadow-xs'
                                   : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -877,18 +935,20 @@ export const AssessmentView: React.FC = () => {
                         <input
                           type="text"
                           value={scoreObj.selfNotes || ''}
+                          disabled={isApprovedLockedForLearner}
                           onChange={(e) => handleNoteChange(comp.code, 'selfNotes', e.target.value)}
                           placeholder="Dẫn chứng/Ghi chú của học viên (ví dụ: đã tham gia khóa sổ tháng 3)..."
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
                         />
                       </div>
                       <div>
                         <input
                           type="text"
                           value={scoreObj.supervisorNotes || ''}
+                          disabled={!isSupervisor}
                           onChange={(e) => handleNoteChange(comp.code, 'supervisorNotes', e.target.value)}
                           placeholder="Góp ý/Chỉ đạo của FC (ví dụ: cần tự lập báo cáo P&L Critique)..."
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
                         />
                       </div>
                     </div>
@@ -1062,15 +1122,23 @@ export const AssessmentView: React.FC = () => {
                     </span>
                     <input
                       type="text"
-                      value={item.evidenceNotes || ''}
+                      value={evidenceDrafts[item.id] ?? item.evidenceNotes ?? ''}
                       onChange={(e) =>
-                        updateIDPItem(
-                          selectedLearnerId,
-                          item.id,
-                          item.status,
-                          e.target.value
-                        )
+                        setEvidenceDrafts((prev) => ({
+                          ...prev,
+                          [item.id]: e.target.value,
+                        }))
                       }
+                      onBlur={() => {
+                        const draft = evidenceDrafts[item.id] ?? '';
+                        if (draft !== (item.evidenceNotes || '')) {
+                          updateIDPItem(selectedLearnerId, item.id, item.status, draft);
+                          showToast(
+                            language === 'vi' ? 'Đã lưu dẫn chứng IDP.' : 'IDP evidence saved.',
+                            'success'
+                          );
+                        }
+                      }}
                       placeholder="Nhập tên file hoặc link dẫn chứng (ví dụ: đã nộp file Closing_Report.xlsx)..."
                       className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none"
                     />

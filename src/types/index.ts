@@ -125,6 +125,29 @@ export interface CourseModule {
   notes?: string;
 }
 
+export interface CourseMaterial {
+  id: string;
+  title: string;
+  type: 'excel' | 'pdf' | 'template' | 'checklist' | 'slide';
+  fileSize: string;
+  downloadUrl?: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
+}
+
+export interface CourseCaseStudy {
+  id: string;
+  titleVi: string;
+  titleEn: string;
+  propertyContext: string;
+  scenarioVi: string;
+  scenarioEn: string;
+  keyChallengeVi: string;
+  keyChallengeEn: string;
+  suggestedSolutionVi: string;
+  suggestedSolutionEn: string;
+}
+
 export interface Course {
   id: string;
   code: string;
@@ -143,6 +166,11 @@ export interface Course {
   passingScore: number;
   thumbnail: string;
   isMandatoryForFC: boolean;
+  materials?: CourseMaterial[];
+  caseStudy?: CourseCaseStudy;
+  practicalAssignmentId?: string;
+  practicalAssignmentTitle?: string;
+  quizQuestionIds?: string[];
 }
 
 export interface CourseEnrollment {
@@ -168,6 +196,7 @@ export interface QuizQuestion {
   optionsVi: string[];
   optionsEn: string[];
   correctAnswer: string | string[];
+  correctAnswerEn?: string | string[];
   explanationVi: string;
   explanationEn: string;
 }
@@ -264,3 +293,13 @@ export interface SuccessionCandidate {
   certLevel: number;
   mentorName: string;
 }
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  actor: string;
+  target: string;
+  timestamp: string;
+  details: string;
+}
+

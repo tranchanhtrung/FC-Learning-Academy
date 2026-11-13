@@ -10,15 +10,13 @@ import { UserRole } from '../../types';
 export const DashboardContainer: React.FC = () => {
   const { currentUser, language } = useApp();
 
-  // Allow switching view tab independently of active role
   const [activeViewRole, setActiveViewRole] = useState<UserRole>(currentUser.role);
 
-  // Sync if currentUser changes role
   React.useEffect(() => {
     setActiveViewRole(currentUser.role);
   }, [currentUser.role]);
 
-  const viewOptions: { role: UserRole; labelVi: string; labelEn: string; icon: any }[] = [
+  const allViewOptions: { role: UserRole; labelVi: string; labelEn: string; icon: any }[] = [
     {
       role: 'learner',
       labelVi: 'Học Viên / Kế Toán Viên',
@@ -45,36 +43,50 @@ export const DashboardContainer: React.FC = () => {
     },
   ];
 
+  // Role-based permitted perspectives
+  const permittedRolesMap: Record<UserRole, UserRole[]> = {
+    learner: ['learner'],
+    financial_controller: ['financial_controller', 'learner'],
+    general_manager: ['general_manager', 'financial_controller'],
+    lnd_manager: ['super_admin', 'financial_controller', 'general_manager', 'learner'],
+    super_admin: ['super_admin', 'general_manager', 'financial_controller', 'learner'],
+  };
+
+  const allowedRoles = permittedRolesMap[currentUser.role] || ['learner'];
+  const viewOptions = allViewOptions.filter((opt) => allowedRoles.includes(opt.role));
+
   return (
     <div className="space-y-6">
-      {/* Perspective Quick Switcher */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">
-          <Eye className="w-4 h-4 text-amber-500" />
-          <span>{language === 'vi' ? 'Xem Dashboard theo vai trò:' : 'View Dashboard Perspective:'}</span>
-        </div>
+      {/* Perspective Quick Switcher (shown only when user role authorizes multiple views) */}
+      {viewOptions.length > 1 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">
+            <Eye className="w-4 h-4 text-amber-500" />
+            <span>{language === 'vi' ? 'Xem Dashboard theo vai trò:' : 'View Dashboard Perspective:'}</span>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-          {viewOptions.map((opt) => {
-            const Icon = opt.icon;
-            const isSelected = activeViewRole === opt.role;
-            return (
-              <button
-                key={opt.role}
-                onClick={() => setActiveViewRole(opt.role)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  isSelected
-                    ? 'bg-[#0A192F] text-amber-300 shadow-sm'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-slate-400'}`} />
-                <span>{language === 'vi' ? opt.labelVi : opt.labelEn}</span>
-              </button>
-            );
-          })}
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+            {viewOptions.map((opt) => {
+              const Icon = opt.icon;
+              const isSelected = activeViewRole === opt.role || (opt.role === 'super_admin' && activeViewRole === 'lnd_manager');
+              return (
+                <button
+                  key={opt.role}
+                  onClick={() => setActiveViewRole(opt.role)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#0A192F] text-amber-300 shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-amber-400' : 'text-slate-400'}`} />
+                  <span>{language === 'vi' ? opt.labelVi : opt.labelEn}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Render selected dashboard */}
       {activeViewRole === 'learner' && <LearnerDashboard />}

@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   User,
-  UserRole,
   CompetencyDomain,
   Competency,
   Course,
@@ -14,6 +13,7 @@ import {
   IndividualDevelopmentPlan,
   Certificate,
   SuccessionCandidate,
+  AuditLogEntry,
 } from '../types';
 import {
   INITIAL_USERS,
@@ -29,6 +29,12 @@ import {
 } from '../data/initialData';
 import { translations, Language } from '../i18n/translations';
 
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -37,6 +43,11 @@ interface AppContextType {
   t: typeof translations.vi;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+
+  // Toasts
+  toasts: ToastMessage[];
+  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  dismissToast: (id: string) => void;
 
   // Data collections
   users: User[];
@@ -52,10 +63,11 @@ interface AppContextType {
   idps: IndividualDevelopmentPlan[];
   certificates: Certificate[];
   successionCandidates: SuccessionCandidate[];
+  auditLogs: AuditLogEntry[];
 
   // Actions
-  enrollCourse: (courseId: string) => void;
-  updateCourseProgress: (courseId: string, moduleId: string) => void;
+  enrollCourse: (courseId: string) => Promise<void>;
+  updateCourseProgress: (courseId: string, moduleId: string) => Promise<void>;
   submitQuizAttempt: (
     courseId: string | undefined,
     quizTitle: string,
@@ -63,13 +75,23 @@ interface AppContextType {
     total: number,
     passed: boolean,
     answers: Record<string, any>
-  ) => void;
-  submitAssignment: (assignmentId: string, notes: string, fileName?: string, aiResult?: any) => void;
-  gradeAssignment: (submissionId: string, score: number, feedback: string, status: 'approved' | 'revision_requested') => void;
-  saveCompetency: (comp: Competency) => void;
-  deleteCompetency: (id: string) => void;
+  ) => Promise<void>;
+  submitAssignment: (assignmentId: string, notes: string, fileName?: string, aiResult?: any) => Promise<void>;
+  gradeAssignment: (
+    submissionId: string,
+    score: number,
+    feedback: string,
+    status: 'approved' | 'revision_requested'
+  ) => Promise<void>;
+  saveCompetency: (comp: Competency) => Promise<void>;
+  deleteCompetency: (id: string) => Promise<void>;
   saveAssessment: (record: AssessmentRecord) => Promise<AssessmentRecord>;
-  generateIDPFromGap: (learnerId: string, targetPosition?: string, approvedBy?: string) => Promise<IndividualDevelopmentPlan | void>;
+  generateIDPFromGap: (
+    learnerId: string,
+    targetPosition?: string,
+    approvedBy?: string,
+    assessmentId?: string
+  ) => Promise<IndividualDevelopmentPlan | void>;
   updateIDPItem: (
     learnerId: string,
     itemId: string,
@@ -79,7 +101,10 @@ interface AppContextType {
   ) => Promise<void>;
   saveIDPPlan: (plan: IndividualDevelopmentPlan) => Promise<void>;
   createAssessmentCycle: (learnerId: string, cycleName: string) => AssessmentRecord;
-  issueCertificate: (userId: string, level: 1 | 2 | 3 | 4 | 5) => void;
+  issueCertificate: (userId: string, level: 1 | 2 | 3 | 4 | 5) => Promise<Certificate | null>;
+  addUser: (userData: Partial<User>) => Promise<User | null>;
+  updateUser: (userId: string, updates: Partial<User>) => Promise<User | null>;
+  updateUserCareerPath: (pathId: string) => Promise<void>;
   selectedCourseForPlayer: Course | null;
   setSelectedCourseForPlayer: (c: Course | null) => void;
   selectedCertificateForView: Certificate | null;
@@ -93,8 +118,9 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Default user: Learner (Nguyen Minh Thu) to showcase learner experience directly, with 1-click persona switch
-  const [currentUser, setCurrentUser] = useState<User>(() => {
+  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+
+  const [currentUser, setCurrentUserState] = useState<User>(() => {
     const savedId = localStorage.getItem('fc_active_user_id');
     const found = INITIAL_USERS.find((u) => u.id === savedId);
     return found || INITIAL_USERS.find((u) => u.id === 'user_learner1') || INITIAL_USERS[0];
@@ -108,128 +134,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedCourseForPlayer, setSelectedCourseForPlayer] = useState<Course | null>(null);
   const [selectedCertificateForView, setSelectedCertificateForView] = useState<Certificate | null>(null);
   const [activeQuizTopic, setActiveQuizTopic] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Initial enrollments for demo learners
-  const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([
-    {
-      id: 'enr_1',
-      userId: 'user_learner1',
-      courseId: 'course_01',
-      progressPercent: 100,
-      completedModules: ['mod_101_1', 'mod_101_2', 'mod_101_3', 'mod_101_4'],
-      status: 'completed',
-      enrolledDate: '2024-02-18',
-      completedDate: '2024-03-01',
-      quizScore: 92,
-    },
-    {
-      id: 'enr_2',
-      userId: 'user_learner1',
-      courseId: 'course_02',
-      progressPercent: 66,
-      completedModules: ['mod_102_1', 'mod_102_2'],
-      status: 'in_progress',
-      enrolledDate: '2024-03-05',
-    },
-    {
-      id: 'enr_3',
-      userId: 'user_learner1',
-      courseId: 'course_03',
-      progressPercent: 33,
-      completedModules: ['mod_201_1'],
-      status: 'in_progress',
-      enrolledDate: '2024-04-10',
-    },
-    {
-      id: 'enr_4',
-      userId: 'user_learner2',
-      courseId: 'course_01',
-      progressPercent: 100,
-      completedModules: ['mod_101_1', 'mod_101_2', 'mod_101_3', 'mod_101_4'],
-      status: 'completed',
-      enrolledDate: '2023-08-15',
-      completedDate: '2023-09-02',
-      quizScore: 96,
-    },
-    {
-      id: 'enr_5',
-      userId: 'user_learner2',
-      courseId: 'course_04',
-      progressPercent: 100,
-      completedModules: ['mod_202_1', 'mod_202_2'],
-      status: 'completed',
-      enrolledDate: '2023-10-10',
-      completedDate: '2023-11-05',
-      quizScore: 88,
-    },
-    {
-      id: 'enr_6',
-      userId: 'user_learner2',
-      courseId: 'course_09',
-      progressPercent: 66,
-      completedModules: ['mod_501_1', 'mod_501_2'],
-      status: 'in_progress',
-      enrolledDate: '2024-01-10',
-    },
-  ]);
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
-  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([
-    {
-      id: 'qa_001',
-      userId: 'user_learner1',
-      courseId: 'course_01',
-      quizTitle: 'USALI Mastery Comprehensive Quiz',
-      score: 92,
-      totalQuestions: 10,
-      passed: true,
-      date: '2024-03-01',
-      answers: {},
+  const showToast = useCallback(
+    (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+      const id = `toast_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      setToasts((prev) => [...prev, { id, message, type }]);
+      setTimeout(() => {
+        dismissToast(id);
+      }, 4200);
     },
-    {
-      id: 'qa_002',
-      userId: 'user_learner2',
-      courseId: 'course_01',
-      quizTitle: 'USALI Mastery Comprehensive Quiz',
-      score: 96,
-      totalQuestions: 10,
-      passed: true,
-      date: '2023-09-02',
-      answers: {},
-    },
-  ]);
+    [dismissToast]
+  );
 
-  const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([
-    {
-      id: 'sub_001',
-      assignmentId: 'ojt_01',
-      userId: 'user_learner1',
-      submittedDate: '2024-03-12',
-      status: 'approved',
-      submissionNotes: 'Đã hoàn thành bảng checklist khóa sổ tháng 10 và báo cáo P&L Critique giải trình các biến động chi phí trên 5% của bộ phận Buồng và F&B.',
-      fileName: 'MinhThu_OJT_MonthEnd_Closing_Pack.xlsx',
-      fileSize: '2.4 MB',
-      score: 90,
-      feedback: 'Bài làm rất cẩn trọng, phân tích biến động chi phí buồng phòng sắc bén. Cần lưu ý thêm về trích trước chi phí hoa hồng OTA.',
-      reviewedBy: 'David Tran (Cluster FC)',
-      reviewedDate: '2024-03-15',
-    },
-    {
-      id: 'sub_002',
-      assignmentId: 'ojt_04',
-      userId: 'user_learner2',
-      submittedDate: '2024-03-18',
-      status: 'under_review',
-      submissionNotes: 'Gửi Hội đồng hồ sơ thẩm định CAPEX hệ thống Smart Energy $850k, mô hình DCF và độ nhạy NPV với giá điện tăng 7%.',
-      fileName: 'HoangNam_SmartEnergy_Capex_CAR.xlsx',
-      fileSize: '3.8 MB',
-    },
-  ]);
+  const setCurrentUser = useCallback((user: User) => {
+    setCurrentUserState(user);
+    localStorage.setItem('fc_active_user_id', user.id);
+  }, []);
 
+  // Data collections (bootstrapped from /api/bootstrap on mount)
+  const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
+  const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
   const [competencies, setCompetencies] = useState<Competency[]>(COMPETENCIES);
   const [assessments, setAssessments] = useState<AssessmentRecord[]>(INITIAL_ASSESSMENT_RECORDS);
   const [idps, setIdps] = useState<IndividualDevelopmentPlan[]>(INITIAL_IDPS);
   const [certificates, setCertificates] = useState<Certificate[]>(INITIAL_CERTIFICATES);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   const [notifications, setNotifications] = useState([
     {
@@ -260,27 +195,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('fc_language', language);
   }, [language]);
 
-  const enrollCourse = (courseId: string) => {
-    const existing = enrollments.find(
-      (e) => e.userId === currentUser.id && e.courseId === courseId
-    );
-    if (!existing) {
-      const newEnrollment: CourseEnrollment = {
-        id: `enr_${Date.now()}`,
-        userId: currentUser.id,
-        courseId,
-        progressPercent: 0,
-        completedModules: [],
-        status: 'in_progress',
-        enrolledDate: new Date().toISOString().split('T')[0],
-      };
-      setEnrollments((prev) => [newEnrollment, ...prev]);
+  const refreshAuditLogs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/audit-logs');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.auditLogs)) {
+          setAuditLogs(data.auditLogs);
+        }
+      }
+    } catch {
+      // ignore network error
+    }
+  }, []);
+
+  // Load persisted LMS data on mount
+  useEffect(() => {
+    fetch('/api/bootstrap')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (Array.isArray(data.users) && data.users.length > 0) {
+          setUsers(data.users);
+          setCurrentUserState((prev) => data.users.find((u: User) => u.id === prev.id) || prev);
+        }
+        if (Array.isArray(data.competencies) && data.competencies.length > 0) {
+          setCompetencies(data.competencies);
+        }
+        if (Array.isArray(data.enrollments)) setEnrollments(data.enrollments);
+        if (Array.isArray(data.quizAttempts)) setQuizAttempts(data.quizAttempts);
+        if (Array.isArray(data.submissions)) setSubmissions(data.submissions);
+        if (Array.isArray(data.assessments) && data.assessments.length > 0) {
+          setAssessments(data.assessments);
+        }
+        if (Array.isArray(data.idps) && data.idps.length > 0) {
+          setIdps(data.idps);
+        }
+        if (Array.isArray(data.certificates)) setCertificates(data.certificates);
+        if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
+      })
+      .catch((err) => console.warn('Bootstrap fallback to local initial data:', err));
+  }, []);
+
+  const authHeaders = useCallback(
+    () => ({
+      'Content-Type': 'application/json',
+      'x-user-id': currentUser.id,
+      'x-user-role': currentUser.role,
+    }),
+    [currentUser.id, currentUser.role]
+  );
+
+  const enrollCourse = async (courseId: string) => {
+    const existing = enrollments.find((e) => e.userId === currentUser.id && e.courseId === courseId);
+    if (existing) return;
+
+    const optimistic: CourseEnrollment = {
+      id: `enr_${Date.now()}`,
+      userId: currentUser.id,
+      courseId,
+      progressPercent: 0,
+      completedModules: [],
+      status: 'in_progress',
+      enrolledDate: new Date().toISOString().split('T')[0],
+    };
+    setEnrollments((prev) => [optimistic, ...prev]);
+
+    try {
+      const res = await fetch('/api/enrollments', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId: currentUser.id, courseId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.enrollment) {
+          setEnrollments((prev) => [
+            data.enrollment,
+            ...prev.filter((e) => !(e.userId === currentUser.id && e.courseId === courseId)),
+          ]);
+        }
+      }
+    } catch (e) {
+      console.warn('Enrollment persisted locally:', e);
     }
   };
 
-  const updateCourseProgress = (courseId: string, moduleId: string) => {
-    setEnrollments((prev) =>
-      prev.map((enr) => {
+  const updateCourseProgress = async (courseId: string, moduleId: string) => {
+    setEnrollments((prev) => {
+      const exists = prev.some((e) => e.userId === currentUser.id && e.courseId === courseId);
+      const list = exists
+        ? prev
+        : [
+            {
+              id: `enr_${Date.now()}`,
+              userId: currentUser.id,
+              courseId,
+              progressPercent: 0,
+              completedModules: [],
+              status: 'in_progress' as const,
+              enrolledDate: new Date().toISOString().split('T')[0],
+            },
+            ...prev,
+          ];
+      return list.map((enr) => {
         if (enr.userId === currentUser.id && enr.courseId === courseId) {
           const completed = enr.completedModules.includes(moduleId)
             ? enr.completedModules
@@ -297,11 +315,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           };
         }
         return enr;
-      })
-    );
+      });
+    });
+
+    try {
+      const res = await fetch('/api/enrollments/progress', {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId: currentUser.id, courseId, moduleId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.enrollment) {
+          setEnrollments((prev) =>
+            prev.map((e) => (e.userId === currentUser.id && e.courseId === courseId ? data.enrollment : e))
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Progress saved locally:', e);
+    }
   };
 
-  const submitQuizAttempt = (
+  const submitQuizAttempt = async (
     courseId: string | undefined,
     quizTitle: string,
     score: number,
@@ -331,9 +367,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
       );
     }
+
+    try {
+      await fetch('/api/quizzes/attempt', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          userId: currentUser.id,
+          courseId,
+          quizTitle,
+          score,
+          totalQuestions: total,
+          passed,
+          answers,
+        }),
+      });
+    } catch (e) {
+      console.warn('Quiz attempt saved locally:', e);
+    }
   };
 
-  const submitAssignment = (
+  const submitAssignment = async (
     assignmentId: string,
     notes: string,
     fileName?: string,
@@ -350,14 +404,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fileSize: '3.1 MB',
       score: aiResult?.score,
       feedback: aiResult?.feedback,
-      reviewedBy: aiResult ? 'AI Preliminary Evaluator (Gemini 3.8 Flash)' : undefined,
+      reviewedBy: aiResult ? 'AI Preliminary Evaluator (Gemini 4 Hydrogen)' : undefined,
       reviewedDate: aiResult ? new Date().toISOString().split('T')[0] : undefined,
       aiGraded: !!aiResult,
     };
     setSubmissions((prev) => [newSub, ...prev]);
+
+    try {
+      const res = await fetch('/api/ojt/submit', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          assignmentId,
+          userId: currentUser.id,
+          notes,
+          fileName,
+          aiResult,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.submission) {
+          setSubmissions((prev) => [data.submission, ...prev.filter((s) => s.id !== newSub.id)]);
+        }
+        refreshAuditLogs();
+      }
+    } catch (e) {
+      console.warn('OJT submission persisted locally:', e);
+    }
   };
 
-  const gradeAssignment = (
+  const gradeAssignment = async (
     submissionId: string,
     score: number,
     feedback: string,
@@ -377,9 +454,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : s
       )
     );
+
+    try {
+      const res = await fetch('/api/ojt/grade', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          submissionId,
+          score,
+          feedback,
+          status,
+          reviewedBy: currentUser.name,
+        }),
+      });
+      if (res.ok) {
+        refreshAuditLogs();
+      }
+    } catch (e) {
+      console.warn('OJT grade persisted locally:', e);
+    }
   };
 
-  const saveCompetency = (comp: Competency) => {
+  const saveCompetency = async (comp: Competency) => {
     setCompetencies((prev) => {
       const idx = prev.findIndex((c) => c.id === comp.id);
       if (idx >= 0) {
@@ -389,32 +485,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return [...prev, comp];
     });
+
+    try {
+      await fetch('/api/competencies', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(comp),
+      });
+      refreshAuditLogs();
+    } catch (e) {
+      console.warn('Competency saved locally:', e);
+    }
   };
 
-  const deleteCompetency = (id: string) => {
+  const deleteCompetency = async (id: string) => {
     setCompetencies((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await fetch(`/api/competencies/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+      refreshAuditLogs();
+    } catch (e) {
+      console.warn('Competency deleted locally:', e);
+    }
   };
-
-  // Load persisted assessments and IDPs from server API on mount
-  useEffect(() => {
-    fetch('/api/assessments')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && data.assessments && data.assessments.length > 0) {
-          setAssessments(data.assessments);
-        }
-      })
-      .catch((err) => console.log('Using initial assessment records', err));
-
-    fetch('/api/idps')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && data.idps && data.idps.length > 0) {
-          setIdps(data.idps);
-        }
-      })
-      .catch((err) => console.log('Using initial IDPs', err));
-  }, []);
 
   const saveAssessment = async (record: AssessmentRecord): Promise<AssessmentRecord> => {
     const updatedRecord = {
@@ -423,7 +518,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: record.date || new Date().toISOString().split('T')[0],
     };
 
-    // Optimistic local state update
     setAssessments((prev) => {
       const idx = prev.findIndex((a) => a.id === updatedRecord.id);
       if (idx >= 0) {
@@ -437,12 +531,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await fetch('/api/assessments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(updatedRecord),
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.record) return data.record;
+        refreshAuditLogs();
+        if (data.record) {
+          setAssessments((prev) => prev.map((a) => (a.id === data.record.id ? data.record : a)));
+          return data.record;
+        }
       }
     } catch (e) {
       console.warn('Persisted locally:', e);
@@ -465,7 +563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await fetch('/api/idps', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(plan),
       });
     } catch (e) {
@@ -476,14 +574,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const generateIDPFromGap = async (
     learnerId: string,
     targetPosition?: string,
-    approvedBy?: string
+    approvedBy?: string,
+    assessmentId?: string
   ): Promise<IndividualDevelopmentPlan | void> => {
     try {
       const res = await fetch('/api/idps/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({
           learnerId,
+          assessmentId,
           targetPosition: targetPosition || 'Assistant Financial Controller (AFC)',
           approvedBy: approvedBy || currentUser.name,
         }),
@@ -493,6 +593,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const data = await res.json();
         if (data.idp) {
           setIdps((prev) => [data.idp, ...prev.filter((i) => i.learnerId !== learnerId)]);
+          refreshAuditLogs();
           return data.idp;
         }
       }
@@ -500,8 +601,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Generating IDP locally due to network fallback', e);
     }
 
-    // Local fallback generator
-    const record = assessments.find((a) => a.learnerId === learnerId);
+    const record = assessmentId
+      ? assessments.find((a) => a.id === assessmentId)
+      : assessments.find((a) => a.learnerId === learnerId);
     if (!record) return;
 
     const items = Object.entries(record.scores)
@@ -533,7 +635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       overallGoal: `Kế hoạch hành động thu hẹp ${items.length} khoảng trống năng lực để bổ nhiệm ${targetPosition || 'AFC'}.`,
     };
 
-    saveIDPPlan(newIDP);
+    await saveIDPPlan(newIDP);
     return newIDP;
   };
 
@@ -575,7 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const learner = users.find((u) => u.id === learnerId) || currentUser;
     const initialScores: Record<string, any> = {};
 
-    competencies.slice(0, 12).forEach((comp) => {
+    competencies.forEach((comp) => {
       const targetLvl = learner.targetLevel || 4;
       initialScores[comp.code] = {
         selfLevel: 2,
@@ -589,12 +691,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newRecord: AssessmentRecord = {
       id: `asmt_${Date.now()}`,
       learnerId,
-      supervisorId: currentUser.id,
+      supervisorId: currentUser.role === 'learner' ? learner.supervisorId || 'user_fc1' : currentUser.id,
       cycle: cycleName,
       status: 'pending_self',
       date: new Date().toISOString().split('T')[0],
       scores: initialScores,
-      overallGapAverage: 1.5,
+      overallGapAverage: Math.max(0, (learner.targetLevel || 4) - 2),
       learnerReflection: '',
       supervisorComments: '',
     };
@@ -603,31 +705,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newRecord;
   };
 
-  const issueCertificate = (userId: string, level: 1 | 2 | 3 | 4 | 5) => {
-    const titles = {
-      1: { vi: 'Chứng Chỉ Cấp Độ 1: Nền Tảng Kế Toán Khách Sạn (Hospitality Finance Foundation)', en: 'Level 1: Hospitality Finance Foundation' },
-      2: { vi: 'Chứng Chỉ Cấp Độ 2: Chuyên Viên Kế Toán Khách Sạn Chuyên Nghiệp', en: 'Level 2: Hospitality Finance Professional' },
-      3: { vi: 'Chứng Chỉ Cấp Độ 3: Sẵn Sàng Trợ Lý Giám Đốc Tài Chính (AFC Ready)', en: 'Level 3: Assistant Financial Controller Ready' },
-      4: { vi: 'Chứng Chỉ Cấp Độ 4: Sẵn Sàng Giám Đốc Tài Chính Độc Lập (FC Ready)', en: 'Level 4: Independent Financial Controller Ready' },
-      5: { vi: 'Chứng Chỉ Cấp Độ 5: Đối Tác Kinh Doanh Tài Chính Chiến Lược (Strategic Finance Partner)', en: 'Level 5: Strategic Finance Business Partner' },
-    };
+  const issueCertificate = async (userId: string, level: 1 | 2 | 3 | 4 | 5): Promise<Certificate | null> => {
+    try {
+      const res = await fetch('/api/certificates/issue', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ userId, level }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Cannot issue certificate', 'error');
+        return null;
+      }
+      if (data.certificate) {
+        setCertificates((prev) => [
+          data.certificate,
+          ...prev.filter((c) => c.id !== data.certificate.id),
+        ]);
+        setSelectedCertificateForView(data.certificate);
+        refreshAuditLogs();
+        return data.certificate;
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Certificate issuance failed', 'error');
+    }
+    return null;
+  };
 
-    const newCert: Certificate = {
-      id: `cert_${Date.now()}`,
-      certificateNumber: `FCA-CERT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      userId,
-      level,
-      titleVi: titles[level].vi,
-      titleEn: titles[level].en,
-      issueDate: new Date().toISOString().split('T')[0],
-      status: 'Active',
-      verificationCode: `VERIFY-FCA-${level}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      authorizedSigner: 'David Tran & Richard Vance',
-      authorizedSignerTitle: 'Cluster Director of Finance & General Manager',
-    };
+  const addUser = async (userData: Partial<User>): Promise<User | null> => {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(userData),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to create user', 'error');
+        return null;
+      }
+      if (data.user) {
+        setUsers((prev) => [...prev, data.user]);
+        refreshAuditLogs();
+        return data.user;
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Network error creating user', 'error');
+    }
+    return null;
+  };
 
-    setCertificates((prev) => [newCert, ...prev]);
-    setSelectedCertificateForView(newCert);
+  const updateUser = async (userId: string, updates: Partial<User>): Promise<User | null> => {
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to update user', 'error');
+        return null;
+      }
+      if (data.user) {
+        setUsers((prev) => prev.map((u) => (u.id === userId ? data.user : u)));
+        if (currentUser.id === userId) {
+          setCurrentUserState(data.user);
+        }
+        refreshAuditLogs();
+        return data.user;
+      }
+    } catch (e: any) {
+      showToast(e.message || 'Network error updating user', 'error');
+    }
+    return null;
+  };
+
+  const updateUserCareerPath = async (pathId: string) => {
+    setCurrentUserState((prev) => ({ ...prev, careerPathId: pathId }));
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? { ...u, careerPathId: pathId } : u)));
+    await updateUser(currentUser.id, { careerPathId: pathId });
   };
 
   const markAllNotificationsRead = () => {
@@ -646,6 +803,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         t,
         activeTab,
         setActiveTab,
+        toasts,
+        showToast,
+        dismissToast,
         users,
         domains: COMPETENCY_DOMAINS,
         competencies,
@@ -659,6 +819,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         idps,
         certificates,
         successionCandidates: SUCCESSION_CANDIDATES,
+        auditLogs,
         enrollCourse,
         updateCourseProgress,
         submitQuizAttempt,
@@ -672,6 +833,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveIDPPlan,
         createAssessmentCycle,
         issueCertificate,
+        addUser,
+        updateUser,
+        updateUserCareerPath,
         selectedCourseForPlayer,
         setSelectedCourseForPlayer,
         selectedCertificateForView,

@@ -11,10 +11,15 @@ import {
   Crown,
   Building2,
   Check,
+  Menu,
 } from 'lucide-react';
 import { UserRole } from '../../types';
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onToggleMobileMenu?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
   const {
     currentUser,
     setCurrentUser,
@@ -39,20 +44,21 @@ export const Navbar: React.FC = () => {
     general_manager: <Crown className="w-4 h-4 text-yellow-400" />,
   };
 
-  const roleColors: Record<UserRole, string> = {
-    super_admin: 'bg-purple-900/60 text-purple-200 border-purple-500/30',
-    lnd_manager: 'bg-blue-900/60 text-blue-200 border-blue-500/30',
-    financial_controller: 'bg-emerald-900/60 text-emerald-200 border-emerald-500/30',
-    learner: 'bg-amber-900/60 text-amber-200 border-amber-500/30',
-    general_manager: 'bg-yellow-900/60 text-yellow-200 border-yellow-500/30',
-  };
-
   return (
     <header className="sticky top-0 z-40 bg-[#0A192F] text-white border-b border-slate-800 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand & Benchmark */}
           <div className="flex items-center gap-3">
+            {onToggleMobileMenu && (
+              <button
+                onClick={onToggleMobileMenu}
+                className="lg:hidden p-2 -ml-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg cursor-pointer"
+                aria-label="Open navigation menu"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-amber-500 to-amber-300 p-0.5 shadow-md flex items-center justify-center">
               <div className="w-full h-full bg-[#0A192F] rounded-[10px] flex items-center justify-center">
                 <span

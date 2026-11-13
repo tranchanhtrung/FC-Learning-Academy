@@ -32,6 +32,7 @@ export const CompetencyFrameworkView: React.FC = () => {
     t,
     currentUser,
     setSelectedCourseForPlayer,
+    showToast,
   } = useApp();
 
   const [selectedDomainId, setSelectedDomainId] = useState<string>('all');
@@ -121,11 +122,56 @@ export const CompetencyFrameworkView: React.FC = () => {
     setIsEditing(true);
   };
 
-  const handleSaveForm = (e: React.FormEvent) => {
+  const handleOpenEditModal = (comp: Competency) => {
+    setEditForm({
+      ...comp,
+      assessmentCriteria: { ...comp.assessmentCriteria },
+      expectedLevelByPosition: { ...comp.expectedLevelByPosition },
+      evidenceRequirements: [...comp.evidenceRequirements],
+      associatedCourseIds: [...comp.associatedCourseIds],
+    });
+    setSelectedCompetency(null);
+    setIsEditing(true);
+  };
+
+  const handleDeleteCompetency = async (comp: Competency) => {
+    await deleteCompetency(comp.id);
+    if (selectedCompetency?.id === comp.id) {
+      setSelectedCompetency(null);
+    }
+    showToast(
+      language === 'vi'
+        ? `Đã xóa năng lực ${comp.code} khỏi khung chuẩn.`
+        : `Deleted competency ${comp.code}.`,
+      'info'
+    );
+  };
+
+  const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editForm.nameVi || !editForm.code) return;
-    saveCompetency(editForm as Competency);
+    if (!editForm.nameVi || !editForm.code) {
+      showToast(language === 'vi' ? 'Vui lòng nhập đầy đủ mã và tên năng lực.' : 'Code and name are required.', 'error');
+      return;
+    }
+    const payload: Competency = {
+      ...(editForm as Competency),
+      nameEn: editForm.nameEn?.trim() || editForm.nameVi,
+      definitionEn: editForm.definitionEn?.trim() || editForm.definitionVi || '',
+      assessmentCriteria: {
+        level1: editForm.assessmentCriteria?.level1 || 'Understands basic principles under supervision.',
+        level2: editForm.assessmentCriteria?.level2 || 'Executes routine operations independently.',
+        level3: editForm.assessmentCriteria?.level3 || 'Analyzes variances and leads departmental reviews.',
+        level4: editForm.assessmentCriteria?.level4 || 'Acts as strategic business partner to the GM.',
+      },
+    };
+    await saveCompetency(payload);
     setIsEditing(false);
+    showToast(
+      language === 'vi'
+        ? `Đã lưu năng lực ${payload.code} thành công.`
+        : `Competency ${payload.code} saved successfully.`,
+      'success'
+    );
   };
 
   return (
@@ -385,7 +431,29 @@ export const CompetencyFrameworkView: React.FC = () => {
               </div>
             )}
 
-            <div className="flex justify-end pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+              {isAdminOrManager ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(selectedCompetency)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>{language === 'vi' ? 'Chỉnh sửa' : 'Edit'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCompetency(selectedCompetency)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{language === 'vi' ? 'Xóa' : 'Delete'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div />
+              )}
               <button
                 onClick={() => setSelectedCompetency(null)}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl cursor-pointer"
@@ -442,38 +510,137 @@ export const CompetencyFrameworkView: React.FC = () => {
               </div>
             </div>
 
-            <div className="text-xs space-y-1">
-              <label className="font-bold text-slate-700 block">Tên năng lực (Tiếng Việt)</label>
-              <input
-                type="text"
-                required
-                value={editForm.nameVi || ''}
-                onChange={(e) => setEditForm({ ...editForm, nameVi: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Tên năng lực (Tiếng Việt)</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.nameVi || ''}
+                  onChange={(e) => setEditForm({ ...editForm, nameVi: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Competency Name (English)</label>
+                <input
+                  type="text"
+                  value={editForm.nameEn || ''}
+                  onChange={(e) => setEditForm({ ...editForm, nameEn: e.target.value })}
+                  placeholder="Optional English title"
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
             </div>
 
-            <div className="text-xs space-y-1">
-              <label className="font-bold text-slate-700 block">Định nghĩa chi tiết</label>
-              <textarea
-                rows={3}
-                value={editForm.definitionVi || ''}
-                onChange={(e) => setEditForm({ ...editForm, definitionVi: e.target.value })}
-                className="w-full px-3 py-2 border rounded-lg"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Định nghĩa chi tiết (Tiếng Việt)</label>
+                <textarea
+                  rows={2}
+                  value={editForm.definitionVi || ''}
+                  onChange={(e) => setEditForm({ ...editForm, definitionVi: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Definition (English)</label>
+                <textarea
+                  rows={2}
+                  value={editForm.definitionEn || ''}
+                  onChange={(e) => setEditForm({ ...editForm, definitionEn: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs pt-2 border-t border-slate-100">
+              <label className="font-bold text-slate-700 block">
+                {language === 'vi' ? 'Tiêu chí Rubric 4 cấp độ (L1 – L4)' : '4-Level Rubric Criteria (L1 – L4)'}
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="Level 1 (Foundation) criteria..."
+                  value={editForm.assessmentCriteria?.level1 || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      assessmentCriteria: {
+                        level1: e.target.value,
+                        level2: editForm.assessmentCriteria?.level2 || '',
+                        level3: editForm.assessmentCriteria?.level3 || '',
+                        level4: editForm.assessmentCriteria?.level4 || '',
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-1.5 border rounded-lg"
+                />
+                <input
+                  type="text"
+                  placeholder="Level 2 (Operational) criteria..."
+                  value={editForm.assessmentCriteria?.level2 || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      assessmentCriteria: {
+                        level1: editForm.assessmentCriteria?.level1 || '',
+                        level2: e.target.value,
+                        level3: editForm.assessmentCriteria?.level3 || '',
+                        level4: editForm.assessmentCriteria?.level4 || '',
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-1.5 border rounded-lg"
+                />
+                <input
+                  type="text"
+                  placeholder="Level 3 (Advanced) criteria..."
+                  value={editForm.assessmentCriteria?.level3 || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      assessmentCriteria: {
+                        level1: editForm.assessmentCriteria?.level1 || '',
+                        level2: editForm.assessmentCriteria?.level2 || '',
+                        level3: e.target.value,
+                        level4: editForm.assessmentCriteria?.level4 || '',
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-1.5 border rounded-lg"
+                />
+                <input
+                  type="text"
+                  placeholder="Level 4 (Strategic FC) criteria..."
+                  value={editForm.assessmentCriteria?.level4 || ''}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      assessmentCriteria: {
+                        level1: editForm.assessmentCriteria?.level1 || '',
+                        level2: editForm.assessmentCriteria?.level2 || '',
+                        level3: editForm.assessmentCriteria?.level3 || '',
+                        level4: e.target.value,
+                      },
+                    })
+                  }
+                  className="w-full px-3 py-1.5 border rounded-lg"
+                />
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 text-xs">
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-4 py-2 border rounded-xl font-bold"
+                className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
               >
                 {t.common.cancel}
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 font-bold text-slate-950 rounded-xl cursor-pointer"
               >
                 {t.common.save}
               </button>

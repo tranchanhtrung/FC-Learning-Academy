@@ -17,14 +17,32 @@ export const GMDashboard: React.FC = () => {
   const {
     currentUser,
     successionCandidates,
+    assessments,
     users,
     language,
-    t,
     setActiveTab,
   } = useApp();
 
-  const readyCandidate = successionCandidates.find((c) => c.readiness === 'Ready Now');
+  const readyNowCandidates = successionCandidates.filter((c) => c.readiness === 'Ready Now');
+  const readyCandidate = readyNowCandidates[0];
   const readyUser = users.find((u) => u.id === readyCandidate?.userId);
+
+  const avgCompetencyScore =
+    successionCandidates.length > 0
+      ? (
+          successionCandidates.reduce((sum, c) => sum + c.competencyScorePercent, 0) /
+          successionCandidates.length
+        ).toFixed(1)
+      : assessments.length > 0
+      ? (
+          (1 -
+            assessments.reduce((sum, a) => sum + (a.overallGapAverage || 0), 0) /
+              (assessments.length * 4)) *
+          100
+        ).toFixed(1)
+      : '84.0';
+
+  const benchCoveragePct = successionCandidates.length > 0 ? Math.min(100, Math.round((readyNowCandidates.length / 1) * 100)) : 0;
 
   return (
     <div className="space-y-6">
@@ -76,10 +94,10 @@ export const GMDashboard: React.FC = () => {
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
             {language === 'vi' ? 'Chỉ số năng lực tài chính' : 'Finance Capability Index'}
           </span>
-          <div className="text-2xl font-black text-slate-900">84.2%</div>
+          <div className="text-2xl font-black text-slate-900">{avgCompetencyScore}%</div>
           <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>+6.4% {language === 'vi' ? 'sau 6 tháng đào tạo' : 'over 6 months'}</span>
+            <span>{successionCandidates.length} {language === 'vi' ? 'nhân sự nòng cốt' : 'key bench talent'}</span>
           </p>
         </div>
 
@@ -88,9 +106,9 @@ export const GMDashboard: React.FC = () => {
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
             {language === 'vi' ? 'Sẵn sàng bổ nhiệm FC' : 'FC Succession Bench'}
           </span>
-          <div className="text-2xl font-black text-emerald-600">100%</div>
+          <div className="text-2xl font-black text-emerald-600">{benchCoveragePct}%</div>
           <p className="text-[11px] text-slate-500">
-            {language === 'vi' ? '1 Ứng viên Ready Now (AFC)' : '1 Ready Now Candidate (AFC)'}
+            {readyNowCandidates.length} {language === 'vi' ? 'Ứng viên Ready Now (AFC)' : 'Ready Now Candidate (AFC)'}
           </p>
         </div>
 
