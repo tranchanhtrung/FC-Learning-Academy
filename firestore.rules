@@ -23,7 +23,10 @@ service cloud.firestore {
     }
 
     function isBootstrappedAdmin() {
-      return isVerifiedUser() && request.auth.token.email == 'tranchanhtrung@gmail.com';
+      return isVerifiedUser()
+        && ('email' in request.auth.token)
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'tranchanhtrung@gmail.com';
     }
 
     function isAdmin() {
@@ -132,7 +135,7 @@ service cloud.firestore {
         && data.durationHours is number && data.durationHours > 0
         && data.passingScore is number && data.passingScore >= 0 && data.passingScore <= 100
         && data.assessmentWeightQuiz is number && data.assessmentWeightPractical is number
-        && (data.assessmentWeightQuiz + data.assessmentWeightPractical == 100)
+        && (data.assessmentWeightQuiz + data.assessmentWeightPractical >= 99.9 && data.assessmentWeightQuiz + data.assessmentWeightPractical <= 100.1)
         && (!('deliveryMode' in data) || (data.deliveryMode is string && data.deliveryMode.size() <= 100))
         && data.importedAt is string && data.importedAt.size() <= 64
         && data.importBatchId is string && data.importBatchId.size() <= 128;
@@ -221,15 +224,16 @@ service cloud.firestore {
 
     function isValidImportLog(data) {
       return data.keys().hasAll(['id', 'fileName', 'performedByUid', 'duplicateStrategy', 'status', 'totalRowsDetected', 'validRecords', 'invalidRecords', 'createdCount', 'skippedCount', 'updatedCount', 'failedCount', 'startedAt', 'completedAt'])
-        && data.keys().hasOnly(['id', 'fileName', 'performedByUid', 'performedByEmail', 'performedByName', 'performedByRole', 'duplicateStrategy', 'selectedSheets', 'status', 'totalRowsDetected', 'validRecords', 'invalidRecords', 'createdCount', 'skippedCount', 'updatedCount', 'failedCount', 'errorCount', 'warningCount', 'verificationPassed', 'startedAt', 'completedAt', 'sheetSummaries'])
+        && data.keys().hasOnly(['id', 'datasetType', 'fileName', 'performedByUid', 'performedByEmail', 'performedByName', 'performedByRole', 'duplicateStrategy', 'selectedSheets', 'status', 'totalRowsDetected', 'validRecords', 'invalidRecords', 'createdCount', 'skippedCount', 'updatedCount', 'failedCount', 'errorCount', 'warningCount', 'verificationPassed', 'startedAt', 'completedAt', 'sheetSummaries'])
         && isValidId(data.id)
+        && (!('datasetType' in data) || data.datasetType in ['academy_2027', 'simulator_starter'])
         && data.fileName is string && data.fileName.size() >= 1 && data.fileName.size() <= 255
         && data.performedByUid == request.auth.uid
         && (!('performedByEmail' in data) || (data.performedByEmail is string && data.performedByEmail.size() <= 200))
         && (!('performedByName' in data) || (data.performedByName is string && data.performedByName.size() <= 200))
         && (!('performedByRole' in data) || (data.performedByRole is string && data.performedByRole.size() <= 64))
         && data.duplicateStrategy in ['skip', 'update', 'reject']
-        && (!('selectedSheets' in data) || (data.selectedSheets is list && data.selectedSheets.size() <= 15))
+        && (!('selectedSheets' in data) || (data.selectedSheets is list && data.selectedSheets.size() <= 20))
         && data.status in ['completed', 'partial_failure', 'failed', 'demo_mode']
         && data.totalRowsDetected is number && data.totalRowsDetected >= 0
         && data.validRecords is number && data.validRecords >= 0
@@ -243,13 +247,12 @@ service cloud.firestore {
         && (!('verificationPassed' in data) || data.verificationPassed is bool)
         && data.startedAt is string && data.startedAt.size() <= 64
         && data.completedAt is string && data.completedAt.size() <= 64
-        && (!('sheetSummaries' in data) || (data.sheetSummaries is list && data.sheetSummaries.size() <= 15));
+        && (!('sheetSummaries' in data) || (data.sheetSummaries is list && data.sheetSummaries.size() <= 20));
     }
 
     // 1. competencyDomains
     match /competencyDomains/{domainId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(domainId) && isAdmin() && isValidCompetencyDomain(incoming()) && incoming().id == domainId;
       allow update: if isValidId(domainId) && isAdmin() && isValidCompetencyDomain(incoming()) && incoming().id == resource.data.id;
       allow delete: if isValidId(domainId) && isAdmin();
@@ -257,8 +260,7 @@ service cloud.firestore {
 
     // 2. proficiencyLevels
     match /proficiencyLevels/{levelId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(levelId) && isAdmin() && isValidProficiencyLevel(incoming()) && incoming().id == levelId;
       allow update: if isValidId(levelId) && isAdmin() && isValidProficiencyLevel(incoming()) && incoming().id == resource.data.id;
       allow delete: if isValidId(levelId) && isAdmin();
@@ -266,8 +268,7 @@ service cloud.firestore {
 
     // 3. competencies (FK -> competencyDomains)
     match /competencies/{competencyId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(competencyId) && isAdmin() && isValidCompetency(incoming()) && incoming().id == competencyId
         && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId));
       allow update: if isValidId(competencyId) && isAdmin() && isValidCompetency(incoming()) && incoming().id == resource.data.id
@@ -277,8 +278,7 @@ service cloud.firestore {
 
     // 4. competencyRubrics (FK -> competencies)
     match /competencyRubrics/{rubricId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(rubricId) && isAdmin() && isValidCompetencyRubric(incoming()) && incoming().id == rubricId
         && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
       allow update: if isValidId(rubricId) && isAdmin() && isValidCompetencyRubric(incoming()) && incoming().id == resource.data.id
@@ -288,8 +288,7 @@ service cloud.firestore {
 
     // 5. courses (FK -> competencyDomains, competencies)
     match /courses/{courseId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(courseId) && isAdmin() && isValidCourse(incoming()) && incoming().id == courseId
         && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
         && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
@@ -301,8 +300,7 @@ service cloud.firestore {
 
     // 6. questionBank (FK -> courses, competencies)
     match /questionBank/{questionId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(questionId) && isAdmin() && isValidQuestion(incoming()) && incoming().id == questionId
         && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
         && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
@@ -314,8 +312,7 @@ service cloud.firestore {
 
     // 7. practicalAssignments (FK -> courses, competencies)
     match /practicalAssignments/{assignmentId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(assignmentId) && isAdmin() && isValidPracticalAssignment(incoming()) && incoming().id == assignmentId
         && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
         && exists(/databases/$(database)/documents/competencies/$(incoming().competencyId));
@@ -327,8 +324,7 @@ service cloud.firestore {
 
     // 8. annualTrainingMatrix (FK -> competencyDomains, courses, competencies)
     match /annualTrainingMatrix/{matrixId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(matrixId) && isAdmin() && isValidAnnualTrainingMatrixEntry(incoming()) && incoming().id == matrixId
         && exists(/databases/$(database)/documents/competencyDomains/$(incoming().domainId))
         && exists(/databases/$(database)/documents/courses/$(incoming().courseId))
@@ -342,8 +338,7 @@ service cloud.firestore {
 
     // 9. careerPaths
     match /careerPaths/{pathId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
+      allow get, list: if isVerifiedUser();
       allow create: if isValidId(pathId) && isAdmin() && isValidCareerPath(incoming()) && incoming().id == pathId;
       allow update: if isValidId(pathId) && isAdmin() && isValidCareerPath(incoming()) && incoming().id == resource.data.id;
       allow delete: if isValidId(pathId) && isAdmin();
@@ -589,6 +584,427 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create, update: if isValidId(configId) && isAdmin() && isValidTalentConfig(incoming()) && incoming().id == configId;
       allow delete: if false;
+    }
+
+    // ========================================================================
+    // FC BUSINESS PARTNER SIMULATOR & TRANSACTIONAL LMS RULES
+    // ========================================================================
+
+    function isValidHotelSimulationProfile(data) {
+      return data.keys().hasAll(['id', 'hotelCode', 'hotelName', 'brandTier', 'city', 'roomsAvailable', 'totalKeys', 'fcPositionLevel', 'currency', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'hotelCode', 'hotelName', 'brandTier', 'city', 'roomsAvailable', 'totalKeys', 'fcPositionLevel', 'currency', 'importedAt', 'importBatchId'])
+        && isValidId(data.id)
+        && data.hotelCode is string && data.hotelCode.size() >= 1 && data.hotelCode.size() <= 32
+        && data.hotelName is string && data.hotelName.size() >= 1 && data.hotelName.size() <= 200
+        && data.roomsAvailable is number && data.roomsAvailable > 0
+        && data.totalKeys is number && data.totalKeys > 0
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidSimulationScenario(data) {
+      return data.keys().hasAll(['id', 'scenarioCode', 'hotelId', 'titleEn', 'titleVi', 'summaryEn', 'summaryVi', 'difficultyLevel', 'targetRole', 'periodLabel', 'status', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly([
+          'id', 'scenarioCode', 'hotelId', 'titleEn', 'titleVi', 'summaryEn', 'summaryVi',
+          'category', 'difficultyLabel', 'difficultyLevel', 'targetRole', 'recommendedPositionIds',
+          'competencyIds', 'periodLabel', 'estimatedDurationMinutes', 'learningObjectivesEn',
+          'learningObjectivesVi', 'requiredKnowledgeEn', 'requiredKnowledgeVi', 'expectedOutputsEn',
+          'expectedOutputsVi', 'usaliReferenceLabel', 'scenarioKind', 'defaultPersona',
+          'languageOptions', 'datasetVersion', 'versionNumber', 'isActive', 'status',
+          'validatedBy', 'validatedAt', 'publishedBy', 'publishedAt',
+          'unpublishedBy', 'unpublishedAt', 'archivedBy', 'archivedAt',
+          'sourceImportJobId', 'importedAt', 'importBatchId', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.hotelId)
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 250
+        && data.difficultyLevel is number && data.difficultyLevel >= 1 && data.difficultyLevel <= 4
+        && data.status in ['Draft', 'Validated', 'Published', 'Archived']
+        && (!('isActive' in data) || data.isActive is bool)
+        && (!('versionNumber' in data) || data.versionNumber is number)
+        && (!('publishedBy' in data) || (data.publishedBy is string && data.publishedBy.size() <= 150))
+        && (!('publishedAt' in data) || (data.publishedAt is string && data.publishedAt.size() <= 64))
+        && data.importedAt is string && data.importedAt.size() <= 64
+        && data.importBatchId is string && data.importBatchId.size() <= 128;
+    }
+
+    function isValidSimulationCompetencyMapping(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'competencyId', 'targetProficiencyLevel', 'weightPercent', 'isPrimary', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly([
+          'id', 'scenarioId', 'competencyId', 'workbookCompetencyId', 'competencyCode',
+          'competencyNameEn', 'domainId', 'targetProficiencyLevel', 'weightPercent', 'isPrimary',
+          'importedAt', 'importBatchId'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.scenarioId)
+        && isValidId(data.competencyId)
+        && data.targetProficiencyLevel is number && data.targetProficiencyLevel >= 1 && data.targetProficiencyLevel <= 4
+        && data.weightPercent is number && data.weightPercent >= 0 && data.weightPercent <= 100
+        && data.isPrimary is bool;
+    }
+
+    function isValidSimulationFinancialRecord(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'periodLabel', 'departmentCode', 'departmentName', 'departmentalRevenue', 'departmentalExpenses', 'departmentalProfit', 'totalOperatingRevenue', 'totalDepartmentalExpenses', 'totalUndistributedExpenses', 'gop', 'gopMarginPct', 'roomsRevenue', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly([
+          'id', 'scenarioId', 'hotelProfileId', 'periodLabel', 'version', 'departmentCode', 'departmentName',
+          'unit', 'metricType', 'departmentalRevenue', 'departmentalExpenses', 'departmentalProfit',
+          'totalOperatingRevenue', 'totalDepartmentalExpenses', 'totalUndistributedExpenses', 'gop',
+          'gopMarginPct', 'roomsRevenue', 'budgetGop', 'varianceAmount', 'variancePct',
+          'varianceClassification', 'importedAt', 'importBatchId'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.scenarioId)
+        && data.departmentalRevenue is number
+        && data.departmentalExpenses is number
+        && data.departmentalProfit is number
+        && data.totalOperatingRevenue is number
+        && data.totalDepartmentalExpenses is number
+        && data.totalUndistributedExpenses is number
+        && data.gop is number
+        && data.gopMarginPct is number;
+    }
+
+    function isValidSimulationOperationalRecord(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'periodLabel', 'roomsAvailable', 'roomsSold', 'roomsRevenue', 'occupancyPct', 'adr', 'revpar', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly([
+          'id', 'scenarioId', 'hotelProfileId', 'periodLabel', 'version', 'roomsAvailable',
+          'roomsSold', 'roomsRevenue', 'occupancyPct', 'adr', 'revpar', 'fbCovers',
+          'laborHours', 'overtimeHours', 'gssScore', 'importedAt', 'importBatchId'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.scenarioId)
+        && data.roomsAvailable is number && data.roomsAvailable > 0
+        && data.roomsSold is number && data.roomsSold >= 0
+        && data.roomsRevenue is number
+        && data.occupancyPct is number
+        && data.adr is number
+        && data.revpar is number;
+    }
+
+    function isValidSimulationBusinessChallenge(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'challengeCode', 'titleEn', 'titleVi', 'descriptionEn', 'descriptionVi', 'severity', 'impactArea', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'challengeCode', 'titleEn', 'titleVi', 'descriptionEn', 'descriptionVi', 'severity', 'impactArea', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId)
+        && data.severity in ['Low', 'Medium', 'High', 'Critical'];
+    }
+
+    function isValidSimulationTask(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'taskOrder', 'titleEn', 'titleVi', 'instructionsEn', 'instructionsVi', 'deliverableType', 'maxPoints', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'taskId', 'taskOrder', 'titleEn', 'titleVi', 'instructionsEn', 'instructionsVi', 'deliverableType', 'maxPoints', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId)
+        && data.taskOrder is number && data.maxPoints is number;
+    }
+
+    function isValidSimulationReferenceAnalysis(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'topic', 'rootCauseEn', 'rootCauseVi', 'benchmarkFormula', 'recommendedActionEn', 'recommendedActionVi', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'topic', 'rootCauseEn', 'rootCauseVi', 'benchmarkFormula', 'recommendedActionEn', 'recommendedActionVi', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId);
+    }
+
+    function isValidSimulationDecisionOption(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'optionCode', 'titleEn', 'titleVi', 'financialImpactEstimate', 'gopImpactPct', 'riskLevel', 'isOptimal', 'rationaleEn', 'rationaleVi', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'optionCode', 'titleEn', 'titleVi', 'financialImpactEstimate', 'gopImpactPct', 'riskLevel', 'isOptimal', 'rationaleEn', 'rationaleVi', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId)
+        && data.riskLevel in ['Low', 'Medium', 'High']
+        && data.isOptimal is bool;
+    }
+
+    function isValidSimulationRoleplayPrompt(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'turnOrder', 'speakerRole', 'promptEn', 'promptVi', 'expectedFocusPoints', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'roleplayId', 'turnOrder', 'speakerRole', 'promptEn', 'promptVi', 'expectedFocusPoints', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId)
+        && data.turnOrder is number;
+    }
+
+    function isValidSimulationEvaluationRubric(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'criterionCode', 'criterionNameEn', 'criterionNameVi', 'weightPercent', 'maxScore', 'passingScore', 'importedAt', 'importBatchId'])
+        && data.keys().hasOnly(['id', 'scenarioId', 'criterionCode', 'criterionNameEn', 'criterionNameVi', 'weightPercent', 'maxScore', 'passingScore', 'importedAt', 'importBatchId'])
+        && isValidId(data.id) && isValidId(data.scenarioId)
+        && data.weightPercent is number && data.weightPercent > 0 && data.weightPercent <= 100
+        && data.maxScore is number && data.passingScore is number;
+    }
+
+    function isValidSimulationSession(data) {
+      return data.keys().hasAll(['id', 'scenarioId', 'scenarioTitle', 'employeeId', 'employeeUid', 'selectedOptionIds', 'learnerAnalysis', 'conversation', 'status', 'startedAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'scenarioId', 'scenarioTitle', 'hotelSimulationId', 'employeeId', 'employeeUid',
+          'language', 'difficulty', 'currentStep', 'datasetVersion', 'versionNumber', 'datasetSnapshot',
+          'analysisNotes', 'analysisWorkspace', 'decisionWorkspace', 'executiveReport',
+          'roleplayConfig', 'selectedOptionIds', 'learnerAnalysis', 'conversation', 'evaluation',
+          'evaluationId', 'finalScore', 'competencyResults', 'feedbackSummary', 'evidenceUrl',
+          'status', 'startedAt', 'submittedAt', 'completedAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.scenarioId)
+        && isValidId(data.employeeId)
+        && isValidId(data.employeeUid)
+        && data.selectedOptionIds is list && data.selectedOptionIds.size() <= 20
+        && data.learnerAnalysis is string && data.learnerAnalysis.size() <= 8000
+        && data.conversation is list && data.conversation.size() <= 60
+        && data.status in ['in_progress', 'completed']
+        && (!('evidenceUrl' in data) || (data.evidenceUrl is string && data.evidenceUrl.size() <= 1000))
+        && (!('completedAt' in data) || (data.completedAt is string && data.completedAt.size() <= 64));
+    }
+
+    // 19. hotelSimulationProfiles
+    match /hotelSimulationProfiles/{hotelId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(hotelId) && isAdmin() && isValidHotelSimulationProfile(incoming()) && incoming().id == hotelId;
+      allow update: if isValidId(hotelId) && isAdmin() && isValidHotelSimulationProfile(incoming()) && incoming().id == resource.data.id;
+      allow delete: if isValidId(hotelId) && isAdmin();
+    }
+
+    // 20. simulationScenarios (Published & active only for non-admin learners)
+    match /simulationScenarios/{scenarioId} {
+      allow get, list: if isAdmin() || (
+        isVerifiedUser()
+        && resource.data.status == 'Published'
+        && (!('isActive' in resource.data) || resource.data.isActive == true)
+      );
+      allow create: if isValidId(scenarioId) && isAdmin() && isValidSimulationScenario(incoming()) && incoming().id == scenarioId
+        && exists(/databases/$(database)/documents/hotelSimulationProfiles/$(incoming().hotelId));
+      allow update: if isValidId(scenarioId) && isAdmin() && isValidSimulationScenario(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/hotelSimulationProfiles/$(incoming().hotelId));
+      allow delete: if isValidId(scenarioId) && isAdmin();
+    }
+
+    // 21. simulationCompetencyMappings
+    match /simulationCompetencyMappings/{mappingId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(mappingId) && isAdmin() && isValidSimulationCompetencyMapping(incoming()) && incoming().id == mappingId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(mappingId) && isAdmin() && isValidSimulationCompetencyMapping(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(mappingId) && isAdmin();
+    }
+
+    // 22. simulationFinancialData
+    match /simulationFinancialData/{financialId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(financialId) && isAdmin() && isValidSimulationFinancialRecord(incoming()) && incoming().id == financialId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(financialId) && isAdmin() && isValidSimulationFinancialRecord(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(financialId) && isAdmin();
+    }
+
+    // 23. simulationOperationalData
+    match /simulationOperationalData/{operationalId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(operationalId) && isAdmin() && isValidSimulationOperationalRecord(incoming()) && incoming().id == operationalId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(operationalId) && isAdmin() && isValidSimulationOperationalRecord(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(operationalId) && isAdmin();
+    }
+
+    // 24. simulationBusinessChallenges
+    match /simulationBusinessChallenges/{challengeId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(challengeId) && isAdmin() && isValidSimulationBusinessChallenge(incoming()) && incoming().id == challengeId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(challengeId) && isAdmin() && isValidSimulationBusinessChallenge(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(challengeId) && isAdmin();
+    }
+
+    // 25. simulationTasks
+    match /simulationTasks/{taskId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(taskId) && isAdmin() && isValidSimulationTask(incoming()) && incoming().id == taskId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(taskId) && isAdmin() && isValidSimulationTask(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(taskId) && isAdmin();
+    }
+
+    // 26. simulationReferenceAnalysis (Answer key restricted to Admins/Assessors ONLY)
+    match /simulationReferenceAnalysis/{analysisId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(analysisId) && isAdmin() && isValidSimulationReferenceAnalysis(incoming()) && incoming().id == analysisId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(analysisId) && isAdmin() && isValidSimulationReferenceAnalysis(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(analysisId) && isAdmin();
+    }
+
+    // 27. simulationDecisionOptions
+    match /simulationDecisionOptions/{optionId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(optionId) && isAdmin() && isValidSimulationDecisionOption(incoming()) && incoming().id == optionId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(optionId) && isAdmin() && isValidSimulationDecisionOption(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(optionId) && isAdmin();
+    }
+
+    // 28. simulationRoleplayPrompts
+    match /simulationRoleplayPrompts/{promptId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(promptId) && isAdmin() && isValidSimulationRoleplayPrompt(incoming()) && incoming().id == promptId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(promptId) && isAdmin() && isValidSimulationRoleplayPrompt(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(promptId) && isAdmin();
+    }
+
+    // 29. simulationEvaluationRubrics
+    match /simulationEvaluationRubrics/{rubricId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(rubricId) && isAdmin() && isValidSimulationEvaluationRubric(incoming()) && incoming().id == rubricId
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow update: if isValidId(rubricId) && isAdmin() && isValidSimulationEvaluationRubric(incoming()) && incoming().id == resource.data.id
+        && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId));
+      allow delete: if isValidId(rubricId) && isAdmin();
+    }
+
+    // 30. simulationSessions (Owner/Admin isolated, immutable once completed; completed history readable even if scenario later archived)
+    match /simulationSessions/{sessionId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(sessionId) && isVerifiedUser() && isValidSimulationSession(incoming())
+        && incoming().id == sessionId
+        && (isAdmin() || (
+          incoming().employeeUid == request.auth.uid
+          && exists(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId))
+          && get(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId)).data.status == 'Published'
+          && (!('isActive' in get(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId)).data)
+              || get(/databases/$(database)/documents/simulationScenarios/$(incoming().scenarioId)).data.isActive == true)
+        ));
+      allow update: if isValidId(sessionId) && isVerifiedUser() && isValidSimulationSession(incoming())
+        && resource.data.status != 'completed'
+        && incoming().id == resource.data.id
+        && incoming().employeeUid == resource.data.employeeUid
+        && (isAdmin() || resource.data.employeeUid == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // 30b. simulationDatasets (Versioned USALI dataset snapshots)
+    match /simulationDatasets/{datasetId} {
+      allow get, list: if isVerifiedUser();
+      allow create, update: if isValidId(datasetId) && isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 30c. simulationResponses (Structured learner workspace drafts & submissions)
+    match /simulationResponses/{responseId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(responseId) && isVerifiedUser()
+        && incoming().id == responseId
+        && (isAdmin() || incoming().employeeUid == request.auth.uid);
+      allow update: if isValidId(responseId) && isVerifiedUser()
+        && incoming().id == resource.data.id
+        && incoming().employeeUid == resource.data.employeeUid
+        && (isAdmin() || resource.data.employeeUid == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // 30d. simulationConversations (GM Executive Meeting & AI Coach transcripts)
+    match /simulationConversations/{conversationId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(conversationId) && isVerifiedUser()
+        && incoming().id == conversationId
+        && (isAdmin() || incoming().employeeUid == request.auth.uid);
+      allow update: if isValidId(conversationId) && isVerifiedUser()
+        && incoming().id == resource.data.id
+        && incoming().employeeUid == resource.data.employeeUid
+        && (isAdmin() || resource.data.employeeUid == request.auth.uid);
+      allow delete: if false;
+    }
+
+    // 30e. simulationEvaluations (Evaluations & human assessor score overrides)
+    match /simulationEvaluations/{evaluationId} {
+      allow get, list: if isVerifiedUser() && (resource.data.learnerUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(evaluationId) && isVerifiedUser()
+        && incoming().id == evaluationId
+        && incoming().totalScore is number && incoming().totalScore >= 0 && incoming().totalScore <= 100
+        && (isAdmin() || (incoming().learnerUid == request.auth.uid && incoming().assessorType == 'deterministic_plus_ai'));
+      allow update: if isValidId(evaluationId) && isAdmin()
+        && incoming().id == resource.data.id
+        && incoming().sessionId == resource.data.sessionId;
+      allow delete: if false;
+    }
+
+    // 30f. simulationAssignments (Admin/L&D/FC scenario assignments)
+    match /simulationAssignments/{assignmentId} {
+      allow get, list: if isVerifiedUser() && (resource.data.learnerId == request.auth.uid || isAdmin());
+      allow create, update: if isValidId(assignmentId) && isAdmin() && incoming().id == assignmentId;
+      allow delete: if isAdmin();
+    }
+
+    // 30g. simulationAuditLogs (Immutable simulator audit trail)
+    match /simulationAuditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) && isVerifiedUser() && incoming().id == logId
+        && (isAdmin() || incoming().actorId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // 31. enrollments (Transactional learner course progress)
+    match /enrollments/{enrollmentId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create, update: if isValidId(enrollmentId) && isVerifiedUser()
+        && incoming().id == enrollmentId
+        && isValidId(incoming().employeeUid)
+        && isValidId(incoming().courseId)
+        && incoming().progressPercent is number && incoming().progressPercent >= 0 && incoming().progressPercent <= 100
+        && (isAdmin() || incoming().employeeUid == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // 32. quizAttempts (Immutable quiz records)
+    match /quizAttempts/{attemptId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(attemptId) && isVerifiedUser()
+        && incoming().id == attemptId
+        && isValidId(incoming().employeeUid)
+        && incoming().score is number && incoming().score >= 0 && incoming().score <= 100
+        && incoming().passed is bool
+        && (isAdmin() || incoming().employeeUid == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // 33. practicalSubmissions (OJT submissions & FC grading)
+    match /practicalSubmissions/{submissionId} {
+      allow get, list: if isVerifiedUser() && (resource.data.employeeUid == request.auth.uid || isAdmin());
+      allow create: if isValidId(submissionId) && isVerifiedUser()
+        && incoming().id == submissionId
+        && isValidId(incoming().employeeUid)
+        && isValidId(incoming().assignmentId)
+        && (isAdmin() || (incoming().employeeUid == request.auth.uid && incoming().status in ['draft', 'submitted', 'approved']));
+      allow update: if isValidId(submissionId) && isVerifiedUser()
+        && incoming().id == resource.data.id
+        && incoming().employeeUid == resource.data.employeeUid
+        && (isAdmin() || (resource.data.employeeUid == request.auth.uid && incoming().status in ['draft', 'submitted', 'approved']));
+      allow delete: if isAdmin();
+    }
+
+    // 34. scenarioImportJobs (Scenario Data Import Center jobs - Admin/L&D only)
+    match /scenarioImportJobs/{jobId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(jobId) && isAdmin() && incoming().id == jobId;
+      allow update: if isValidId(jobId) && isAdmin() && incoming().id == resource.data.id;
+      allow delete: if false;
+    }
+
+    // 35. scenarioImportErrors (Immutable import row error diagnostics - Admin/L&D only)
+    match /scenarioImportErrors/{errorId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(errorId) && isAdmin() && incoming().id == errorId;
+      allow update, delete: if false;
+    }
+
+    // 36. scenarioVersions (Immutable scenario version history - Admin/Supervisor)
+    match /scenarioVersions/{versionId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(versionId) && isAdmin() && incoming().id == versionId;
+      allow update, delete: if false;
+    }
+
+    // 37. scenarioCompetencyMappings (Approved workbook competency ID lookup table)
+    match /scenarioCompetencyMappings/{mappingId} {
+      allow get, list: if isVerifiedUser();
+      allow create, update: if isValidId(mappingId) && isAdmin() && incoming().id == mappingId;
+      allow delete: if isValidId(mappingId) && isAdmin();
     }
   }
 }

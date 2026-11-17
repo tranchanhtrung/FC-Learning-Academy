@@ -24,9 +24,9 @@ interface RadarChartProps {
 export const RadarChart: React.FC<RadarChartProps> = ({
   data,
   size = 360,
-  targetLabel = 'Mục tiêu FC (Target)',
-  currentLabel = 'Hiện tại (Assessed)',
-  secondaryLabel = 'Tự đánh giá (Self)',
+  targetLabel = 'Target Profile',
+  currentLabel = 'Current Assessed',
+  secondaryLabel = 'Self-Assessed',
   showSecondary = false,
   currentColor = '#2563EB',
   targetColor = '#D4AF37',
@@ -218,7 +218,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({
               strokeWidth="2"
               className="transition-all duration-300 hover:r-6 cursor-pointer"
             >
-              <title>{`${d.label}: Đạt L${d.current} / Mục tiêu L${d.target}`}</title>
+              <title>{`${d.label}: ${currentLabel} L${d.current} / ${targetLabel} L${d.target}`}</title>
             </circle>
           );
         })}

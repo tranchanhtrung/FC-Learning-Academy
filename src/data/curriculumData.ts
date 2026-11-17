@@ -1,6 +1,7 @@
 import { Course, LearningPath, CourseMaterial, CourseCaseStudy } from '../types';
+import { COURSE_SYLLABI_BY_CODE } from './courseSyllabi';
 
-export const COMPREHENSIVE_COURSES: Course[] = [
+const RAW_COMPREHENSIVE_COURSES: Course[] = [
   // =========================================================================
   // DOMAIN 1: FINANCIAL ACCOUNTING & REPORTING (FAR)
   // =========================================================================
@@ -16,6 +17,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     instructorName: 'David Tran, FC',
     instructorTitle: 'Cluster Director of Finance, Luxury Collection',
     prerequisites: ['Kế toán tài chính cơ bản', 'Nguyên lý kế toán doanh nghiệp'],
+    prerequisitesEn: ['Basic Financial Accounting', 'Corporate Accounting Principles'],
     learningObjectivesVi: [
       'Nắm vững cấu trúc Báo cáo Kết quả Kinh doanh Tổng hợp (Summary Operating Statement) và Báo cáo từng Bộ phận theo chuẩn USALI',
       'Phân biệt rành mạch giữa Operated Departments (Phòng, F&B, Spa) và Undistributed Operating Expenses (A&G, S&M, POM, Energy)',
@@ -65,16 +67,20 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_101_1',
         title: 'Bảng Hệ Thống Tài Khoản Kế Toán Khách Sạn Chuẩn USALI 11th & 12th Edition',
+        titleEn: 'USALI 11th & 12th Edition Hospitality Chart of Accounts Workbook',
         type: 'excel',
         fileSize: '3.4 MB',
         descriptionVi: 'File Excel mẫu toàn bộ hệ thống tài khoản chi tiết 4 cấp độ theo chuẩn USALI dành cho khách sạn 4-5 sao.',
+        descriptionEn: 'Complete 4-level USALI standardized Chart of Accounts Excel workbook tailored for 4–5 star hotels.',
       },
       {
         id: 'mat_101_2',
         title: 'Cẩm Nang Hướng Dẫn Hạch Toán Phân Bổ Chi Phí Vận Hành (Operating Guidebook)',
+        titleEn: 'USALI Departmental & Undistributed Cost Allocation Guidebook',
         type: 'pdf',
         fileSize: '4.8 MB',
         descriptionVi: 'Tài liệu hướng dẫn phân bổ chi phí giữa các bộ phận trực tiếp và bộ phận gián tiếp không phân bổ.',
+        descriptionEn: 'Comprehensive guide on expense allocation across Operated Departments and Undistributed Operating Expenses.',
       },
     ],
     caseStudy: {
@@ -82,6 +88,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tình Huống Hạch Toán Doanh Thu Gói Trọn Gói (All-Inclusive Package Breakdown)',
       titleEn: 'Complex Revenue Package Allocation at a Beach Resort',
       propertyContext: 'Khu nghỉ dưỡng 5 sao Cam Ranh Bay Resort (320 phòng)',
+      propertyContextEn: '5-Star Cam Ranh Bay Beach Resort (320 Keys)',
       scenarioVi: 'Khách sạn mở bán gói "Luxury Summer Retreat" trị giá $450/đêm bao gồm: 1 đêm phòng nghỉ, buffet sáng 2 người, 1 bữa tối set menu, 60 phút spa và dịch vụ đưa đón sân bay. Kế toán trưởng cần xây dựng ma trận phân bổ doanh thu công bằng cho từng bộ phận để không làm sai lệch chỉ số GOP của từng Outlet.',
       scenarioEn: 'The resort sells a $450 package including room, breakfast, set dinner, spa, and airport transfer. The controller must establish fair departmental revenue allocations under USALI.',
       keyChallengeVi: 'Làm sao xác định Standalone Selling Price (giá bán lẻ độc lập) theo IFRS 15 / USALI để phân bổ doanh thu ròng cho bộ phận Buồng, F&B, Spa và Vận chuyển.',
@@ -91,6 +98,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_01',
     practicalAssignmentTitle: 'OJT-FAR-01: Lập Bộ Báo Cáo Tài Chính Tháng Hoàn Chỉnh Theo USALI',
+    practicalAssignmentTitleEn: 'OJT-FAR-01: Monthly Financial Closing & USALI P&L Variance Review',
     quizQuestionIds: ['q_01', 'q_04'],
   },
   {
@@ -147,16 +155,20 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_102_1',
         title: 'Checklist Khóa Sổ Tháng 5 Ngày (Day 1 - Day 5 Month-End Closing Checklist)',
+        titleEn: 'Day 1–Day 5 Month-End Fast-Close Checklist',
         type: 'checklist',
         fileSize: '1.2 MB',
         descriptionVi: 'Bảng kiểm soát từng giờ từ ngày khóa sổ cuối tháng đến ngày xuất báo cáo P&L chính thức cho GM.',
+        descriptionEn: 'Hour-by-hour closing timetable from month-end cutoff through final GM P&L package sign-off.',
       },
       {
         id: 'mat_102_2',
         title: 'Workbook Đối Chiếu Toàn Bộ Bảng Cân Đối Kế Toán (BS Reconciliation Pack)',
+        titleEn: 'Balance Sheet Reconciliation Workpaper Pack (30 Accounts)',
         type: 'excel',
         fileSize: '5.1 MB',
         descriptionVi: 'Mẫu file đối chiếu số dư chi tiết 30 tài khoản tài sản và công nợ có tích hợp công thức kiểm tra chênh lệch tự động.',
+        descriptionEn: 'Audit-ready reconciliation workbook covering 30 asset & liability accounts with automated variance flags.',
       },
     ],
     caseStudy: {
@@ -164,6 +176,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Xử Lý Khoản Treo $82,000 Tài Khoản OTA Clearing Kéo Dài 4 Tháng',
       titleEn: 'Resolving Long-Aging $82,000 OTA Clearing Account Discrepancy',
       propertyContext: 'Khách sạn thương mại Grand Horizon Saigon',
+      propertyContextEn: 'Grand Horizon Saigon Commercial Hotel',
       scenarioVi: 'Trong đợt soát xét số dư giữa năm, FC phát hiện tài khoản thanh toán trung gian OTA Clearing tồn đọng số dư nợ $82,000 từ các kênh Expedia và Agoda suốt 4 tháng mà nhân viên AR trước đó chưa đối chiếu từng mã booking (Virtual Credit Card - VCC hết hạn).',
       scenarioEn: 'During mid-year audit, the FC uncovers an un-reconciled $82,000 debit balance on the OTA clearing account spanning 4 months due to expired Virtual Credit Cards.',
       keyChallengeVi: 'Thu hồi tiền từ các thẻ ảo đã hết hạn và thiết lập quy trình đối soát tự động hàng ngày giữa PMS Opera và cổng thanh toán thẻ.',
@@ -173,6 +186,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_01',
     practicalAssignmentTitle: 'OJT-FAR-01: Lập Bộ Báo Cáo Tài Chính Tháng Hoàn Chỉnh',
+    practicalAssignmentTitleEn: 'OJT-FAR-01: Monthly Financial Closing & Departmental P&L Review',
     quizQuestionIds: ['q_01', 'q_04'],
   },
   {
@@ -229,9 +243,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_103_1',
         title: 'Bảng Tính Thuế Nhà Thầu FCT và Ma Trận Ghi Nhận Tiền Đặt Cọc Sự Kiện',
+        titleEn: 'Foreign Contractor Tax (FCT) & Event Deposit Recognition Matrix',
         type: 'excel',
         fileSize: '2.8 MB',
         descriptionVi: 'Mô hình Excel tính thuế nhà thầu trên hóa đơn hoa hồng đại lý du lịch nước ngoài và lịch trích doanh thu tiệc.',
+        descriptionEn: 'Excel calculator for cross-border OTA withholding tax gross-ups and MICE banquet deferred revenue schedules.',
       },
     ],
     caseStudy: {
@@ -239,6 +255,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tranh Chấp Thuế Nhà Thầu Trên Hoa Hồng $240,000 Trả Cho Kênh OTA Nước Ngoài',
       titleEn: 'Tax Audit Dispute Over $240k Foreign Contractor Tax on OTA Commissions',
       propertyContext: 'Khu nghỉ dưỡng 400 phòng tại Đà Nẵng',
+      propertyContextEn: '400-Key Luxury Beachfront Resort in Danang',
       scenarioVi: 'Cơ quan thuế thanh tra và yêu cầu truy thu thuế nhà thầu nước ngoài (FCT 10%) trên toàn bộ số tiền hoa hồng mà khách sạn đã khấu trừ trực tiếp qua cổng thanh toán OTA quốc tế trong 3 năm qua.',
       scenarioEn: 'Tax authorities demand retroactive withholding tax payments on all net commissions deducted at source by overseas OTA platforms.',
       keyChallengeVi: 'Bảo vệ phương pháp tính thuế ròng (net-of-tax vs gross-up) và hoàn thiện hợp đồng thương mại hợp lệ với các nền tảng công nghệ đặt phòng.',
@@ -248,6 +265,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_01',
     practicalAssignmentTitle: 'OJT-FAR-01: Lập Báo Cáo Tài Chính Tháng Hoàn Chỉnh',
+    practicalAssignmentTitleEn: 'OJT-FAR-01: Monthly Financial Closing & Departmental P&L Review',
     quizQuestionIds: ['q_01', 'q_04'],
   },
 
@@ -308,9 +326,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_201_1',
         title: 'Bộ Quy Trình Chuẩn SOP Kiểm Soát Nội Bộ 40 Điểm Rủi Ro (Internal Control SOP Manual)',
+        titleEn: '40-Point Hotel Internal Control & Anti-Fraud SOP Manual',
         type: 'pdf',
         fileSize: '6.2 MB',
         descriptionVi: 'Cẩm nang toàn diện quy định thẩm quyền phê duyệt, phân tách trách nhiệm và kiểm soát chứng từ thanh toán.',
+        descriptionEn: 'Comprehensive SOP manual defining approval authorities, segregation of duties, and payment voucher controls.',
       },
     ],
     caseStudy: {
@@ -318,6 +338,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Điều Tra Gian Lận Hoàn Tiền Buồng Khách Ảo Tại Quầy Lễ Tân Ca Đêm',
       titleEn: 'Forensic Investigation of Fake Room Rebate Scheme at Night Audit',
       propertyContext: 'Khách sạn trung tâm thành phố 350 phòng',
+      propertyContextEn: '350-Key City-Center Luxury Hotel',
       scenarioVi: 'Nhân viên lễ tân ca đêm câu kết với trợ lý quản lý ca thực hiện các khoản hoàn tiền mặt (paid-out/rebate) cho khách đã check-out với lý do khách phàn nàn điều hòa hỏng, chiếm đoạt $14,000 trong 6 tháng.',
       scenarioEn: 'Night cashiers systematically generated fraudulent cash paid-outs alleging guest air-conditioning complaints, pocketing $14,000.',
       keyChallengeVi: 'Thu thập bằng chứng đối chiếu nhật ký bảo trì kỹ thuật (Engineering Work Orders) và báo cáo phản hồi khách hàng (Guest Satisfaction Surveys).',
@@ -327,6 +348,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_05',
     practicalAssignmentTitle: 'OJT-FCA-01: Kiểm Toán Kiểm Soát Nội Bộ & Điều Tra Thất Thoát F&B',
+    practicalAssignmentTitleEn: 'OJT-FCA-01: Internal Control Audit & F&B Revenue Leakage Audit',
     quizQuestionIds: ['q_05'],
   },
   {
@@ -383,9 +405,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_202_1',
         title: 'Checklist Rà Soát Báo Cáo Kiểm Toán Đêm (Daily Night Audit Audit Guide)',
+        titleEn: 'Daily Night Audit D-Card Review & Balancing Checklist',
         type: 'checklist',
         fileSize: '1.5 MB',
         descriptionVi: 'Bảng kiểm tra 18 bước buổi sáng dành cho Income Auditor và Financial Controller.',
+        descriptionEn: '18-step daily morning verification checklist for Income Auditors and Financial Controllers.',
       },
     ],
     caseStudy: {
@@ -393,6 +417,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Phát Hiện Thất Thoát Do Lạm Dụng Phòng Miễn Phí (Complimentary Rooms)',
       titleEn: 'Uncovering Unauthorized Complimentary Room Upgrades and Sales Trade-offs',
       propertyContext: 'Khu nghỉ dưỡng biển 250 phòng',
+      propertyContextEn: '250-Key Coastal Resort',
       scenarioVi: 'Kiểm toán phát hiện số lượng đêm phòng miễn phí vượt 120 đêm trong tháng cao điểm, do bộ phận Sales tự cấp cho đối tác mà không có chữ ký phê duyệt trước của Tổng Giám Đốc.',
       scenarioEn: 'Over 120 complimentary room nights were granted during peak season without prior GM approval.',
       keyChallengeVi: 'Xác định thiệt hại cơ hội doanh thu (Lost RevPAR Opportunity) và thiết lập lại ma trận phê duyệt phòng miễn phí.',
@@ -402,6 +427,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_05',
     practicalAssignmentTitle: 'OJT-FCA-01: Kiểm Toán Kiểm Soát Nội Bộ & Thất Thoát F&B',
+    practicalAssignmentTitleEn: 'OJT-FCA-01: Internal Control Audit & F&B Revenue Leakage Audit',
     quizQuestionIds: ['q_05'],
   },
   {
@@ -458,9 +484,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_203_1',
         title: 'Mô Hình Excel Phân Tích Menu Engineering & Định Lượng Món Ăn (Recipe Costing)',
+        titleEn: 'Menu Engineering & Standard Recipe Costing Excel Model',
         type: 'excel',
         fileSize: '4.2 MB',
         descriptionVi: 'File mẫu tính định lượng chi phí nguyên vật liệu, biên lợi nhuận đóng góp và ma trận tối ưu hóa thực đơn.',
+        descriptionEn: 'Template calculating standard recipe ingredient cost, contribution margin, and Menu Engineering quadrant matrix.',
       },
     ],
     caseStudy: {
@@ -468,6 +496,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Chi Phí Rượu Quầy Bar Rooftop Vượt Định Mức 7% (Beverage Cost Overrun)',
       titleEn: 'Investigating 7% Beverage Cost Overrun at the Flagship Rooftop Lounge',
       propertyContext: 'Khách sạn hạng sang với quầy bar tầng thượng doanh thu $150k/tháng',
+      propertyContextEn: 'Luxury Hotel with Flagship Rooftop Bar ($150k/month revenue)',
       scenarioVi: 'Beverage Cost thực tế tăng lên 27% trong khi định mức lý thuyết theo công thức là 20%. Kiểm tra kho phát hiện tồn kho rượu ngoại chênh lệch thiếu hụt $6,500.',
       scenarioEn: 'Actual liquor cost spiked to 27% against a 20% standard recipe baseline, uncovering a $6,500 inventory shortage.',
       keyChallengeVi: 'Phát hiện nguyên nhân thất thoát do rót quá định lượng (over-pouring), đồ uống miễn phí không ghi chép (unrecorded comps) hay trộm cắp nguyên chai.',
@@ -477,6 +506,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_05',
     practicalAssignmentTitle: 'OJT-FCA-01: Kiểm Toán Kiểm Soát Nội Bộ & Thất Thoát F&B',
+    practicalAssignmentTitleEn: 'OJT-FCA-01: Internal Control Audit & F&B Revenue Leakage Audit',
     quizQuestionIds: ['q_05'],
   },
 
@@ -537,16 +567,20 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_301_1',
         title: 'Master Workbook Ngân Sách Khách Sạn 12 Tháng Chuẩn USALI 11th Edition',
+        titleEn: 'USALI 11th Edition 12-Month Hotel Master Operating Budget Workbook',
         type: 'excel',
         fileSize: '8.5 MB',
         descriptionVi: 'Mô hình lập ngân sách toàn diện gồm bảng tính công suất buồng, F&B, nhân sự, chi phí năng lượng và chỉ tiêu GOP.',
+        descriptionEn: 'Integrated 12-month hotel budget workbook covering Rooms, F&B, Manning/Payroll, Utilities, and GOP targets.',
       },
       {
         id: 'mat_301_2',
         title: 'Công Cụ Dự Báo Dòng Tiền 13 Tuần (13-Week Cash Flow Model)',
+        titleEn: '13-Week Hotel Rolling Cash Flow & Liquidity Model',
         type: 'excel',
         fileSize: '3.1 MB',
         descriptionVi: 'Mô hình quản lý thanh khoản tuần, thu nợ AR và kế hoạch thanh toán AP ưu tiên.',
+        descriptionEn: 'Weekly liquidity management workbook tracking AR collections, AP payment prioritization, and payroll cash buffers.',
       },
     ],
     caseStudy: {
@@ -554,6 +588,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Khủng Hoảng Thanh Khoản Mùa Thấp Điểm: Bảo Đảm Dòng Tiền Trả Lương & Năng Lượng',
       titleEn: 'Managing Low-Season Liquidity Trough: Protecting Payroll & Utility Cash Outflows',
       propertyContext: 'Khách sạn nghỉ dưỡng ven biển miền Trung chịu ảnh hưởng mùa bão lũ',
+      propertyContextEn: 'Central Coast Beach Resort Facing Monsoon Low Season',
       scenarioVi: 'Vào quý 4 mùa mưa bão, công suất buồng phòng giảm xuống dưới 28%, doanh thu chỉ đạt $210,000/tháng trong khi định phí cố định (lương, điện, bảo hiểm) cần $290,000/tháng.',
       scenarioEn: 'During Q4 monsoon season, occupancy plunged to 28%, causing a $80,000 monthly operational cash shortfall.',
       keyChallengeVi: 'Lập kế hoạch cắt giảm chi phí linh hoạt (Cost Flexing), giãn nợ nhà cung cấp và đàm phán tạm ứng dòng tiền từ Chủ sở hữu mà không làm gián đoạn vận hành.',
@@ -563,6 +598,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_02',
     practicalAssignmentTitle: 'OJT-FPM-01: Xây Dựng Ngân Sách Vận Hành Năm Mới & Định Biên Nhân Sự',
+    practicalAssignmentTitleEn: 'OJT-FPM-01: Annual Operating Budget Formulation & Manning Productivity Model',
     quizQuestionIds: ['q_02'],
   },
   {
@@ -612,16 +648,20 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_202_1',
         title: 'Mô Hình Thẩm Định Đầu Tư CAPEX Khách Sạn (Hotel CAPEX DCF / NPV Model)',
+        titleEn: 'Hotel CAPEX DCF / NPV Financial Feasibility Model',
         type: 'excel',
         fileSize: '3.6 MB',
         descriptionVi: 'Mô hình chiết khấu dòng tiền chuyên dụng tính toán độ nhạy NPV, IRR, WACC cho dự án cải tạo khách sạn.',
+        descriptionEn: 'Discounted cash flow model with NPV, IRR, and WACC sensitivity analysis for hotel capital renovations.',
       },
       {
         id: 'mat_202_2',
         title: 'Mẫu Tờ Trình Đề Xuất Đầu Tư Chuẩn Tập Đoàn (Capex Appropriation Request - CAR)',
+        titleEn: 'Corporate Capex Appropriation Request (CAR) Board Template',
         type: 'template',
         fileSize: '1.8 MB',
         descriptionVi: 'Biểu mẫu văn bản hoàn chỉnh để trình Hội đồng quản trị và đại diện Chủ khách sạn.',
+        descriptionEn: 'Complete investment submission package template for Executive Board and Hotel Owner sign-off.',
       },
     ],
     caseStudy: {
@@ -629,6 +669,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Thẩm Định Dự Án Nâng Cấp Hệ Thống Smart Energy $850k Với Thời Gian Hoàn Vốn 3.5 Năm',
       titleEn: 'Feasibility Appraisal: $850k Smart Energy System with 3.5 Year Payback',
       propertyContext: 'Khách sạn 450 phòng cao cấp tại Đà Nẵng',
+      propertyContextEn: '450-Key Luxury Resort Property in Danang',
       scenarioVi: 'Giám đốc Kỹ thuật đề xuất chi $850,000 từ quỹ FF&E để lắp đặt hệ thống cảm biến nhiệt độ và tự ngắt điều hòa thông minh trong phòng khách. Dự kiến tiết kiệm $210,000 chi phí tiền điện mỗi năm.',
       scenarioEn: 'Chief Engineer requests $850k FF&E capital to install smart guestroom EMS, projecting $210k annual utility savings.',
       keyChallengeVi: 'Chủ sở hữu lo ngại gián đoạn hoạt động phòng trong mùa kinh doanh và nghi ngờ độ tin cậy của mức tiết kiệm 18% tiền điện cam kết từ nhà thầu.',
@@ -638,6 +679,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_04',
     practicalAssignmentTitle: 'OJT-FPM-02: Thẩm Định Đề Xuất Đầu Tư CAPEX Smart Energy',
+    practicalAssignmentTitleEn: 'OJT-FPM-02: CAPEX Evaluation — $850k Smart Guestroom EMS',
     quizQuestionIds: ['q_02'],
   },
   {
@@ -687,9 +729,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_303_1',
         title: 'Mẫu Hợp Đồng Cấp Hạn Mức Tín Dụng & Biên Bản Họp Credit Committee',
+        titleEn: 'Credit Facility Agreement & Monthly Credit Committee Minutes Template',
         type: 'template',
         fileSize: '1.6 MB',
         descriptionVi: 'Biểu mẫu đánh giá khả năng thanh toán của doanh nghiệp và hồ sơ cấp nợ thương mại.',
+        descriptionEn: 'Corporate solvency assessment template and direct billing credit approval package.',
       },
     ],
     caseStudy: {
@@ -697,6 +741,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Thu Hồi Khoản Nợ $110,000 Từ Công Ty Lữ Hành Có Nguy Cơ Phá Sản',
       titleEn: 'Recovering $110,000 in Overdue Receivables from a Distressed Tour Operator',
       propertyContext: 'Khách sạn 300 phòng đón nhiều đoàn khách quốc tế',
+      propertyContextEn: '300-Key International Tour Group Hotel',
       scenarioVi: 'Một công ty du lịch lớn nợ quá hạn 90 ngày số tiền $110,000 cho các đoàn khách mùa hè. Công ty đang chuẩn bị đưa thêm 3 đoàn khách mới trị giá $45,000 trong tuần tới.',
       scenarioEn: 'A major wholesale partner is 90 days overdue on $110k while seeking check-in for 3 new tour groups worth $45k.',
       keyChallengeVi: 'Thu hồi nợ cũ mà không làm vỡ quan hệ kinh doanh lâu năm hoặc gây khủng hoảng truyền thông khi khách đã đến sảnh khách sạn.',
@@ -706,6 +751,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_01',
     practicalAssignmentTitle: 'OJT-FAR-01: Lập Báo Cáo Tài Chính Tháng Hoàn Chỉnh',
+    practicalAssignmentTitleEn: 'OJT-FAR-01: Monthly Financial Closing & Departmental P&L Review',
     quizQuestionIds: ['q_04'],
   },
 
@@ -759,9 +805,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_401_1',
         title: 'Mô Hình Excel Phân Tích Flow-Through & Flex Analysis Chi Tiết Từng Outlet',
+        titleEn: 'Departmental Flow-Through & Flex Analysis Excel Calculator',
         type: 'excel',
         fileSize: '3.8 MB',
         descriptionVi: 'Công cụ tính toán tự động tỷ lệ chuyển hóa doanh thu thành lợi nhuận cho buồng, nhà hàng, spa và banquet.',
+        descriptionEn: 'Automated tool computing revenue-to-GOP flow-through and flex across Rooms, F&B, Spa, and Banquet.',
       },
     ],
     caseStudy: {
@@ -769,6 +817,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Doanh Thu Tăng $150,000 Nhưng GOP Chỉ Tăng $18,000 (Flow-Through Đạt 12%)',
       titleEn: 'Investigating Sub-Par 12% Flow-Through on $150k Revenue Surplus',
       propertyContext: 'Khách sạn 4 sao với lượng khách đoàn hội nghị tăng đột biến',
+      propertyContextEn: '4-Star Conference Hotel Experiencing MICE Volume Surge',
       scenarioVi: 'Doanh thu tháng 7 vượt ngân sách $150,000, tuy nhiên GOP chỉ tăng $18,000 (Flow-Through chỉ đạt 12% so với chuẩn mực 50%). Ban Giám đốc yêu cầu FC giải trình nguyên nhân.',
       scenarioEn: 'Revenue exceeded budget by $150k, yet GOP only grew by $18k (12% Flow-through vs 50% benchmark).',
       keyChallengeVi: 'Bóc tách các yếu tố: giá phòng trung bình (ADR) bị giảm do nhận đoàn giá rẻ, chi phí làm thêm giờ nhân viên giặt là tăng vọt và chi phí hoa hồng OTA tăng gấp đôi.',
@@ -778,6 +827,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_03',
     practicalAssignmentTitle: 'OJT-BPA-01: Phân Tích Khủng Hoảng Lợi Nhuận: Occupancy Tăng Nhưng GOP Giảm',
+    practicalAssignmentTitleEn: 'OJT-BPA-01: Flow-Through Diagnostic — 8% Occupancy Surge with 5% GOP Drop',
     quizQuestionIds: ['q_02'],
   },
   {
@@ -827,9 +877,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_402_1',
         title: 'Mô Hình Phân Tích Net ADR Theo Kênh Phân Phối (Distribution Cost Matrix)',
+        titleEn: 'Channel Distribution Cost & Net ADR Matrix Model',
         type: 'excel',
         fileSize: '2.9 MB',
         descriptionVi: 'Bảng tính so sánh chi phí hoa hồng thực tế giữa Direct Web, OTA, Corporate và GDS.',
+        descriptionEn: 'Workbook comparing true acquisition commissions across Direct Web, OTA, Corporate, and GDS channels.',
       },
     ],
     caseStudy: {
@@ -837,6 +889,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tối Ưu Hóa Kênh Bán Khi Khách Sạn Đạt RGI 115% Nhưng Chi Phí Hoa Hồng Tăng $40k',
       titleEn: 'Optimizing Channel Mix: Strong 115% RGI with Soaring $40k Commission Overhang',
       propertyContext: 'Khách sạn trung tâm thành phố 320 phòng',
+      propertyContextEn: '320-Key City-Center Business Hotel',
       scenarioVi: 'Khách sạn dẫn đầu tập cạnh tranh với RGI đạt 115%, tuy nhiên chi phí hoa hồng OTA tăng lên 19.5% tổng doanh thu buồng, ăn mòn nghiêm trọng lợi nhuận ròng.',
       scenarioEn: 'Property dominates comp set with 115% RGI, but OTA commissions surged to 19.5% of rooms revenue.',
       keyChallengeVi: 'Chuyển dịch cơ cấu nguồn khách (Channel Mix Shift) sang đặt phòng trực tiếp trên website mà không làm sụt giảm công suất phòng.',
@@ -846,6 +899,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_03',
     practicalAssignmentTitle: 'OJT-BPA-01: Phân Tích Khủng Hoảng Lợi Nhuận',
+    practicalAssignmentTitleEn: 'OJT-BPA-01: Flow-Through & Profit Recovery Diagnostic',
     quizQuestionIds: ['q_03'],
   },
   {
@@ -895,9 +949,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_403_1',
         title: 'Bộ Mẫu Dashboard Điều Hành Tài Chính Hàng Ngày (Executive Daily Flash Report)',
+        titleEn: 'Executive Daily Flash Report & KPI Dashboard Template',
         type: 'excel',
         fileSize: '4.5 MB',
         descriptionVi: 'File mẫu Dashboard tích hợp biểu đồ công suất, ADR, RevPAR, doanh thu F&B và ước tính GOP hàng ngày.',
+        descriptionEn: 'Executive dashboard integrating Occupancy, ADR, RevPAR, F&B revenues, and daily flash GOP pacing.',
       },
     ],
     caseStudy: {
@@ -905,6 +961,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Số Hóa Báo Cáo Doanh Thu Ngày Giúp Cắt Giảm 2 Giờ Làm Việc Thủ Công Mỗi Sáng',
       titleEn: 'Automating the Daily Revenue Flash Report, Saving 2 Manual Hours Daily',
       propertyContext: 'Khách sạn 450 phòng với 6 Outlet F&B và dịch vụ tiệc lớn',
+      propertyContextEn: '450-Key Hotel with 6 F&B Outlets & Large Banquet Operations',
       scenarioVi: 'Đội ngũ kế toán mất từ 8:00 đến 10:30 mỗi sáng để nhập số liệu thủ công từ 7 nguồn báo cáo khác nhau để lập Daily Flash Report cho GM.',
       scenarioEn: 'Accounting staff spent 2.5 hours every morning manually consolidating 7 disparate departmental reports for the GM Daily Briefing.',
       keyChallengeVi: 'Tự động hóa kết nối dữ liệu từ PMS và POS mà không cần đầu tư thêm chi phí mua phần mềm ngoài đắt đỏ.',
@@ -914,6 +971,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_01',
     practicalAssignmentTitle: 'OJT-FAR-01: Lập Báo Cáo Tài Chính Tháng Hoàn Chỉnh',
+    practicalAssignmentTitleEn: 'OJT-FAR-01: Monthly Financial Closing & Departmental P&L Review',
     quizQuestionIds: ['q_03'],
   },
 
@@ -967,9 +1025,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_501_1',
         title: 'Bộ Công Cụ Huấn Luyện 1-1 Theo Mô Hình GROW Cho Cán Bộ Quản Lý Tài Chính',
+        titleEn: 'GROW 1-on-1 Coaching Toolkit for Finance Leaders',
         type: 'pdf',
         fileSize: '2.1 MB',
         descriptionVi: 'Tài liệu hướng dẫn đặt câu hỏi khai vấn, lập mục tiêu phát triển và theo dõi cam kết hành động.',
+        descriptionEn: 'Guidebook on coaching questions, developmental goal setting, and action commitment tracking.',
       },
     ],
     caseStudy: {
@@ -977,6 +1037,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Xây Dựng Kế Hoạch Kế Thừa 12 Tháng Cho Vị Trí Assistant Financial Controller',
       titleEn: 'Designing a 12-Month Succession Acceleration Track for Senior Accountant',
       propertyContext: 'Khách sạn 5 sao với yêu cầu chuẩn bị nhân sự mở rộng chuỗi',
+      propertyContextEn: '5-Star Hotel Preparing Talent Bench for Regional Expansion',
       scenarioVi: 'Kế toán trưởng hiện tại có chuyên môn kỹ thuật rất vững nhưng còn thiếu tự tin khi trình bày số liệu trước Ban Giám đốc và ngại va chạm khi nhắc nhở các Trưởng bộ phận chi tiêu vượt ngân sách.',
       scenarioEn: 'A high-performing senior accountant possesses flawless technical skills but lacks executive communication confidence and avoids operational budget confrontation.',
       keyChallengeVi: 'Huấn luyện kỹ năng giao tiếp điều hành và bản lĩnh đàm phán mà không làm giảm sự gắn bó của nhân sự.',
@@ -986,6 +1047,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
   {
@@ -1035,9 +1097,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_502_1',
         title: 'Tài Liệu Đào Tạo "Tài Chính Dành Cho Trưởng Bộ Phận Phi Tài Chính" (Slide & Handbook)',
+        titleEn: '"Finance for Non-Finance Department Heads" Training Deck & Handbook',
         type: 'slide',
         fileSize: '5.4 MB',
         descriptionVi: 'Bộ slide thuyết trình giúp FC đào tạo Trưởng bộ phận Bếp, Buồng, Lễ tân hiểu về P&L và kiểm soát chi phí.',
+        descriptionEn: 'Executive workshop deck enabling FCs to coach Culinary, Housekeeping, and Front Office heads on P&L & cost control.',
       },
     ],
     caseStudy: {
@@ -1045,6 +1109,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Hòa Giải Xung Đột Ngân Sách Giữa Bếp Trưởng Và Ban Giám Đốc Về Chi Phí Nguyên Liệu',
       titleEn: 'De-escalating Heated Food Cost Budget Deadlock Between Chef and GM',
       propertyContext: 'Khách sạn cao cấp với 4 nhà hàng đặc sản',
+      propertyContextEn: 'Luxury Hotel with 4 Specialty Dining Venues',
       scenarioVi: 'Bếp trưởng người nước ngoài đe dọa từ chức vì cho rằng Giám đốc Tài chính ép cắt giảm 3% Food Cost sẽ phá hủy chất lượng ẩm thực 5 sao của khách sạn.',
       scenarioEn: 'An award-winning Executive Chef threatens resignation, claiming the FC 3% food cost reduction mandate compromises 5-star culinary standards.',
       keyChallengeVi: 'Xây dựng tiếng nói chung, bảo toàn chất lượng món ăn nhưng vẫn đạt chỉ tiêu tỷ suất lợi nhuận GOP đã cam kết với Chủ sở hữu.',
@@ -1054,6 +1119,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
   {
@@ -1103,9 +1169,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_503_1',
         title: 'Kế Hoạch Triển Khai Chuyển Đổi Số Phòng Tài Chính (Digital Transformation Roadmap)',
+        titleEn: 'Finance Department Digital Transformation & ERP Cutover Roadmap',
         type: 'template',
         fileSize: '2.4 MB',
         descriptionVi: 'Kế hoạch mẫu từng giai đoạn thử nghiệm (UAT), đào tạo người dùng và kiểm soát số dư chuyển đổi.',
+        descriptionEn: 'Phased implementation playbook covering UAT testing, user onboarding, and cutover balance reconciliation.',
       },
     ],
     caseStudy: {
@@ -1113,6 +1181,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Chuyển Đổi Sang Hóa Đơn Điện Tử Và Bỏ Hoàn Toàn Giấy Tờ Thủ Công Tại Khách Sạn 400 Phòng',
       titleEn: 'Transitioning to 100% Paperless E-Invoicing & Automated Accounts Payable',
       propertyContext: 'Khách sạn kinh doanh quy mô lớn tại Hà Nội',
+      propertyContextEn: 'Large-Scale Commercial Business Hotel in Hanoi',
       scenarioVi: 'Khách sạn triển khai hệ thống xử lý hóa đơn điện tử tự động, nhân viên kế toán công nợ lo lắng bị mất việc làm và cố tình trì hoãn nhập liệu hệ thống mới.',
       scenarioEn: 'Deploying paperless AP automation triggered staff job security anxiety, causing passive resistance and manual workpaper clinging.',
       keyChallengeVi: 'Tái định vị vai trò của nhân viên từ nhập liệu chứng từ thủ công sang phân tích chi phí và kiểm soát dòng tiền.',
@@ -1122,6 +1191,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
 
@@ -1182,16 +1252,20 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_601_1',
         title: 'Mẫu Bài Thuyết Trình Báo Cáo Tài Chính Hàng Tháng Cho GM & Chủ Đầu Tư (Executive Board Deck)',
+        titleEn: 'Monthly Executive Board Financial Presentation Deck for GM & Ownership',
         type: 'slide',
         fileSize: '7.8 MB',
         descriptionVi: 'Bộ slide PowerPoint 15 trang chuẩn mực sang trọng thiết kế cho các cuộc họp Owner Review hàng quý.',
+        descriptionEn: 'Executive 15-slide presentation deck designed for monthly ExCom and quarterly Owner Asset Review meetings.',
       },
       {
         id: 'mat_601_2',
         title: 'Bản Đồ Tư Duy Đối Tác Kinh Doanh Của Financial Controller (FC Co-Pilot Canvas)',
+        titleEn: 'Financial Controller Strategic Co-Pilot Canvas',
         type: 'pdf',
         fileSize: '1.9 MB',
         descriptionVi: 'Khung năng lực hướng dẫn phân tích 4 trụ cột thương mại trong khách sạn.',
+        descriptionEn: 'Strategic framework balancing Guest NPS, Staff Engagement, Brand Standards, and Owner Yield.',
       },
     ],
     caseStudy: {
@@ -1199,6 +1273,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tư Vấn Cho GM Quyết Định Từ Chối Đoàn Khách MICE 500 Đêm Phòng Để Bảo Vệ ADR & GOP',
       titleEn: 'Advising GM to Decline Low-Ball 500-Room Night MICE Group to Protect RevPAR & GOP',
       propertyContext: 'Khu nghỉ dưỡng 450 phòng mùa cao điểm',
+      propertyContextEn: '450-Key Luxury Resort During Peak Season',
       scenarioVi: 'Giám đốc Sales & Marketing hào hứng đề xuất nhận đoàn khách MICE 500 đêm phòng với giá giảm 40% ($90 so với giá lẻ $150). Tổng Giám Đốc phân vân vì sợ mất doanh thu chắc chắn.',
       scenarioEn: 'Sales Director pushes to accept a 500-room night corporate group at a 40% discount ($90 vs $150 transient BAR).',
       keyChallengeVi: 'Chứng minh bằng số liệu tài chính cụ thể rằng việc nhận đoàn giá rẻ sẽ làm "đè bẹp" (displace) khách lẻ có giá cao, khiến khách sạn mất $42,000 lợi nhuận GOP thực tế.',
@@ -1208,6 +1283,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
   {
@@ -1257,9 +1333,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_602_1',
         title: 'Mô Hình Tính Toán Phí Quản Lý HMA & Lợi Nhuận Ưu Tiên Của Chủ Đầu Tư (HMA Fee Model)',
+        titleEn: 'HMA Management Fee & Owner Priority Return Waterfall Model',
         type: 'excel',
         fileSize: '3.2 MB',
         descriptionVi: 'File mẫu tính toán Base Fee, Incentive Fee bậc thang và phân bổ chi phí tập đoàn.',
+        descriptionEn: 'Workbook modeling Base Fees, tiered AGOP Incentive Fees, and corporate shared-service allocations.',
       },
     ],
     caseStudy: {
@@ -1267,6 +1345,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tranh Chấp Về Cách Tính Lợi Nhuận Khuyến Khích (Incentive Management Fee) Trị Giá $180,000',
       titleEn: 'Arbitrating $180,000 Incentive Fee Calculation Dispute with Owner Asset Manager',
       propertyContext: 'Khách sạn 5 sao thuộc sở hữu của quỹ đầu tư bất động sản',
+      propertyContextEn: '5-Star Hotel Owned by Institutional Real Estate PE Fund',
       scenarioVi: 'Đại diện Chủ đầu tư không đồng ý thanh toán $180,000 phí quản lý khuyến khích (Incentive Fee) vì cho rằng lợi nhuận GOP phải trừ thêm chi phí khấu hao tài sản và phí bảo hiểm tài sản theo điều khoản AGOP mới.',
       scenarioEn: 'Owner Asset Manager withholds $180k Incentive Fee, arguing AGOP must deduct insurance and capital replacement charges.',
       keyChallengeVi: 'Giải trình căn cứ pháp lý của hợp đồng HMA, bảo vệ sự minh bạch của Báo cáo tài chính đã kiểm toán mà không đẩy mâu thuẫn lên cấp tòa trọng tài.',
@@ -1276,6 +1355,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
   {
@@ -1325,9 +1405,11 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       {
         id: 'mat_603_1',
         title: 'Mô Hình Định Giá Khách Sạn Toàn Diện (Hotel Enterprise Valuation DCF Model)',
+        titleEn: 'Comprehensive Hotel Enterprise Valuation (Cap Rate & 10-Year DCF) Model',
         type: 'excel',
         fileSize: '4.8 MB',
         descriptionVi: 'Mô hình tài chính định giá tài sản khách sạn dựa trên EBITDA 10 năm và hệ số Exit Cap Rate.',
+        descriptionEn: 'Institutional hotel valuation workbook projecting 10-year NOI/EBITDA and Exit Cap Rate sensitivity.',
       },
     ],
     caseStudy: {
@@ -1335,6 +1417,7 @@ export const COMPREHENSIVE_COURSES: Course[] = [
       titleVi: 'Tối Ưu Hóa EBITDA Giúp Gia Tăng Giá Trị Khách Sạn Thêm 8 Triệu USD Trước Kỳ Chuyển Nhượng',
       titleEn: 'Driving $600k Sustainable EBITDA Growth Adding $8M to Hotel Exit Valuation',
       propertyContext: 'Khách sạn 5 sao chuẩn bị chào bán cho quỹ đầu tư nước ngoài',
+      propertyContextEn: '5-Star Hotel Prepping for International PE Fund Divestiture',
       scenarioVi: 'Chủ sở hữu có kế hoạch thoái vốn bán khách sạn trong vòng 18 tháng tới. Hệ số Cap Rate thị trường hiện tại là 7.5%. FC được giao bài toán tối ưu hóa chi phí định kỳ để đẩy EBITDA tăng thêm $600,000.',
       scenarioEn: 'Ownership intends to sell the property within 18 months at an prevailing 7.5% market cap rate. The FC is tasked with uncovering $600k in structural EBITDA gains.',
       keyChallengeVi: 'Cắt giảm chi phí nhưng không làm giảm chất lượng dịch vụ hoặc tạo ấn tượng "cắt xén tạm thời" trước đơn vị thẩm định độc lập của người mua (Buyer Due Diligence).',
@@ -1344,9 +1427,15 @@ export const COMPREHENSIVE_COURSES: Course[] = [
     },
     practicalAssignmentId: 'ojt_06',
     practicalAssignmentTitle: 'OJT-SBP-01: Thuyết Trình Báo Cáo Chiến Lược Tài Chính Trước Ban Giám Đốc',
+    practicalAssignmentTitleEn: 'OJT-SBP-01: Executive Board Financial Presentation to GM & Asset Managers',
     quizQuestionIds: ['q_01'],
   },
 ];
+
+export const COMPREHENSIVE_COURSES: Course[] = RAW_COMPREHENSIVE_COURSES.map((course) => ({
+  ...course,
+  syllabus: course.syllabus || COURSE_SYLLABI_BY_CODE[course.code],
+}));
 
 // =========================================================================
 // PROGRESSIVE CAREER LEARNING PATHS

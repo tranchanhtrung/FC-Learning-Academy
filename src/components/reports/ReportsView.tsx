@@ -253,10 +253,14 @@ export const ReportsView: React.FC = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <h3 className="font-bold text-base text-slate-900">
-                Đường Ống Kế Thừa Vị Trí Giám Đốc Tài Chính (FC Succession Pipeline)
+                {language === 'vi'
+                  ? 'Đường Ống Kế Thừa Vị Trí Giám Đốc Tài Chính (FC Succession Pipeline)'
+                  : 'Financial Controller (FC) Succession Pipeline'}
               </h3>
               <p className="text-xs text-slate-500">
-                Phân loại theo mức độ sẵn sàng: Ready Now, Ready in 1-2 Years, Developing
+                {language === 'vi'
+                  ? 'Phân loại theo mức độ sẵn sàng: Ready Now, Ready in 1-2 Years, Developing'
+                  : 'Categorized by readiness tier: Ready Now, Ready in 1-2 Years, Developing'}
               </p>
             </div>
 
@@ -274,14 +278,14 @@ export const ReportsView: React.FC = () => {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3">Học viên</th>
-                  <th className="py-3 px-3">Vị trí hiện tại</th>
-                  <th className="py-3 px-3">Khách sạn</th>
-                  <th className="py-3 px-3">Vị trí kế thừa</th>
-                  <th className="py-3 px-3">Mức độ sẵn sàng</th>
-                  <th className="py-3 px-3 text-center">Năng lực</th>
-                  <th className="py-3 px-3 text-center">Dự án OJT</th>
-                  <th className="py-3 px-3">Mentor / Huấn luyện viên</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Học viên' : 'Candidate'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Vị trí hiện tại' : 'Current Role'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Khách sạn' : 'Property'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Vị trí kế thừa' : 'Target Role'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Mức độ sẵn sàng' : 'Readiness'}</th>
+                  <th className="py-3 px-3 text-center">{language === 'vi' ? 'Năng lực' : 'Competency'}</th>
+                  <th className="py-3 px-3 text-center">{language === 'vi' ? 'Dự án OJT' : 'OJT Projects'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Mentor / Huấn luyện viên' : 'Executive Mentor'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -334,10 +338,12 @@ export const ReportsView: React.FC = () => {
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-base text-slate-900">
-              Báo Cáo Tiến Độ Hoàn Thành Khóa Học Các Đơn Vị
+              {language === 'vi'
+                ? 'Báo Cáo Tiến Độ Hoàn Thành Khóa Học Các Đơn Vị'
+                : 'Property-Wide Course Completion Analytics'}
             </h3>
             <span className="text-xs text-slate-500 font-bold">
-              Tổng số lượt học: {filteredEnrollments.length}
+              {language === 'vi' ? 'Tổng số lượt học:' : 'Total Enrollments:'} {filteredEnrollments.length}
             </span>
           </div>
 
@@ -345,12 +351,12 @@ export const ReportsView: React.FC = () => {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3">Học viên</th>
-                  <th className="py-3 px-3">Khóa học</th>
-                  <th className="py-3 px-3">Tiến độ (%)</th>
-                  <th className="py-3 px-3">Trạng thái</th>
-                  <th className="py-3 px-3">Ngày bắt đầu</th>
-                  <th className="py-3 px-3 text-right">Điểm thi USALI</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Học viên' : 'Learner'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Khóa học' : 'Course'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Tiến độ (%)' : 'Progress (%)'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
+                  <th className="py-3 px-3">{language === 'vi' ? 'Ngày bắt đầu' : 'Enrolled Date'}</th>
+                  <th className="py-3 px-3 text-right">{language === 'vi' ? 'Điểm thi USALI' : 'USALI Exam Score'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -403,10 +409,14 @@ export const ReportsView: React.FC = () => {
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
           <div>
             <h3 className="font-bold text-base text-slate-900">
-              Ma Trận Phân Tích Khoảng Trống Năng Lực Cấp Cụm Khách Sạn
+              {language === 'vi'
+                ? 'Ma Trận Phân Tích Khoảng Trống Năng Lực Cấp Cụm Khách Sạn'
+                : 'Hotel Cluster Competency Gap Analysis Matrix'}
             </h3>
             <p className="text-xs text-slate-500">
-              Công thức: Khoảng Trống = Cấp Độ Mục Tiêu – Cấp Độ Đánh Giá Thực Tế
+              {language === 'vi'
+                ? 'Công thức: Khoảng Trống = Cấp Độ Mục Tiêu – Cấp Độ Đánh Giá Thực Tế'
+                : 'Formula: Competency Gap = Target Position Level − Verified Assessed Level'}
             </p>
           </div>
 
@@ -429,7 +439,11 @@ export const ReportsView: React.FC = () => {
                 </div>
                 <h4 className="font-bold text-slate-900">{item.title}</h4>
                 <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-slate-200">
-                  <span>Khoảng trống bình quân ({item.sampleSize} hồ sơ):</span>
+                  <span>
+                    {language === 'vi'
+                      ? `Khoảng trống bình quân (${item.sampleSize} hồ sơ):`
+                      : `Average Gap (${item.sampleSize} profiles):`}
+                  </span>
                   <span className="font-bold text-slate-900 font-mono">{item.avgGap} Levels</span>
                 </div>
               </div>
@@ -443,30 +457,52 @@ export const ReportsView: React.FC = () => {
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
           <div>
             <h3 className="font-bold text-base text-slate-900">
-              Hiệu Quả Đầu Tư Đào Tạo & Lợi Nhuận Thu Về (Training ROI)
+              {language === 'vi'
+                ? 'Hiệu Quả Đầu Tư Đào Tạo & Lợi Nhuận Thu Về (Training ROI)'
+                : 'Training Investment & Financial Return (ROI)'}
             </h3>
             <p className="text-xs text-slate-500">
-              Đo lường giá trị tạo ra từ việc tiết kiệm chi phí, ngăn ngừa thất thoát và tối ưu tỷ lệ Flow-Through
+              {language === 'vi'
+                ? 'Đo lường giá trị tạo ra từ việc tiết kiệm chi phí, ngăn ngừa thất thoát và tối ưu tỷ lệ Flow-Through'
+                : 'Measuring bottom-line value from cost-leakage prevention, labor efficiency, and Flow-Through optimization'}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-              <span className="text-slate-500 font-bold uppercase tracking-wider block">Tổng chi phí đào tạo LMS</span>
+              <span className="text-slate-500 font-bold uppercase tracking-wider block">
+                {language === 'vi' ? 'Tổng chi phí đào tạo LMS' : 'Total LMS Training Investment'}
+              </span>
               <div className="text-2xl font-black text-slate-900 font-mono">$18,500</div>
-              <p className="text-[11px] text-slate-500">Bao gồm học liệu, chứng chỉ và kiểm toán OJT</p>
+              <p className="text-[11px] text-slate-500">
+                {language === 'vi'
+                  ? 'Bao gồm học liệu, chứng chỉ và kiểm toán OJT'
+                  : 'Includes curriculum content, certification, and OJT audits'}
+              </p>
             </div>
 
             <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
-              <span className="text-emerald-700 font-bold uppercase tracking-wider block">Giá trị tiết kiệm chi phí</span>
+              <span className="text-emerald-700 font-bold uppercase tracking-wider block">
+                {language === 'vi' ? 'Giá trị tiết kiệm chi phí' : 'Verified Cost Savings'}
+              </span>
               <div className="text-2xl font-black text-emerald-700 font-mono">$142,000</div>
-              <p className="text-[11px] text-emerald-800 font-medium">Giảm thất thoát F&B và tối ưu chi phí làm thêm giờ</p>
+              <p className="text-[11px] text-emerald-800 font-medium">
+                {language === 'vi'
+                  ? 'Giảm thất thoát F&B và tối ưu chi phí làm thêm giờ'
+                  : 'F&B leakage prevention and labor overtime optimization'}
+              </p>
             </div>
 
             <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
-              <span className="text-amber-800 font-bold uppercase tracking-wider block">Hệ số hoàn vốn đầu tư (ROI)</span>
+              <span className="text-amber-800 font-bold uppercase tracking-wider block">
+                {language === 'vi' ? 'Hệ số hoàn vốn đầu tư (ROI)' : 'Calculated Training ROI'}
+              </span>
               <div className="text-2xl font-black text-amber-700 font-mono">668%</div>
-              <p className="text-[11px] text-amber-900 font-medium">Tỷ suất sinh lời vượt trội từ năng lực quản trị tài chính</p>
+              <p className="text-[11px] text-amber-900 font-medium">
+                {language === 'vi'
+                  ? 'Tỷ suất sinh lời vượt trội từ năng lực quản trị tài chính'
+                  : 'Annualized financial return from elevated finance capability'}
+              </p>
             </div>
           </div>
         </div>

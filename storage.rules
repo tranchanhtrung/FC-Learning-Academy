@@ -1,0 +1,78 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Global default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'tranchanhtrung@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUploadSizeAndType() {
+      return request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches('application/pdf') ||
+          request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet') ||
+          request.resource.contentType.matches('application/vnd\\.ms-excel') ||
+          request.resource.contentType.matches('text/csv') ||
+          request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document') ||
+          request.resource.contentType.matches('application/msword') ||
+          request.resource.contentType.matches('image/png') ||
+          request.resource.contentType.matches('image/jpeg') ||
+          request.resource.contentType.matches('image/webp') ||
+          request.resource.contentType.matches('application/octet-stream')
+        );
+    }
+
+    // Course materials & learning documents (admin write, verified learners read)
+    match /course_materials/{courseId}/{fileName} {
+      allow read: if isVerifiedUser();
+      allow write: if isAdmin() && isValidUploadSizeAndType();
+    }
+
+    match /learning_documents/{docId}/{fileName} {
+      allow read: if isVerifiedUser();
+      allow write: if isAdmin() && isValidUploadSizeAndType();
+    }
+
+    // Learner assignment, OJT, simulator, and assessment evidence (owner or admin)
+    match /assignment_evidence/{userId}/{recordId}/{fileName} {
+      allow read: if isVerifiedUser() && (request.auth.uid == userId || isAdmin());
+      allow write: if isVerifiedUser() && (request.auth.uid == userId || isAdmin()) && isValidUploadSizeAndType();
+    }
+
+    match /ojt_evidence/{userId}/{recordId}/{fileName} {
+      allow read: if isVerifiedUser() && (request.auth.uid == userId || isAdmin());
+      allow write: if isVerifiedUser() && (request.auth.uid == userId || isAdmin()) && isValidUploadSizeAndType();
+    }
+
+    match /assessment_attachments/{userId}/{recordId}/{fileName} {
+      allow read: if isVerifiedUser() && (request.auth.uid == userId || isAdmin());
+      allow write: if isVerifiedUser() && (request.auth.uid == userId || isAdmin()) && isValidUploadSizeAndType();
+    }
+
+    // Generated certificates (owner read, admin write or owner write)
+    match /certificates/{userId}/{allPaths=**} {
+      allow read: if isVerifiedUser() && (request.auth.uid == userId || isAdmin());
+      allow write: if isVerifiedUser() && (request.auth.uid == userId || isAdmin()) && isValidUploadSizeAndType();
+    }
+  }
+}

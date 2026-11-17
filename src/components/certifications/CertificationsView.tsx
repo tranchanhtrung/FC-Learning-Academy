@@ -153,7 +153,15 @@ export const CertificationsView: React.FC = () => {
         ) : (
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs max-w-xs">
             <p className="text-slate-600 leading-tight">
-              <strong>Lưu ý quản trị:</strong> Chứng chỉ học viện công nhận năng lực học thuật & chuyên môn, là điều kiện tiên quyết nhưng tách biệt với quyết định bổ nhiệm nhân sự chính thức của Tập đoàn.
+              {language === 'vi' ? (
+                <>
+                  <strong>Lưu ý quản trị:</strong> Chứng chỉ học viện công nhận năng lực học thuật & chuyên môn, là điều kiện tiên quyết nhưng tách biệt với quyết định bổ nhiệm nhân sự chính thức của Tập đoàn.
+                </>
+              ) : (
+                <>
+                  <strong>Governance Note:</strong> Academy certifications validate technical competency and readiness as a prerequisite, separate from formal corporate HR promotion appointments.
+                </>
+              )}
             </p>
           </div>
         )}
@@ -199,7 +207,10 @@ export const CertificationsView: React.FC = () => {
                 <div className="flex items-center gap-2 text-emerald-300">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   <div>
-                    <span className="font-bold block">Chứng chỉ hợp lệ: {language === 'vi' ? verificationResult.titleVi : verificationResult.titleEn}</span>
+                    <span className="font-bold block">
+                      {language === 'vi' ? 'Chứng chỉ hợp lệ: ' : 'Valid Certificate: '}
+                      {language === 'vi' ? verificationResult.titleVi : verificationResult.titleEn}
+                    </span>
                     <span className="text-[11px] text-slate-300">
                       {language === 'vi' ? 'Cấp cho:' : 'Issued to:'}{' '}
                       <strong>
@@ -218,7 +229,9 @@ export const CertificationsView: React.FC = () => {
               </div>
             ) : (
               <p className="text-rose-400">
-                Không tìm thấy chứng chỉ với mã xác thực này. Vui lòng kiểm tra lại.
+                {language === 'vi'
+                  ? 'Không tìm thấy chứng chỉ với mã xác thực này. Vui lòng kiểm tra lại.'
+                  : 'No certificate found for this verification code. Please double-check and try again.'}
               </p>
             )}
           </div>
@@ -297,7 +310,7 @@ export const CertificationsView: React.FC = () => {
                     </h3>
                     {userHasCert && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        ĐÃ ĐẠT
+                        {language === 'vi' ? 'ĐÃ ĐẠT' : 'EARNED'}
                       </span>
                     )}
                   </div>
@@ -308,14 +321,18 @@ export const CertificationsView: React.FC = () => {
 
                   <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 pt-1">
                     <span>
-                      Khóa học bắt buộc: <strong>{lvl.requiredCourses.join(', ')}</strong> ({completedCourseCount}/{lvl.requiredCourses.length})
+                      {language === 'vi' ? 'Khóa học bắt buộc:' : 'Required Courses:'}{' '}
+                      <strong>{lvl.requiredCourses.join(', ')}</strong> ({completedCourseCount}/{lvl.requiredCourses.length})
                     </span>
                     <span>&bull;</span>
                     <span>
-                      Dự án OJT: <strong>{lvl.requiredOjt.join(', ')}</strong> ({approvedOjtCount}/{lvl.requiredOjt.length})
+                      {language === 'vi' ? 'Dự án OJT:' : 'OJT Projects:'}{' '}
+                      <strong>{lvl.requiredOjt.join(', ')}</strong> ({approvedOjtCount}/{lvl.requiredOjt.length})
                     </span>
                     <span>&bull;</span>
-                    <span>Điểm chuẩn: <strong>{lvl.minScore}%</strong></span>
+                    <span>
+                      {language === 'vi' ? 'Điểm chuẩn:' : 'Min Score:'} <strong>{lvl.minScore}%</strong>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -346,7 +363,7 @@ export const CertificationsView: React.FC = () => {
                 ) : (
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold px-3 py-2 bg-slate-100 rounded-xl">
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Chưa đủ điều kiện</span>
+                    <span>{language === 'vi' ? 'Chưa đủ điều kiện' : 'Requirements Pending'}</span>
                   </div>
                 )}
               </div>

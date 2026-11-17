@@ -195,6 +195,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "datasetType": { "type": "string", "enum": ["academy_2027", "simulator_starter"] },
         "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
         "performedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "performedByEmail": { "type": "string", "maxLength": 200 },
@@ -393,6 +394,561 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "weightMode", "ratio702010", "readinessThresholds", "updatedAt"]
+    },
+    "HotelSimulationProfile": {
+      "title": "HotelSimulationProfile",
+      "description": "Hotel property profile for FC Business Partner Simulator scenarios.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "hotelCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "hotelName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "brandTier": { "type": "string", "maxLength": 80 },
+        "city": { "type": "string", "maxLength": 100 },
+        "roomsAvailable": { "type": "number" },
+        "totalKeys": { "type": "number" },
+        "fcPositionLevel": { "type": "string", "maxLength": 120 },
+        "currency": { "type": "string", "maxLength": 12 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "hotelCode", "hotelName", "brandTier", "city", "roomsAvailable", "totalKeys", "fcPositionLevel", "currency", "importedAt", "importBatchId"]
+    },
+    "SimulationScenario": {
+      "title": "SimulationScenario",
+      "description": "Hospitality FC Business Partner Simulator scenario master.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "hotelId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "titleVi": { "type": "string", "minLength": 1, "maxLength": 250 },
+        "summaryEn": { "type": "string", "maxLength": 2000 },
+        "summaryVi": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 120 },
+        "difficultyLabel": { "type": "string", "maxLength": 32 },
+        "difficultyLevel": { "type": "number" },
+        "targetRole": { "type": "string", "maxLength": 120 },
+        "recommendedPositionIds": { "type": "array" },
+        "competencyIds": { "type": "array" },
+        "periodLabel": { "type": "string", "maxLength": 80 },
+        "estimatedDurationMinutes": { "type": "number" },
+        "learningObjectivesEn": { "type": "array" },
+        "learningObjectivesVi": { "type": "array" },
+        "requiredKnowledgeEn": { "type": "array" },
+        "requiredKnowledgeVi": { "type": "array" },
+        "expectedOutputsEn": { "type": "array" },
+        "expectedOutputsVi": { "type": "array" },
+        "usaliReferenceLabel": { "type": "string", "maxLength": 200 },
+        "scenarioKind": { "type": "string", "enum": ["standard", "rolling_forecast", "capex"] },
+        "defaultPersona": { "type": "string", "maxLength": 80 },
+        "languageOptions": { "type": "array" },
+        "datasetVersion": { "type": "string", "maxLength": 64 },
+        "versionNumber": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["Draft", "Validated", "Published", "Archived"] },
+        "validatedBy": { "type": "string", "maxLength": 150 },
+        "validatedAt": { "type": "string", "maxLength": 64 },
+        "publishedBy": { "type": "string", "maxLength": 150 },
+        "publishedAt": { "type": "string", "maxLength": 64 },
+        "unpublishedBy": { "type": "string", "maxLength": 150 },
+        "unpublishedAt": { "type": "string", "maxLength": 64 },
+        "archivedBy": { "type": "string", "maxLength": 150 },
+        "archivedAt": { "type": "string", "maxLength": 64 },
+        "sourceImportJobId": { "type": "string", "maxLength": 128 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "scenarioCode", "hotelId", "titleEn", "titleVi", "summaryEn", "summaryVi", "difficultyLevel", "targetRole", "periodLabel", "status", "importedAt", "importBatchId"]
+    },
+    "SimulationCompetencyMapping": {
+      "title": "SimulationCompetencyMapping",
+      "description": "Maps simulator scenarios to Academy competencies.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "competencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "workbookCompetencyId": { "type": "string", "maxLength": 128 },
+        "competencyCode": { "type": "string", "maxLength": 64 },
+        "competencyNameEn": { "type": "string", "maxLength": 200 },
+        "domainId": { "type": "string", "maxLength": 64 },
+        "targetProficiencyLevel": { "type": "number" },
+        "weightPercent": { "type": "number" },
+        "isPrimary": { "type": "boolean" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "competencyId", "targetProficiencyLevel", "weightPercent", "isPrimary", "importedAt", "importBatchId"]
+    },
+    "SimulationFinancialRecord": {
+      "title": "SimulationFinancialRecord",
+      "description": "USALI-validated financial dataset rows per simulator scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "hotelProfileId": { "type": "string", "maxLength": 128 },
+        "periodLabel": { "type": "string", "maxLength": 32 },
+        "version": { "type": "string", "maxLength": 32 },
+        "departmentCode": { "type": "string", "maxLength": 32 },
+        "departmentName": { "type": "string", "maxLength": 120 },
+        "unit": { "type": "string", "maxLength": 32 },
+        "metricType": { "type": "string", "maxLength": 40 },
+        "departmentalRevenue": { "type": "number" },
+        "departmentalExpenses": { "type": "number" },
+        "departmentalProfit": { "type": "number" },
+        "totalOperatingRevenue": { "type": "number" },
+        "totalDepartmentalExpenses": { "type": "number" },
+        "totalUndistributedExpenses": { "type": "number" },
+        "gop": { "type": "number" },
+        "gopMarginPct": { "type": "number" },
+        "roomsRevenue": { "type": "number" },
+        "budgetGop": { "type": "number" },
+        "varianceAmount": { "type": "number" },
+        "variancePct": { "type": "number" },
+        "varianceClassification": { "type": "string", "enum": ["Favorable", "Unfavorable", "Neutral"] },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "periodLabel", "departmentCode", "departmentName", "departmentalRevenue", "departmentalExpenses", "departmentalProfit", "totalOperatingRevenue", "totalDepartmentalExpenses", "totalUndistributedExpenses", "gop", "gopMarginPct", "roomsRevenue", "importedAt", "importBatchId"]
+    },
+    "SimulationOperationalRecord": {
+      "title": "SimulationOperationalRecord",
+      "description": "Hotel operational KPIs (Occupancy, ADR, RevPAR, Covers, Labor) per scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "hotelProfileId": { "type": "string", "maxLength": 128 },
+        "periodLabel": { "type": "string", "maxLength": 32 },
+        "version": { "type": "string", "maxLength": 32 },
+        "roomsAvailable": { "type": "number" },
+        "roomsSold": { "type": "number" },
+        "roomsRevenue": { "type": "number" },
+        "occupancyPct": { "type": "number" },
+        "adr": { "type": "number" },
+        "revpar": { "type": "number" },
+        "fbCovers": { "type": "number" },
+        "laborHours": { "type": "number" },
+        "overtimeHours": { "type": "number" },
+        "gssScore": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "periodLabel", "roomsAvailable", "roomsSold", "roomsRevenue", "occupancyPct", "adr", "revpar", "importedAt", "importBatchId"]
+    },
+    "SimulationBusinessChallenge": {
+      "title": "SimulationBusinessChallenge",
+      "description": "Operational or financial business challenge in a simulator scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "challengeCode": { "type": "string", "maxLength": 32 },
+        "titleEn": { "type": "string", "maxLength": 250 },
+        "titleVi": { "type": "string", "maxLength": 250 },
+        "descriptionEn": { "type": "string", "maxLength": 2000 },
+        "descriptionVi": { "type": "string", "maxLength": 2000 },
+        "severity": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
+        "impactArea": { "type": "string", "maxLength": 120 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "challengeCode", "titleEn", "titleVi", "descriptionEn", "descriptionVi", "severity", "impactArea", "importedAt", "importBatchId"]
+    },
+    "SimulationTask": {
+      "title": "SimulationTask",
+      "description": "Structured learner tasks for a simulator scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "taskOrder": { "type": "number" },
+        "titleEn": { "type": "string", "maxLength": 250 },
+        "titleVi": { "type": "string", "maxLength": 250 },
+        "instructionsEn": { "type": "string", "maxLength": 2000 },
+        "instructionsVi": { "type": "string", "maxLength": 2000 },
+        "deliverableType": { "type": "string", "maxLength": 120 },
+        "maxPoints": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "taskOrder", "titleEn", "titleVi", "instructionsEn", "instructionsVi", "deliverableType", "maxPoints", "importedAt", "importBatchId"]
+    },
+    "SimulationReferenceAnalysis": {
+      "title": "SimulationReferenceAnalysis",
+      "description": "Official Financial Controller reference root cause analysis and answer key.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "topic": { "type": "string", "maxLength": 150 },
+        "rootCauseEn": { "type": "string", "maxLength": 2000 },
+        "rootCauseVi": { "type": "string", "maxLength": 2000 },
+        "benchmarkFormula": { "type": "string", "maxLength": 300 },
+        "recommendedActionEn": { "type": "string", "maxLength": 2000 },
+        "recommendedActionVi": { "type": "string", "maxLength": 2000 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "topic", "rootCauseEn", "rootCauseVi", "benchmarkFormula", "recommendedActionEn", "recommendedActionVi", "importedAt", "importBatchId"]
+    },
+    "SimulationDecisionOption": {
+      "title": "SimulationDecisionOption",
+      "description": "Strategic decision options for learner trade-off selection.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "optionCode": { "type": "string", "maxLength": 32 },
+        "titleEn": { "type": "string", "maxLength": 250 },
+        "titleVi": { "type": "string", "maxLength": 250 },
+        "financialImpactEstimate": { "type": "number" },
+        "gopImpactPct": { "type": "number" },
+        "riskLevel": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "isOptimal": { "type": "boolean" },
+        "rationaleEn": { "type": "string", "maxLength": 1500 },
+        "rationaleVi": { "type": "string", "maxLength": 1500 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "optionCode", "titleEn", "titleVi", "financialImpactEstimate", "gopImpactPct", "riskLevel", "isOptimal", "rationaleEn", "rationaleVi", "importedAt", "importBatchId"]
+    },
+    "SimulationRoleplayPrompt": {
+      "title": "SimulationRoleplayPrompt",
+      "description": "Guided General Manager vs FC dialogue turn prompts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "turnOrder": { "type": "number" },
+        "speakerRole": { "type": "string", "maxLength": 80 },
+        "promptEn": { "type": "string", "maxLength": 2000 },
+        "promptVi": { "type": "string", "maxLength": 2000 },
+        "expectedFocusPoints": { "type": "string", "maxLength": 1000 },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "turnOrder", "speakerRole", "promptEn", "promptVi", "expectedFocusPoints", "importedAt", "importBatchId"]
+    },
+    "SimulationEvaluationRubric": {
+      "title": "SimulationEvaluationRubric",
+      "description": "100%-weighted evaluation rubric criteria per simulator scenario.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "criterionCode": { "type": "string", "maxLength": 32 },
+        "criterionNameEn": { "type": "string", "maxLength": 250 },
+        "criterionNameVi": { "type": "string", "maxLength": 250 },
+        "weightPercent": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "passingScore": { "type": "number" },
+        "importedAt": { "type": "string", "maxLength": 64 },
+        "importBatchId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "scenarioId", "criterionCode", "criterionNameEn", "criterionNameVi", "weightPercent", "maxScore", "passingScore", "importedAt", "importBatchId"]
+    },
+    "SimulationSession": {
+      "title": "SimulationSession",
+      "description": "Learner simulator session history and AI evaluation (immutable once completed).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioTitle": { "type": "string", "maxLength": 250 },
+        "hotelSimulationId": { "type": "string", "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "language": { "type": "string", "enum": ["vi", "en"] },
+        "difficulty": { "type": "string", "maxLength": 32 },
+        "currentStep": { "type": "number" },
+        "datasetVersion": { "type": "string", "maxLength": 64 },
+        "versionNumber": { "type": "number" },
+        "datasetSnapshot": { "type": "object" },
+        "analysisNotes": { "type": "string", "maxLength": 8000 },
+        "analysisWorkspace": { "type": "object" },
+        "decisionWorkspace": { "type": "object" },
+        "executiveReport": { "type": "object" },
+        "roleplayConfig": { "type": "object" },
+        "selectedOptionIds": { "type": "array" },
+        "learnerAnalysis": { "type": "string", "maxLength": 8000 },
+        "conversation": { "type": "array" },
+        "evaluation": { "type": "object" },
+        "evaluationId": { "type": "string", "maxLength": 128 },
+        "finalScore": { "type": "number" },
+        "competencyResults": { "type": "array" },
+        "feedbackSummary": { "type": "string", "maxLength": 2000 },
+        "evidenceUrl": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["in_progress", "completed"] },
+        "startedAt": { "type": "string", "maxLength": 64 },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "completedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "scenarioId", "scenarioTitle", "employeeId", "employeeUid", "selectedOptionIds", "learnerAnalysis", "conversation", "status", "startedAt", "updatedAt"]
+    },
+    "SimulationDataset": {
+      "title": "SimulationDataset",
+      "description": "Versioned USALI financial statement snapshot per simulator scenario.",
+      "type": "object",
+      "properties": {
+        "datasetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "hotelSimulationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "datasetVersion": { "type": "string", "maxLength": 64 },
+        "periods": { "type": "object" },
+        "generatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["datasetId", "scenarioId", "hotelSimulationId", "datasetVersion", "periods", "generatedAt"]
+    },
+    "SimulationResponse": {
+      "title": "SimulationResponse",
+      "description": "Learner analysis, decision workspace, and executive memo payload for a simulation session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "analysisWorkspace": { "type": "object" },
+        "decisionWorkspace": { "type": "object" },
+        "executiveReport": { "type": "object" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "sessionId", "scenarioId", "employeeId", "employeeUid", "updatedAt"]
+    },
+    "SimulationConversation": {
+      "title": "SimulationConversation",
+      "description": "Persona-based executive meeting & AI Business Coach dialogue transcript.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "persona": { "type": "string", "maxLength": 80 },
+        "messages": { "type": "array" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "sessionId", "employeeId", "employeeUid", "messages", "updatedAt"]
+    },
+    "SimulationEvaluation": {
+      "title": "SimulationEvaluation",
+      "description": "6-criterion weighted simulator assessment with advisory competency evidence and human assessor review.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "learnerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "learnerUid": { "type": "string", "maxLength": 128 },
+        "scoringCriteria": { "type": "array" },
+        "totalScore": { "type": "number" },
+        "adjustedTotalScore": { "type": "number" },
+        "adjustmentReason": { "type": "string", "maxLength": 2000 },
+        "assessorType": { "type": "string", "enum": ["deterministic_plus_ai", "human_reviewed"] },
+        "reviewerId": { "type": "string", "maxLength": 128 },
+        "reviewerName": { "type": "string", "maxLength": 150 },
+        "reviewedAt": { "type": "string", "maxLength": 64 },
+        "assessorComments": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "sessionId", "scenarioId", "learnerId", "scoringCriteria", "totalScore", "assessorType", "createdAt"]
+    },
+    "SimulationAssignment": {
+      "title": "SimulationAssignment",
+      "description": "Admin/L&D/FC assignment of mandatory or recommended simulator scenarios to learners.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "learnerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assignedById": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assignedByName": { "type": "string", "maxLength": 150 },
+        "dueDate": { "type": "string", "maxLength": 64 },
+        "mandatory": { "type": "boolean" },
+        "note": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["assigned", "in_progress", "completed"] },
+        "assignedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "scenarioId", "learnerId", "assignedById", "assignedByName", "dueDate", "mandatory", "status", "assignedAt"]
+    },
+    "SimulationAuditLog": {
+      "title": "SimulationAuditLog",
+      "description": "Immutable append-only audit trail for simulator submissions, evaluations, and assessor overrides.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "scenarioId": { "type": "string", "maxLength": 128 },
+        "actorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorName": { "type": "string", "maxLength": 150 },
+        "actorRole": { "type": "string", "maxLength": 64 },
+        "action": { "type": "string", "maxLength": 80 },
+        "details": { "type": "string", "maxLength": 2000 },
+        "timestamp": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "actorId", "actorName", "actorRole", "action", "details", "timestamp"]
+    },
+    "CourseEnrollment": {
+      "title": "CourseEnrollment",
+      "description": "Learner course enrollment and progress tracking.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "progressPercent": { "type": "number" },
+        "completedModules": { "type": "array" },
+        "status": { "type": "string" },
+        "enrolledDate": { "type": "string", "maxLength": 64 },
+        "completedDate": { "type": "string", "maxLength": 64 },
+        "quizScore": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "userId", "employeeUid", "courseId", "progressPercent", "completedModules", "status", "enrolledDate"]
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "Immutable learner quiz assessment attempt.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "maxLength": 128 },
+        "quizTitle": { "type": "string", "maxLength": 250 },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "passed": { "type": "boolean" },
+        "date": { "type": "string", "maxLength": 64 },
+        "answers": { "type": "object" }
+      },
+      "required": ["id", "userId", "employeeUid", "quizTitle", "score", "totalQuestions", "passed", "date"]
+    },
+    "PracticalSubmission": {
+      "title": "PracticalSubmission",
+      "description": "Learner OJT practical assignment submission and supervisor grading.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "assignmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "employeeUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "submittedDate": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["draft", "submitted", "approved", "revision_requested"] },
+        "submissionNotes": { "type": "string", "maxLength": 4000 },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "fileSize": { "type": "string", "maxLength": 64 },
+        "score": { "type": "number" },
+        "feedback": { "type": "string", "maxLength": 4000 },
+        "reviewedBy": { "type": "string", "maxLength": 150 },
+        "reviewedDate": { "type": "string", "maxLength": 64 },
+        "aiGraded": { "type": "boolean" }
+      },
+      "required": ["id", "assignmentId", "userId", "employeeUid", "submittedDate", "status", "submissionNotes"]
+    },
+    "ScenarioImportJob": {
+      "title": "ScenarioImportJob",
+      "description": "Scenario Data Import Center batch job tracking with resume state.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "fileSizeBytes": { "type": "number" },
+        "uploadedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploadedByEmail": { "type": "string", "maxLength": 200 },
+        "uploadedByName": { "type": "string", "maxLength": 150 },
+        "uploadedByRole": { "type": "string", "maxLength": 64 },
+        "importMode": { "type": "string", "enum": ["skip", "update", "insert_new", "reject"] },
+        "targetDestination": { "type": "string", "maxLength": 32 },
+        "status": { "type": "string", "enum": ["validating", "validated", "importing", "paused", "completed", "completed_with_errors", "failed"] },
+        "toleranceUsed": { "type": "number" },
+        "totalSheetsDetected": { "type": "number" },
+        "totalRowsDetected": { "type": "number" },
+        "totalScenariosDetected": { "type": "number" },
+        "validCount": { "type": "number" },
+        "invalidCount": { "type": "number" },
+        "warningCount": { "type": "number" },
+        "createdCount": { "type": "number" },
+        "updatedCount": { "type": "number" },
+        "skippedCount": { "type": "number" },
+        "failedCount": { "type": "number" },
+        "totalChunks": { "type": "number" },
+        "completedChunks": { "type": "number" },
+        "lastProcessedCollection": { "type": "string", "maxLength": 80 },
+        "canResume": { "type": "boolean" },
+        "summaryStats": { "type": "object" },
+        "startedAt": { "type": "string", "maxLength": 64 },
+        "completedAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "fileName", "uploadedByUid", "uploadedByName", "uploadedByRole", "importMode", "status", "startedAt", "updatedAt"]
+    },
+    "ScenarioImportError": {
+      "title": "ScenarioImportError",
+      "description": "Structured row-level import error and warning log per import job.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "jobId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "sheetName": { "type": "string", "maxLength": 80 },
+        "collectionName": { "type": "string", "maxLength": 80 },
+        "rowNumber": { "type": "number" },
+        "recordId": { "type": "string", "maxLength": 128 },
+        "fieldName": { "type": "string", "maxLength": 80 },
+        "errorCode": { "type": "string", "maxLength": 64 },
+        "severity": { "type": "string", "enum": ["error", "warning"] },
+        "message": { "type": "string", "maxLength": 2000 },
+        "rawRowSnapshot": { "type": "string", "maxLength": 4000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "jobId", "sheetName", "rowNumber", "recordId", "fieldName", "errorCode", "severity", "message", "createdAt"]
+    },
+    "ScenarioVersion": {
+      "title": "ScenarioVersion",
+      "description": "Immutable scenario version snapshot and audit log for publishing and dataset updates.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "scenarioCode": { "type": "string", "maxLength": 32 },
+        "versionNumber": { "type": "number" },
+        "datasetVersion": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["Draft", "Validated", "Published", "Archived"] },
+        "changeSummary": { "type": "string", "maxLength": 1000 },
+        "sourceImportJobId": { "type": "string", "maxLength": 128 },
+        "changedById": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "changedByName": { "type": "string", "maxLength": 150 },
+        "changedByRole": { "type": "string", "maxLength": 64 },
+        "changedAt": { "type": "string", "maxLength": 64 },
+        "snapshotSummary": { "type": "object" }
+      },
+      "required": ["id", "scenarioId", "scenarioCode", "versionNumber", "datasetVersion", "status", "changeSummary", "changedById", "changedByName", "changedByRole", "changedAt"]
+    },
+    "ScenarioCompetencyMapping": {
+      "title": "ScenarioCompetencyMapping",
+      "description": "Verified workbook Competency_ID to existing LMS competency lookup mapping.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "workbookCompetencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetCompetencyId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "targetCompetencyCode": { "type": "string", "maxLength": 64 },
+        "targetCompetencyNameEn": { "type": "string", "maxLength": 200 },
+        "targetCompetencyNameVi": { "type": "string", "maxLength": 200 },
+        "domainId": { "type": "string", "maxLength": 64 },
+        "verifiedById": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "verifiedByName": { "type": "string", "maxLength": 150 },
+        "verifiedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "workbookCompetencyId", "targetCompetencyId", "targetCompetencyCode", "domainId", "verifiedById", "verifiedByName", "verifiedAt"]
     }
   },
   "firestore": {
@@ -471,6 +1027,106 @@
     "/talentConfig/{configId}": {
       "schema": { "$ref": "#/entities/TalentConfig" },
       "description": "Gap Engine and IDP global configuration"
+    },
+    "/hotelSimulationProfiles/{hotelId}": {
+      "schema": { "$ref": "#/entities/HotelSimulationProfile" },
+      "description": "Simulator hotel profiles"
+    },
+    "/simulationScenarios/{scenarioId}": {
+      "schema": { "$ref": "#/entities/SimulationScenario" },
+      "description": "Simulator scenarios master (Draft/Published/Archived)"
+    },
+    "/simulationCompetencyMappings/{mappingId}": {
+      "schema": { "$ref": "#/entities/SimulationCompetencyMapping" },
+      "description": "Scenario-to-competency mappings"
+    },
+    "/simulationFinancialData/{financialId}": {
+      "schema": { "$ref": "#/entities/SimulationFinancialRecord" },
+      "description": "Scenario USALI financial datasets"
+    },
+    "/simulationOperationalData/{operationalId}": {
+      "schema": { "$ref": "#/entities/SimulationOperationalRecord" },
+      "description": "Scenario hotel operational KPIs"
+    },
+    "/simulationBusinessChallenges/{challengeId}": {
+      "schema": { "$ref": "#/entities/SimulationBusinessChallenge" },
+      "description": "Scenario business challenges"
+    },
+    "/simulationTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/SimulationTask" },
+      "description": "Scenario learner tasks"
+    },
+    "/simulationReferenceAnalysis/{analysisId}": {
+      "schema": { "$ref": "#/entities/SimulationReferenceAnalysis" },
+      "description": "Scenario official reference analysis"
+    },
+    "/simulationDecisionOptions/{optionId}": {
+      "schema": { "$ref": "#/entities/SimulationDecisionOption" },
+      "description": "Scenario strategic decision options"
+    },
+    "/simulationRoleplayPrompts/{promptId}": {
+      "schema": { "$ref": "#/entities/SimulationRoleplayPrompt" },
+      "description": "Scenario GM-FC roleplay dialogue prompts"
+    },
+    "/simulationEvaluationRubrics/{rubricId}": {
+      "schema": { "$ref": "#/entities/SimulationEvaluationRubric" },
+      "description": "Scenario evaluation rubrics"
+    },
+    "/simulationSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/SimulationSession" },
+      "description": "Learner simulator session history and AI evaluation"
+    },
+    "/simulationDatasets/{datasetId}": {
+      "schema": { "$ref": "#/entities/SimulationDataset" },
+      "description": "Versioned USALI dataset snapshots per scenario"
+    },
+    "/simulationResponses/{responseId}": {
+      "schema": { "$ref": "#/entities/SimulationResponse" },
+      "description": "Structured learner analysis, decisions, and executive reports"
+    },
+    "/simulationConversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/SimulationConversation" },
+      "description": "GM Executive Meeting & AI Business Coach conversation transcripts"
+    },
+    "/simulationEvaluations/{evaluationId}": {
+      "schema": { "$ref": "#/entities/SimulationEvaluation" },
+      "description": "6-criterion weighted simulator evaluations and assessor reviews"
+    },
+    "/simulationAssignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/SimulationAssignment" },
+      "description": "Admin/FC scenario assignments to learners"
+    },
+    "/simulationAuditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/SimulationAuditLog" },
+      "description": "Immutable audit logs for simulator evaluations and human score overrides"
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": { "$ref": "#/entities/CourseEnrollment" },
+      "description": "Learner course enrollments"
+    },
+    "/quizAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/QuizAttempt" },
+      "description": "Learner quiz attempts"
+    },
+    "/practicalSubmissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/PracticalSubmission" },
+      "description": "Learner OJT practical assignment submissions"
+    },
+    "/scenarioImportJobs/{jobId}": {
+      "schema": { "$ref": "#/entities/ScenarioImportJob" },
+      "description": "Scenario Data Import Center import jobs"
+    },
+    "/scenarioImportErrors/{errorId}": {
+      "schema": { "$ref": "#/entities/ScenarioImportError" },
+      "description": "Scenario Data Import Center error logs"
+    },
+    "/scenarioVersions/{versionId}": {
+      "schema": { "$ref": "#/entities/ScenarioVersion" },
+      "description": "Scenario version history and publish audit"
+    },
+    "/scenarioCompetencyMappings/{mappingId}": {
+      "schema": { "$ref": "#/entities/ScenarioCompetencyMapping" },
+      "description": "Approved workbook competency mappings"
     }
   }
 }

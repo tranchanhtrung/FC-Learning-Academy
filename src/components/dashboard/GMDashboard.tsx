@@ -165,21 +165,29 @@ export const GMDashboard: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-center text-xs">
                 <div className="p-2 rounded-lg bg-white border border-slate-100">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Điểm năng lực</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">
+                    {language === 'vi' ? 'Điểm năng lực' : 'Competency Score'}
+                  </span>
                   <span className="font-black text-slate-900">{readyCandidate?.competencyScorePercent}%</span>
                 </div>
                 <div className="p-2 rounded-lg bg-white border border-slate-100">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Dự án OJT</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">
+                    {language === 'vi' ? 'Dự án OJT' : 'OJT Projects'}
+                  </span>
                   <span className="font-black text-slate-900">{readyCandidate?.completedOJTCount} / 6</span>
                 </div>
                 <div className="p-2 rounded-lg bg-white border border-slate-100">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Chứng chỉ</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">
+                    {language === 'vi' ? 'Chứng chỉ' : 'Certification'}
+                  </span>
                   <span className="font-black text-amber-600">Level {readyCandidate?.certLevel}</span>
                 </div>
               </div>
 
               <p className="text-xs text-slate-600 italic bg-amber-50/60 p-2.5 rounded-lg border border-amber-200/60">
-                &ldquo;Lê Hoàng Nam thể hiện tư duy đối tác kinh doanh vượt trội, làm chủ quy trình Fast-Close Day 3 và bảo vệ thành công mô hình đầu tư tiết kiệm năng lượng $850k.&rdquo;
+                {language === 'vi'
+                  ? '“Lê Hoàng Nam thể hiện tư duy đối tác kinh doanh vượt trội, làm chủ quy trình Fast-Close Day 3 và bảo vệ thành công mô hình đầu tư tiết kiệm năng lượng $850k.”'
+                  : '“Lê Hoàng Nam demonstrates strong business-partner acumen, mastering the Day-3 Fast-Close cycle and defending an $850k energy-efficiency CAPEX business case.”'}
               </p>
             </div>
           )}
@@ -198,30 +206,42 @@ export const GMDashboard: React.FC = () => {
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
                 <p className="font-bold text-slate-800">Fast-Close Day 3 Delivery</p>
-                <p className="text-[11px] text-slate-500">Xuất báo cáo P&L sơ bộ đúng 17:00 ngày Day 3</p>
+                <p className="text-[11px] text-slate-500">
+                  {language === 'vi'
+                    ? 'Xuất báo cáo P&L sơ bộ đúng 17:00 ngày Day 3'
+                    : 'Preliminary P&L package published on schedule at 17:00 on Day 3'}
+                </p>
               </div>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                100% Đạt Chuẩn
+                {language === 'vi' ? '100% Đạt Chuẩn' : '100% On-Time'}
               </span>
             </div>
 
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
                 <p className="font-bold text-slate-800">Zero-Based Budget Accuracy</p>
-                <p className="text-[11px] text-slate-500">Biên độ sai lệch dự báo GOP rolling dưới ±2.8%</p>
+                <p className="text-[11px] text-slate-500">
+                  {language === 'vi'
+                    ? 'Biên độ sai lệch dự báo GOP rolling dưới ±2.8%'
+                    : 'Rolling GOP forecast variance held within ±2.8%'}
+                </p>
               </div>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
-                ±2.8% (Mục tiêu &lt; ±3%)
+                {language === 'vi' ? '±2.8% (Mục tiêu < ±3%)' : '±2.8% (Target < ±3%)'}
               </span>
             </div>
 
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
                 <p className="font-bold text-slate-800">F&B Cost Leakage Prevention</p>
-                <p className="text-[11px] text-slate-500">Giảm tỷ lệ thất thoát quầy Bar từ 34% xuống 29.5%</p>
+                <p className="text-[11px] text-slate-500">
+                  {language === 'vi'
+                    ? 'Giảm tỷ lệ thất thoát quầy Bar từ 34% xuống 29.5%'
+                    : 'Reduced Bar beverage cost variance from 34.0% down to 29.5%'}
+                </p>
               </div>
               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                Tiết kiệm $38,000/năm
+                {language === 'vi' ? 'Tiết kiệm $38,000/năm' : 'Saved $38,000/yr'}
               </span>
             </div>
           </div>

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { uploadAuthorizedTrainingFile } from '../../lib/firebase';
 import {
   Bot,
   Crown,
@@ -17,6 +18,16 @@ import {
   ChevronRight,
   HelpCircle,
   XCircle,
+  Lock,
+  Globe,
+  Save,
+  Paperclip,
+  TrendingUp,
+  ListChecks,
+  CheckSquare,
+  Square,
+  ShieldCheck,
+  Database,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -28,29 +39,41 @@ const PRESET_SCENARIOS = [
   {
     id: 'scen_01',
     title: 'Khủng hoảng Flow-Through: Công suất tăng 8% nhưng GOP giảm 5%',
+    titleEn: 'Flow-Through Crisis: Occupancy +8% Yet GOP Declines 5%',
     context:
       'Khách sạn đạt công suất phòng 82% (tăng 8% so với cùng kỳ). Tuy nhiên báo cáo P&L tháng cho thấy Gross Operating Profit (GOP) lại giảm 5%. Chủ đầu tư đang rất tức giận và yêu cầu giải trình khẩn cấp.',
+    contextEn:
+      'Hotel occupancy reached 82% (+8% YoY), yet monthly Gross Operating Profit (GOP) declined 5%. Ownership is concerned and demands an immediate USALI variance explanation and recovery plan.',
     metrics: { occupancy: '82%', adr: '$178', revpar: '$146', gopMargin: '31.2%', flowThrough: '-22%' },
   },
   {
     id: 'scen_02',
     title: 'Bùng nổ doanh thu F&B nhưng chi phí làm thêm giờ (Overtime) vượt trần',
+    titleEn: 'F&B Revenue Surge Offset by Excessive Labor Overtime Costs',
     context:
       'Bộ phận F&B ghi nhận doanh thu tăng 25% nhờ 12 tiệc cưới lớn trong tháng. Tuy nhiên chi phí nhân công F&B tăng vọt 42% do lạm dụng giờ làm thêm ngoài giờ và thuê lao động thời vụ ngoài giá cao.',
+    contextEn:
+      'F&B revenue grew 25% driven by 12 large banquet events, but F&B payroll surged 42% due to unmanaged overtime and high-rate casual labor.',
     metrics: { occupancy: '76%', adr: '$190', revpar: '$144', gopMargin: '28.5%', flowThrough: '18%' },
   },
   {
     id: 'scen_03',
     title: 'Giá điện năng & Tiện ích tăng 35%: Đề xuất cắt giảm chi phí bảo trì vs Tiện nghi khách',
+    titleEn: 'Utilities Cost Spike +35%: Energy Savings vs. Guest Satisfaction',
     context:
       'Chi phí năng lượng (Utilities) tăng đột biến do biểu giá điện mới. Trưởng bộ phận Kỹ thuật đề xuất tắt bớt điều hòa sảnh chính và thang máy, trong khi GM lo ngại điểm hài lòng của khách (GSS) sẽ tụt dốc.',
+    contextEn:
+      'Utility expenses jumped 35% after a tariff hike. Engineering proposes shutting down lobby HVAC zones, while the GM worries Guest Satisfaction Scores (GSS) will plunge.',
     metrics: { occupancy: '80%', adr: '$185', revpar: '$148', gopMargin: '33.0%', flowThrough: '38%' },
   },
   {
     id: 'scen_04',
     title: 'Tỷ trọng kênh OTA vượt 65% làm bào mòn giá bán ròng (Net ADR)',
+    titleEn: 'OTA Channel Mix Exceeds 65%, Eroding Net ADR & Margin',
     context:
       'Doanh số buồng phòng phụ thuộc quá mức vào Booking.com và Agoda với mức chiết khấu hoa hồng 18-22%. Chi phí phân phối tháng này lên tới $115,000, khiến giá phòng thực thu (Net ADR) chỉ còn $138 so với giá niêm yết $175.',
+    contextEn:
+      'Room mix relies heavily on OTAs at 18–22% commission. Distribution fees reached $115,000 this month, compressing Net ADR down to $138 from a $175 headline rate.',
     metrics: { occupancy: '85%', adr: '$175', revpar: '$148.75', gopMargin: '30.5%', flowThrough: '34%' },
   },
 ];
@@ -66,10 +89,16 @@ export const AIAssistantView: React.FC = () => {
     showToast,
     setSelectedCourseForPlayer,
     setActiveTab: setMainNavTab,
+    simulatorData,
+    toggleScenarioPublish,
+    saveSimulationSession,
+    firebaseUser,
+    dataSourceMode,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'simulator' | 'advisor' | 'gapCoach' | 'lab'>('simulator');
 
+  const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
   const isSupervisor =
     currentUser.role === 'financial_controller' ||
     currentUser.role === 'super_admin' ||
@@ -77,8 +106,124 @@ export const AIAssistantView: React.FC = () => {
     currentUser.role === 'general_manager';
 
   // ---------------- MODE 1: SIMULATOR STATE ----------------
+  const visibleImportedScenarios = useMemo(() => {
+    const all = simulatorData?.simulationScenarios || [];
+    return isAdminOrLnd ? all : all.filter((s) => s.status === 'Published');
+  }, [isAdminOrLnd, simulatorData?.simulationScenarios]);
+
+  const isUsingDemoFallback = visibleImportedScenarios.length === 0;
+
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string>('');
   const [selectedScenarioIndex, setSelectedScenarioIndex] = useState<number>(0);
-  const selectedScenario = PRESET_SCENARIOS[selectedScenarioIndex];
+
+  useEffect(() => {
+    if (visibleImportedScenarios.length > 0) {
+      const stillExists = visibleImportedScenarios.some((s) => s.id === selectedScenarioId);
+      if (!stillExists) {
+        setSelectedScenarioId(visibleImportedScenarios[0].id);
+      }
+    }
+  }, [selectedScenarioId, visibleImportedScenarios]);
+
+  const activeImportedScenario = useMemo(
+    () => visibleImportedScenarios.find((s) => s.id === selectedScenarioId) || visibleImportedScenarios[0] || null,
+    [selectedScenarioId, visibleImportedScenarios]
+  );
+
+  const activeHotelProfile = useMemo(() => {
+    if (!activeImportedScenario) return null;
+    return (simulatorData.hotelSimulationProfiles || []).find((h) => h.id === activeImportedScenario.hotelId) || null;
+  }, [activeImportedScenario, simulatorData.hotelSimulationProfiles]);
+
+  const activeFinancialRows = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationFinancialData || []).filter((f) => f.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationFinancialData]);
+
+  const activeOperationalRows = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationOperationalData || []).filter((o) => o.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationOperationalData]);
+
+  const activeChallenges = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationBusinessChallenges || []).filter((c) => c.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationBusinessChallenges]);
+
+  const activeTasks = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationTasks || [])
+      .filter((tItem) => tItem.scenarioId === activeImportedScenario.id)
+      .sort((a, b) => a.taskOrder - b.taskOrder);
+  }, [activeImportedScenario, simulatorData.simulationTasks]);
+
+  const activeDecisionOptions = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationDecisionOptions || []).filter((o) => o.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationDecisionOptions]);
+
+  const activeRoleplayPrompts = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationRoleplayPrompts || [])
+      .filter((r) => r.scenarioId === activeImportedScenario.id)
+      .sort((a, b) => a.turnOrder - b.turnOrder);
+  }, [activeImportedScenario, simulatorData.simulationRoleplayPrompts]);
+
+  const activeRubrics = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationEvaluationRubrics || []).filter((r) => r.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationEvaluationRubrics]);
+
+  const activeReferenceAnalysis = useMemo(() => {
+    if (!activeImportedScenario) return [];
+    return (simulatorData.simulationReferenceAnalysis || []).filter((r) => r.scenarioId === activeImportedScenario.id);
+  }, [activeImportedScenario, simulatorData.simulationReferenceAnalysis]);
+
+  const selectedFallbackScenario = PRESET_SCENARIOS[selectedScenarioIndex] || PRESET_SCENARIOS[0];
+
+  const buildStructuredScenarioPayload = () => {
+    if (activeImportedScenario) {
+      const latestFin = activeFinancialRows[0];
+      const latestOp = activeOperationalRows[0];
+      return {
+        id: activeImportedScenario.id,
+        title: language === 'vi' ? activeImportedScenario.titleVi : activeImportedScenario.titleEn,
+        context: language === 'vi' ? activeImportedScenario.summaryVi : activeImportedScenario.summaryEn,
+        gmPersona: activeHotelProfile ? `${activeHotelProfile.hotelName} General Manager` : t.ai.gmPersona,
+        metrics: {
+          occupancy: latestOp ? `${latestOp.occupancyPct}%` : 'N/A',
+          adr: latestOp ? `$${latestOp.adr}` : 'N/A',
+          revpar: latestOp ? `$${latestOp.revpar}` : 'N/A',
+          gopMargin: latestFin ? `${latestFin.gopMarginPct}%` : 'N/A',
+          flowThrough: latestFin
+            ? `Budget GOP $${latestFin.budgetGop ?? 'N/A'} vs Actual $${latestFin.gop}`
+            : 'N/A',
+        },
+        hotelProfile: activeHotelProfile,
+        financials: activeFinancialRows,
+        operational: activeOperationalRows,
+        challenges: activeChallenges,
+        tasks: activeTasks,
+        decisionOptions: activeDecisionOptions,
+        rubrics: activeRubrics,
+        referenceAnalysis: activeReferenceAnalysis,
+      };
+    }
+    return {
+      ...selectedFallbackScenario,
+      title: language === 'vi' ? selectedFallbackScenario.title : selectedFallbackScenario.titleEn,
+      context: language === 'vi' ? selectedFallbackScenario.context : selectedFallbackScenario.contextEn,
+    };
+  };
+
+  const [selectedDecisionIds, setSelectedDecisionIds] = useState<string[]>([]);
+  const [learnerMemo, setLearnerMemo] = useState<string>('');
+  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(undefined);
+  const [sessionLockedCompleted, setSessionLockedCompleted] = useState<boolean>(false);
+  const [evidenceAttachmentUrl, setEvidenceAttachmentUrl] = useState<string>('');
+  const [evidenceUploading, setEvidenceUploading] = useState<boolean>(false);
+  const evidenceFileRef = useRef<HTMLInputElement | null>(null);
+
   const [simulatorInput, setSimulatorInput] = useState<string>('');
   const [simulatorMessages, setSimulatorMessages] = useState<{ role: 'gm' | 'user'; text: string }[]>([
     {
@@ -92,6 +237,27 @@ export const AIAssistantView: React.FC = () => {
   const [simulatorLoading, setSimulatorLoading] = useState<boolean>(false);
   const [simulatorError, setSimulatorError] = useState<string | null>(null);
   const [evaluationResult, setEvaluationResult] = useState<any>(null);
+
+  useEffect(() => {
+    if (activeImportedScenario) {
+      const opening = activeRoleplayPrompts[0];
+      const gmGreeting = opening
+        ? language === 'vi'
+          ? opening.promptVi
+          : opening.promptEn
+        : language === 'vi'
+        ? `Chào FC! Tôi đang xem kịch bản "${activeImportedScenario.titleVi}". Hãy trình bày phân tích USALI và phương án khắc phục.`
+        : `Good morning FC! I am reviewing "${activeImportedScenario.titleEn}". Walk me through your USALI analysis and recovery plan.`;
+      setSimulatorMessages([{ role: 'gm', text: gmGreeting }]);
+      setSelectedDecisionIds([]);
+      setLearnerMemo('');
+      setEvaluationResult(null);
+      setActiveSessionId(undefined);
+      setSessionLockedCompleted(false);
+      setEvidenceAttachmentUrl('');
+      setSimulatorError(null);
+    }
+  }, [activeImportedScenario?.id]);
 
   // ---------------- MODE 2: ADVISOR STATE ----------------
   const [selectedCourseFilter, setSelectedCourseFilter] = useState<string>('');
@@ -215,12 +381,16 @@ export const AIAssistantView: React.FC = () => {
     setSimulatorLoading(true);
 
     try {
+      const scenarioPayload = buildStructuredScenarioPayload();
+      const selectedOptionsObj = activeDecisionOptions.filter((o) => selectedDecisionIds.includes(o.id));
       const res = await fetch('/api/gemini/simulator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'chat',
-          scenario: selectedScenario,
+          scenario: scenarioPayload,
+          selectedDecisionOptions: selectedOptionsObj,
+          learnerAnalysis: learnerMemo,
           userTurn: userMsg,
           conversationHistory: simulatorMessages.slice(-8),
           language,
@@ -241,20 +411,87 @@ export const AIAssistantView: React.FC = () => {
     }
   };
 
+  // Persist Simulation Session Progress or Completion
+  const handlePersistSession = async (targetStatus: 'in_progress' | 'completed', evalObj?: any) => {
+    const scenId = activeImportedScenario?.id || selectedFallbackScenario.id;
+    const scenTitle = activeImportedScenario
+      ? language === 'vi'
+        ? activeImportedScenario.titleVi
+        : activeImportedScenario.titleEn
+      : language === 'vi'
+      ? selectedFallbackScenario.title
+      : selectedFallbackScenario.titleEn;
+    const saved = await saveSimulationSession({
+      id: activeSessionId,
+      scenarioId: scenId,
+      scenarioTitle: scenTitle,
+      selectedOptionIds: selectedDecisionIds,
+      learnerAnalysis: learnerMemo,
+      conversation: simulatorMessages,
+      evaluation: evalObj || evaluationResult || undefined,
+      evidenceUrl: evidenceAttachmentUrl || undefined,
+      status: targetStatus,
+    });
+    if (saved) {
+      setActiveSessionId(saved.id);
+      if (saved.status === 'completed') setSessionLockedCompleted(true);
+      showToast(
+        targetStatus === 'completed'
+          ? language === 'vi'
+            ? 'Đã hoàn tất & lưu phiên mô phỏng.'
+            : 'Completed and archived simulation session.'
+          : language === 'vi'
+          ? 'Đã lưu tiến độ phiên mô phỏng.'
+          : 'Saved simulation progress.',
+        'success'
+      );
+    }
+  };
+
+  const handleUploadEvidenceAttachment = async (file: File) => {
+    try {
+      setEvidenceUploading(true);
+      const scenId = activeImportedScenario?.id || selectedFallbackScenario.id;
+      const uploaded = await uploadAuthorizedTrainingFile({
+        file,
+        category: 'ojt_evidence',
+        recordId: `sim_${scenId}`,
+      });
+      setEvidenceAttachmentUrl(uploaded.downloadUrl);
+      showToast(
+        language === 'vi'
+          ? `Đã đính kèm minh chứng "${uploaded.fileName}" lên Firebase Storage.`
+          : `Attached evidence "${uploaded.fileName}" to Firebase Storage.`,
+        'success'
+      );
+    } catch (err: any) {
+      showToast(err?.message || 'Storage attachment upload failed.', 'error');
+    } finally {
+      setEvidenceUploading(false);
+    }
+  };
+
   // Request Evaluation from GM
   const handleRequestEvaluation = async () => {
     try {
       setSimulatorLoading(true);
       setSimulatorError(null);
+      const scenarioPayload = buildStructuredScenarioPayload();
+      const selectedOptionsObj = activeDecisionOptions.filter((o) => selectedDecisionIds.includes(o.id));
       const res = await fetch('/api/gemini/simulator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'evaluate',
-          scenario: selectedScenario,
+          scenario: scenarioPayload,
+          selectedDecisionOptions: selectedOptionsObj,
+          learnerAnalysis: learnerMemo,
           userTurn:
+            learnerMemo.trim() ||
             simulatorMessages.filter((m) => m.role === 'user').slice(-1)[0]?.text ||
-            'Tổng kết đề xuất chiến lược tài chính',
+            (language === 'vi'
+              ? 'Tổng kết đề xuất chiến lược tài chính'
+              : 'Executive financial strategy recommendation summary'),
           conversationHistory: simulatorMessages,
           language,
         }),
@@ -265,6 +502,9 @@ export const AIAssistantView: React.FC = () => {
         throw new Error(data.error || 'AI evaluation failed.');
       }
       setEvaluationResult(data);
+      if (!sessionLockedCompleted) {
+        await handlePersistSession('completed', data);
+      }
     } catch (e: any) {
       const msg = e.message || 'Evaluation service unavailable.';
       setSimulatorError(msg);
@@ -461,251 +701,732 @@ export const AIAssistantView: React.FC = () => {
         </div>
       </div>
 
-      {/* MODE 1: FC Business Partner Simulator (GM Roleplay) */}
+      {/* MODE 1: FC Business Partner Simulator (GM Roleplay & USALI Decision Workspace) */}
       {activeTab === 'simulator' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Scenario Selector & Financial Snapshot (4 cols) */}
-          <div className="lg:col-span-4 space-y-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                {t.ai.scenarioSelect}
-              </span>
-              <div className="space-y-2">
-                {PRESET_SCENARIOS.map((scen, idx) => (
-                  <button
-                    key={scen.id}
-                    onClick={() => {
-                      setSelectedScenarioIndex(idx);
-                      setSimulatorMessages([
-                        {
-                          role: 'gm',
-                          text:
-                            language === 'vi'
-                              ? `Chào FC! Tôi đang xem kịch bản: "${scen.title}". Hãy cho tôi biết phân tích tài chính và kế hoạch giải quyết cụ thể của bạn.`
-                              : `Good morning FC! I am looking at: "${scen.title}". Walk me through your diagnostic and tactical plan.`,
-                        },
-                      ]);
-                      setEvaluationResult(null);
-                      setSimulatorError(null);
-                    }}
-                    className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
-                      selectedScenarioIndex === idx
-                        ? 'bg-[#0A192F] text-amber-300 border-amber-400 font-bold shadow-xs'
-                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <span className="block font-extrabold line-clamp-1">{scen.title}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Scenario Financial Metrics Card */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-800 font-bold">
-                <Building className="w-4 h-4 text-blue-600" />
-                <span>{language === 'vi' ? 'Chỉ Số Vận Hành Khách Sạn Tháng Này' : 'Monthly Hotel Operational Metrics'}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-400 block font-semibold">Occupancy</span>
-                  <span className="font-bold text-slate-900 font-mono">{selectedScenario.metrics.occupancy}</span>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-400 block font-semibold">ADR</span>
-                  <span className="font-bold text-slate-900 font-mono">{selectedScenario.metrics.adr}</span>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-400 block font-semibold">RevPAR</span>
-                  <span className="font-bold text-slate-900 font-mono">{selectedScenario.metrics.revpar}</span>
-                </div>
-                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-400 block font-semibold">GOP Margin</span>
-                  <span className="font-bold text-rose-600 font-mono">{selectedScenario.metrics.gopMargin}</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200/80 leading-relaxed">
-                {selectedScenario.context}
-              </p>
-            </div>
-
-            <button
-              onClick={handleRequestEvaluation}
-              disabled={simulatorLoading}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Award className="w-4 h-4" />
-              <span>{t.ai.requestAIEval}</span>
-            </button>
-          </div>
-
-          {/* Interactive Chat Dialog with GM Richard Vance (8 cols) */}
-          <div className="lg:col-span-8 flex flex-col h-[650px] bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
-                  <Crown className="w-5 h-5" />
-                </div>
+        <div className="space-y-5">
+          {/* Dataset Source Indicator Banner */}
+          {isUsingDemoFallback ? (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-900">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <div>
-                  <h4 className="font-bold text-sm text-white">{t.ai.gmPersona}</h4>
-                  <p className="text-[10px] text-amber-300 font-medium">
+                  <strong className="uppercase tracking-wide">
                     {language === 'vi'
-                      ? 'Tổng Giám Đốc Khách Sạn 5 Sao • Trực tuyến'
-                      : '5-Star Luxury General Manager • Live'}
-                  </p>
-                </div>
-              </div>
-
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-400/10 text-amber-300 border border-amber-400/30">
-                Co-Pilot Simulation
-              </span>
-            </div>
-
-            {simulatorError && (
-              <div className="mx-4 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{simulatorError}</span>
-              </div>
-            )}
-
-            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 bg-slate-50">
-              {simulatorMessages.map((msg, i) => (
-                <div key={i} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white ring-2 ring-blue-300'
-                        : 'bg-[#0A192F] text-amber-400 ring-2 ring-amber-400/40'
-                    }`}
-                  >
-                    {msg.role === 'user' ? 'FC' : 'GM'}
-                  </div>
-
-                  <div
-                    className={`p-4 rounded-2xl max-w-xl text-xs leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white rounded-tr-none shadow-sm'
-                        : 'bg-white text-slate-800 rounded-tl-none border border-slate-200 shadow-sm'
-                    }`}
-                  >
-                    <p className="whitespace-pre-line">{msg.text}</p>
-                  </div>
-                </div>
-              ))}
-
-              {simulatorLoading && (
-                <div className="flex items-center gap-2 text-xs text-slate-400 italic pl-11">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
-                  <span>
+                      ? 'Chế Độ Dữ Liệu Demo Dự Phòng (Demo Fallback Scenarios)'
+                      : 'Demo Fallback Scenarios Active'}
+                  </strong>
+                  <span className="block text-[11px] text-amber-800 mt-0.5">
                     {language === 'vi'
-                      ? 'Tổng Giám Đốc đang phân tích luận điểm của bạn...'
-                      : 'General Manager is reviewing your financial briefing...'}
+                      ? 'Chưa có kịch bản Simulator nào được nhập hoặc Publish từ bộ dữ liệu chính thức. Đang hiển thị 4 tình huống mẫu để luyện tập.'
+                      : 'No imported Published scenarios detected yet in active Simulator store. Showing 4 preset practice scenarios.'}
                   </span>
                 </div>
+              </div>
+              {isAdminOrLnd && (
+                <button
+                  onClick={() => setMainNavTab('dataImportCenter')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold text-xs cursor-pointer"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>{language === 'vi' ? 'Mở Data Import Center' : 'Import Simulator Dataset'}</span>
+                </button>
               )}
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-900">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span>
+                  <strong>
+                    {dataSourceMode === 'firestore'
+                      ? 'Firebase Firestore Simulator Live'
+                      : 'Imported Simulator Dataset'}
+                  </strong>{' '}
+                  — {visibleImportedScenarios.length}{' '}
+                  {language === 'vi'
+                    ? 'kịch bản khả dụng (Học viên chỉ xem được kịch bản Published).'
+                    : 'available scenarios (Learners see Published scenarios only).'}
+                </span>
+              </div>
+              {activeImportedScenario && isAdminOrLnd && (
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                      activeImportedScenario.status === 'Published'
+                        ? 'bg-emerald-200 text-emerald-900'
+                        : 'bg-amber-200 text-amber-900'
+                    }`}
+                  >
+                    {activeImportedScenario.status}
+                  </span>
+                  <button
+                    onClick={() =>
+                      toggleScenarioPublish(
+                        activeImportedScenario.id,
+                        activeImportedScenario.status === 'Published' ? 'Draft' : 'Published'
+                      )
+                    }
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold text-[11px] cursor-pointer"
+                  >
+                    {activeImportedScenario.status === 'Published' ? (
+                      <>
+                        <Lock className="w-3 h-3" />
+                        <span>{language === 'vi' ? 'Chuyển về Draft' : 'Set Draft'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Globe className="w-3 h-3" />
+                        <span>{language === 'vi' ? 'Xuất Bản (Publish)' : 'Publish Scenario'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
-              {evaluationResult && (
-                <div className="p-6 bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl border-2 border-amber-400 space-y-4 text-xs shadow-md">
-                  <div className="flex items-center justify-between border-b border-amber-300/80 pb-3">
-                    <div className="flex items-center gap-2">
-                      <Award className="w-5 h-5 text-amber-700" />
-                      <h4 className="font-extrabold text-sm text-slate-900 uppercase">
-                        {language === 'vi' ? 'KẾT QUẢ ĐÁNH GIÁ CỦA HỘI ĐỒNG ĐIỀU HÀNH' : 'EXECUTIVE BOARD RUBRIC EVALUATION'}
-                      </h4>
-                    </div>
-                    <span className="px-3 py-1 rounded-full bg-amber-600 text-white font-black text-xs">
-                      {evaluationResult.readinessLevel} ({evaluationResult.scores?.overallScore}%)
-                    </span>
-                  </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* LEFT PANEL (5 cols): Scenario Selector, Hotel Profile, USALI P&L, Operational KPIs, Challenges, Tasks, Decision Options, Rubric */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Scenario Selector */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  {t.ai.scenarioSelect}
+                </span>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-                    <div className="p-2 rounded-xl bg-white border border-amber-200">
-                      <span className="text-[9px] text-slate-500 block font-bold">Financial Accuracy</span>
-                      <span className="font-black text-slate-900 text-sm font-mono">
-                        {evaluationResult.scores?.financialAccuracy}%
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-white border border-amber-200">
-                      <span className="text-[9px] text-slate-500 block font-bold">Analytical Thinking</span>
-                      <span className="font-black text-slate-900 text-sm font-mono">
-                        {evaluationResult.scores?.analyticalThinking}%
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-white border border-amber-200">
-                      <span className="text-[9px] text-slate-500 block font-bold">Commercial IQ</span>
-                      <span className="font-black text-slate-900 text-sm font-mono">
-                        {evaluationResult.scores?.commercialUnderstanding}%
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-white border border-amber-200">
-                      <span className="text-[9px] text-slate-500 block font-bold">Strategic Actions</span>
-                      <span className="font-black text-slate-900 text-sm font-mono">
-                        {evaluationResult.scores?.strategicRecommendations}%
-                      </span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-white border border-amber-200">
-                      <span className="text-[9px] text-slate-500 block font-bold">Communication</span>
-                      <span className="font-black text-slate-900 text-sm font-mono">
-                        {evaluationResult.scores?.communicationQuality}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-slate-800 leading-relaxed font-medium bg-white/80 p-3 rounded-xl border border-amber-200">
-                    {evaluationResult.summaryFeedback}
-                  </p>
-
-                  {Array.isArray(evaluationResult.strengths) && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
-                        <span className="font-bold text-emerald-800 block">
-                          {language === 'vi' ? 'Điểm mạnh:' : 'Strengths:'}
+                {!isUsingDemoFallback ? (
+                  <div className="space-y-2">
+                    {visibleImportedScenarios.map((scen) => (
+                      <button
+                        key={scen.id}
+                        onClick={() => setSelectedScenarioId(scen.id)}
+                        className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                          activeImportedScenario?.id === scen.id
+                            ? 'bg-[#0A192F] text-amber-300 border-amber-400 font-bold shadow-xs'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-mono text-[10px] opacity-80">
+                            {scen.scenarioCode} &bull; L{scen.difficultyLevel}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              scen.status === 'Published'
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-amber-500/20 text-amber-300'
+                            }`}
+                          >
+                            {scen.status}
+                          </span>
+                        </div>
+                        <span className="block font-extrabold line-clamp-2">
+                          {language === 'vi' ? scen.titleVi : scen.titleEn}
                         </span>
-                        <ul className="list-disc list-inside text-emerald-900 space-y-0.5">
-                          {evaluationResult.strengths.map((s: string, idx: number) => (
-                            <li key={idx}>{s}</li>
-                          ))}
-                        </ul>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {PRESET_SCENARIOS.map((scen, idx) => {
+                      const scenLabel = language === 'vi' ? scen.title : scen.titleEn;
+                      return (
+                        <button
+                          key={scen.id}
+                          onClick={() => {
+                            setSelectedScenarioIndex(idx);
+                            setSimulatorMessages([
+                              {
+                                role: 'gm',
+                                text:
+                                  language === 'vi'
+                                    ? `Chào FC! Tôi đang xem kịch bản: "${scen.title}". Hãy cho tôi biết phân tích tài chính và kế hoạch giải quyết cụ thể của bạn.`
+                                    : `Good morning FC! I am looking at: "${scen.titleEn}". Walk me through your diagnostic and tactical plan.`,
+                              },
+                            ]);
+                            setEvaluationResult(null);
+                            setSimulatorError(null);
+                          }}
+                          className={`w-full p-3 rounded-xl border text-left text-xs transition-all cursor-pointer ${
+                            selectedScenarioIndex === idx
+                              ? 'bg-[#0A192F] text-amber-300 border-amber-400 font-bold shadow-xs'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <span className="block font-extrabold line-clamp-1">{scenLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Hotel Profile & Operational Metrics */}
+              {activeImportedScenario ? (
+                <>
+                  {activeHotelProfile && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-800 font-bold">
+                          <Building className="w-4 h-4 text-blue-600" />
+                          <span>{activeHotelProfile.hotelName}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[10px]">
+                          {activeHotelProfile.roomsAvailable} Keys &bull; {activeHotelProfile.currency}
+                        </span>
                       </div>
-                      <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 space-y-1">
-                        <span className="font-bold text-rose-800 block">
-                          {language === 'vi' ? 'Điểm cần cải thiện:' : 'Areas to Improve:'}
+                      <p className="text-[11px] text-slate-600">
+                        {activeHotelProfile.brandTier} &bull; {activeHotelProfile.city} &bull; Target Role:{' '}
+                        <strong>{activeImportedScenario.targetRole}</strong>
+                      </p>
+                      <p className="text-[11px] text-slate-700 bg-amber-50 p-3 rounded-xl border border-amber-200/80 leading-relaxed">
+                        {language === 'vi' ? activeImportedScenario.summaryVi : activeImportedScenario.summaryEn}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Operational KPIs Card */}
+                  {activeOperationalRows.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                      <div className="flex items-center justify-between font-bold text-slate-800">
+                        <span>{language === 'vi' ? 'Chỉ Số Vận Hành (USALI KPIs)' : 'Hotel Operational KPIs'}</span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {activeOperationalRows[0].periodLabel}
                         </span>
-                        <ul className="list-disc list-inside text-rose-900 space-y-0.5">
-                          {(evaluationResult.areasForImprovement || []).map((s: string, idx: number) => (
-                            <li key={idx}>{s}</li>
-                          ))}
-                        </ul>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Occupancy</span>
+                          <span className="font-bold text-slate-900 font-mono">
+                            {activeOperationalRows[0].occupancyPct}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">ADR</span>
+                          <span className="font-bold text-slate-900 font-mono">${activeOperationalRows[0].adr}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">RevPAR</span>
+                          <span className="font-bold text-slate-900 font-mono">${activeOperationalRows[0].revpar}</span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Overtime</span>
+                          <span className="font-bold text-rose-600 font-mono">
+                            {activeOperationalRows[0].overtimeHours ?? 0} hrs
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">GSS Score</span>
+                          <span className="font-bold text-blue-700 font-mono">
+                            {activeOperationalRows[0].gssScore ?? 'N/A'}/100
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                          <span className="text-[10px] text-slate-400 block font-semibold">Rooms Sold</span>
+                          <span className="font-bold text-amber-700 font-mono">
+                            {activeOperationalRows[0].roomsSold}/{activeOperationalRows[0].roomsAvailable}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  <p className="text-amber-900 italic font-semibold border-l-4 border-amber-500 pl-3">
-                    {evaluationResult.gmDebrief}
+                  {/* USALI Financial Dataset Table */}
+                  {activeFinancialRows.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                        <span>{language === 'vi' ? 'Bảng Dữ Liệu P&L Chuẩn USALI' : 'USALI Financial Dataset'}</span>
+                      </div>
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-[11px] text-left">
+                          <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                            <tr>
+                              <th className="p-2">Period</th>
+                              <th className="p-2 text-right">Total Rev</th>
+                              <th className="p-2 text-right">Actual GOP</th>
+                              <th className="p-2 text-right">Budget GOP</th>
+                              <th className="p-2 text-right">GOP %</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-mono">
+                            {activeFinancialRows.map((fin) => (
+                              <tr key={fin.id}>
+                                <td className="p-2 font-sans font-bold text-slate-800">{fin.periodLabel}</td>
+                                <td className="p-2 text-right">${fin.totalOperatingRevenue.toLocaleString()}</td>
+                                <td
+                                  className={`p-2 text-right font-bold ${
+                                    fin.budgetGop !== undefined && fin.gop < fin.budgetGop ? 'text-rose-600' : 'text-emerald-700'
+                                  }`}
+                                >
+                                  ${fin.gop.toLocaleString()}
+                                </td>
+                                <td className="p-2 text-right text-slate-500">
+                                  {fin.budgetGop !== undefined ? `$${fin.budgetGop.toLocaleString()}` : '—'}
+                                </td>
+                                <td className="p-2 text-right font-bold">{fin.gopMarginPct}%</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Challenges & Learner Tasks */}
+                  {(activeChallenges.length > 0 || activeTasks.length > 0) && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                      {activeChallenges.length > 0 && (
+                        <div className="space-y-1.5">
+                          <span className="font-bold text-rose-800 uppercase text-[10px] block">
+                            {language === 'vi' ? 'Thách Thức Vận Hành & Tài Chính' : 'Business Challenges'}
+                          </span>
+                          {activeChallenges.map((c) => (
+                            <div key={c.id} className="p-2.5 rounded-lg bg-rose-50/70 border border-rose-200">
+                              <div className="font-bold text-rose-950">
+                                {c.challengeCode}: {language === 'vi' ? c.titleVi : c.titleEn} ({c.severity})
+                              </div>
+                              <p className="text-[11px] text-rose-900 mt-0.5">
+                                {language === 'vi' ? c.descriptionVi : c.descriptionEn}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {activeTasks.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                          <span className="font-bold text-slate-800 uppercase text-[10px] flex items-center gap-1">
+                            <ListChecks className="w-3.5 h-3.5 text-blue-600" />
+                            <span>{language === 'vi' ? 'Nhiệm Vụ Học Viên' : 'Learner Tasks'}</span>
+                          </span>
+                          {activeTasks.map((tk) => (
+                            <div key={tk.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                              <div className="font-bold text-slate-900">
+                                #{tk.taskOrder} {language === 'vi' ? tk.titleVi : tk.titleEn}{' '}
+                                <span className="font-mono text-amber-700">({tk.maxPoints} pts)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-600 mt-0.5">
+                                {language === 'vi' ? tk.instructionsVi : tk.instructionsEn}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Selectable Decision Options */}
+                  {activeDecisionOptions.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2.5 text-xs">
+                      <span className="font-bold text-slate-800 uppercase text-[10px] block">
+                        {language === 'vi'
+                          ? 'Chọn Phương Án Đề Xuất Cho GM (Decision Options)'
+                          : 'Select Strategic Decision Options'}
+                      </span>
+                      {activeDecisionOptions.map((opt) => {
+                        const checked = selectedDecisionIds.includes(opt.id);
+                        return (
+                          <button
+                            key={opt.id}
+                            disabled={sessionLockedCompleted}
+                            onClick={() => {
+                              setSelectedDecisionIds((prev) =>
+                                prev.includes(opt.id) ? prev.filter((x) => x !== opt.id) : [...prev, opt.id]
+                              );
+                            }}
+                            className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-60 ${
+                              checked
+                                ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-300'
+                                : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              {checked ? (
+                                <CheckSquare className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                              ) : (
+                                <Square className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                              )}
+                              <div className="flex-1">
+                                <div className="font-bold text-slate-900">
+                                  {opt.optionCode}: {language === 'vi' ? opt.titleVi : opt.titleEn}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-600 mt-0.5">
+                                  Impact: +${opt.financialImpactEstimate.toLocaleString()} | GOP +{opt.gopImpactPct}% |
+                                  Risk: {opt.riskLevel}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Evaluation Rubric Card */}
+                  {activeRubrics.length > 0 && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 text-xs">
+                      <span className="font-bold text-slate-800 uppercase text-[10px] block">
+                        {language === 'vi' ? 'Thang Điểm Rubric Kịch Bản (100%)' : 'Scenario Evaluation Rubric (100%)'}
+                      </span>
+                      <div className="space-y-1.5">
+                        {activeRubrics.map((rb) => (
+                          <div key={rb.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200">
+                            <span className="font-semibold text-slate-800">
+                              {language === 'vi' ? rb.criterionNameVi : rb.criterionNameEn}
+                            </span>
+                            <span className="font-mono font-bold text-amber-700">{rb.weightPercent}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                  <div className="flex items-center gap-2 text-slate-800 font-bold">
+                    <Building className="w-4 h-4 text-blue-600" />
+                    <span>{language === 'vi' ? 'Chỉ Số Vận Hành Khách Sạn Tháng Này' : 'Monthly Hotel Operational Metrics'}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Occupancy</span>
+                      <span className="font-bold text-slate-900 font-mono">{selectedFallbackScenario.metrics.occupancy}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-400 block font-semibold">ADR</span>
+                      <span className="font-bold text-slate-900 font-mono">{selectedFallbackScenario.metrics.adr}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-400 block font-semibold">RevPAR</span>
+                      <span className="font-bold text-slate-900 font-mono">{selectedFallbackScenario.metrics.revpar}</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate-400 block font-semibold">GOP Margin</span>
+                      <span className="font-bold text-rose-600 font-mono">{selectedFallbackScenario.metrics.gopMargin}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 bg-amber-50 p-2.5 rounded-lg border border-amber-200/80 leading-relaxed">
+                    {language === 'vi' ? selectedFallbackScenario.context : selectedFallbackScenario.contextEn}
                   </p>
                 </div>
               )}
 
-              <div ref={chatEndRef} />
+              <button
+                onClick={handleRequestEvaluation}
+                disabled={simulatorLoading}
+                className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Award className="w-4 h-4" />
+                <span>{t.ai.requestAIEval}</span>
+              </button>
             </div>
 
-            <div className="p-4 bg-white border-t border-slate-200 flex items-center gap-2">
-              <input
-                type="text"
-                value={simulatorInput}
-                onChange={(e) => setSimulatorInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendSimulator()}
-                placeholder={t.ai.yourProposal}
-                className="flex-1 px-4 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/40 bg-slate-50/50"
-              />
-              <button
-                onClick={handleSendSimulator}
-                disabled={simulatorLoading || !simulatorInput.trim()}
-                className="px-4 py-2.5 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t.ai.sendToGM}</span>
-              </button>
+            {/* RIGHT PANEL (7 cols): Interactive GM Roleplay + Strategic Memo + Storage Evidence + Evaluation + Reference Analysis */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="flex flex-col h-[560px] bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                <div className="p-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
+                      <Crown className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-white">
+                        {activeHotelProfile ? `${activeHotelProfile.hotelName} General Manager` : t.ai.gmPersona}
+                      </h4>
+                      <p className="text-[10px] text-amber-300 font-medium">
+                        {language === 'vi'
+                          ? 'Tổng Giám Đốc Điều Hành Khách Sạn • Phiên Đối Thoại Trực Tuyến'
+                          : 'Hotel General Manager • Live Executive Simulation'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handlePersistSession('in_progress')}
+                      disabled={sessionLockedCompleted}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-[10px] font-bold border border-slate-700 cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3 h-3" />
+                      <span>{sessionLockedCompleted ? 'Archived' : language === 'vi' ? 'Lưu Nháp' : 'Save Draft'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {simulatorError && (
+                  <div className="mx-4 mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{simulatorError}</span>
+                  </div>
+                )}
+
+                <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 bg-slate-50">
+                  {simulatorMessages.map((msg, i) => (
+                    <div key={i} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          msg.role === 'user'
+                            ? 'bg-blue-600 text-white ring-2 ring-blue-300'
+                            : 'bg-[#0A192F] text-amber-400 ring-2 ring-amber-400/40'
+                        }`}
+                      >
+                        {msg.role === 'user' ? 'FC' : 'GM'}
+                      </div>
+
+                      <div
+                        className={`p-4 rounded-2xl max-w-xl text-xs leading-relaxed ${
+                          msg.role === 'user'
+                            ? 'bg-blue-600 text-white rounded-tr-none shadow-sm'
+                            : 'bg-white text-slate-800 rounded-tl-none border border-slate-200 shadow-sm'
+                        }`}
+                      >
+                        <p className="whitespace-pre-line">{msg.text}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {simulatorLoading && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400 italic pl-11">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                      <span>
+                        {language === 'vi'
+                          ? 'Tổng Giám Đốc đang phân tích luận điểm của bạn...'
+                          : 'General Manager is reviewing your financial briefing...'}
+                      </span>
+                    </div>
+                  )}
+
+                  {evaluationResult && (
+                    <div className="p-6 bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl border-2 border-amber-400 space-y-4 text-xs shadow-md">
+                      <div className="flex items-center justify-between border-b border-amber-300/80 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Award className="w-5 h-5 text-amber-700" />
+                          <h4 className="font-extrabold text-sm text-slate-900 uppercase">
+                            {language === 'vi'
+                              ? 'KẾT QUẢ ĐÁNH GIÁ CỦA HỘI ĐỒNG ĐIỀU HÀNH'
+                              : 'EXECUTIVE BOARD RUBRIC EVALUATION'}
+                          </h4>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-amber-600 text-white font-black text-xs">
+                          {evaluationResult.readinessLevel} ({evaluationResult.scores?.overallScore}%)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                        <div className="p-2 rounded-xl bg-white border border-amber-200">
+                          <span className="text-[9px] text-slate-500 block font-bold">Financial Accuracy</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {evaluationResult.scores?.financialAccuracy}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-amber-200">
+                          <span className="text-[9px] text-slate-500 block font-bold">Analytical Thinking</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {evaluationResult.scores?.analyticalThinking}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-amber-200">
+                          <span className="text-[9px] text-slate-500 block font-bold">Commercial IQ</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {evaluationResult.scores?.commercialUnderstanding}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-amber-200">
+                          <span className="text-[9px] text-slate-500 block font-bold">Strategic Actions</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {evaluationResult.scores?.strategicRecommendations}%
+                          </span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-white border border-amber-200">
+                          <span className="text-[9px] text-slate-500 block font-bold">Communication</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">
+                            {evaluationResult.scores?.communicationQuality}%
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-slate-800 leading-relaxed font-medium bg-white/80 p-3 rounded-xl border border-amber-200">
+                        {evaluationResult.summaryFeedback}
+                      </p>
+
+                      {Array.isArray(evaluationResult.strengths) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1">
+                            <span className="font-bold text-emerald-800 block">
+                              {language === 'vi' ? 'Điểm mạnh:' : 'Strengths:'}
+                            </span>
+                            <ul className="list-disc list-inside text-emerald-900 space-y-0.5">
+                              {evaluationResult.strengths.map((s: string, idx: number) => (
+                                <li key={idx}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 space-y-1">
+                            <span className="font-bold text-rose-800 block">
+                              {language === 'vi' ? 'Điểm cần cải thiện:' : 'Areas to Improve:'}
+                            </span>
+                            <ul className="list-disc list-inside text-rose-900 space-y-0.5">
+                              {(evaluationResult.areasForImprovement || []).map((s: string, idx: number) => (
+                                <li key={idx}>{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="text-amber-900 italic font-semibold border-l-4 border-amber-500 pl-3">
+                        {evaluationResult.gmDebrief}
+                      </p>
+                    </div>
+                  )}
+
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="p-4 bg-white border-t border-slate-200 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={simulatorInput}
+                    onChange={(e) => setSimulatorInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendSimulator()}
+                    placeholder={t.ai.yourProposal}
+                    className="flex-1 px-4 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/40 bg-slate-50/50"
+                  />
+                  <button
+                    onClick={handleSendSimulator}
+                    disabled={simulatorLoading || !simulatorInput.trim()}
+                    className="px-4 py-2.5 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">{t.ai.sendToGM}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Learner Executive Memo & Firebase Storage Evidence Upload */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-extrabold text-slate-900">
+                    {language === 'vi'
+                      ? 'Bản Ghi Chú Phân Tích Tài Chính & Minh Chứng Đính Kèm (Storage)'
+                      : 'Executive Financial Memo & Storage Evidence Attachment'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={evidenceFileRef}
+                      type="file"
+                      accept=".pdf,.xlsx,.xls,.csv,.docx,.png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUploadEvidenceAttachment(f);
+                      }}
+                    />
+                    <button
+                      onClick={() => evidenceFileRef.current?.click()}
+                      disabled={evidenceUploading || !firebaseUser?.emailVerified}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-[11px] cursor-pointer disabled:opacity-50"
+                      title={
+                        !firebaseUser?.emailVerified
+                          ? 'Sign in with verified Firebase account to attach files to Firebase Storage'
+                          : ''
+                      }
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>
+                        {evidenceUploading
+                          ? 'Uploading...'
+                          : language === 'vi'
+                          ? 'Đính Kèm File (.xlsx/.pdf)'
+                          : 'Attach Evidence'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  rows={3}
+                  disabled={sessionLockedCompleted}
+                  value={learnerMemo}
+                  onChange={(e) => setLearnerMemo(e.target.value)}
+                  placeholder={
+                    language === 'vi'
+                      ? 'Tổng hợp phân tích GOP Flow-Through, lý do chọn phương án và kế hoạch 30-60-90 ngày cho GM...'
+                      : 'Draft your USALI variance reconciliation, Flow-Through breakdown, and 30-60-90 day action plan...'
+                  }
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white focus:outline-none text-xs"
+                />
+                {evidenceAttachmentUrl && (
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-center justify-between">
+                    <span>Storage Evidence Attached</span>
+                    <a href={evidenceAttachmentUrl} target="_blank" rel="noreferrer" className="font-bold underline">
+                      View File
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Official Reference Analysis Panel (Admins see always; Learners see after Evaluation) */}
+              {activeReferenceAnalysis.length > 0 && (isAdminOrLnd || evaluationResult) && (
+                <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm space-y-2.5 text-xs">
+                  <div className="flex items-center gap-2 font-extrabold text-emerald-900">
+                    <BookOpen className="w-4 h-4 text-emerald-600" />
+                    <span>
+                      {language === 'vi'
+                        ? 'Phân Tích Chuẩn Tham Chiếu (USALI Reference Analysis)'
+                        : 'Official USALI Reference Analysis'}
+                    </span>
+                  </div>
+                  {activeReferenceAnalysis.map((ref) => (
+                    <div key={ref.id} className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                      <div className="font-bold text-emerald-950">{ref.topic}</div>
+                      <p className="text-slate-700">{language === 'vi' ? ref.rootCauseVi : ref.rootCauseEn}</p>
+                      <div className="font-mono text-[11px] text-blue-800 bg-white/80 px-2 py-1 rounded border border-emerald-200">
+                        Formula: {ref.benchmarkFormula}
+                      </div>
+                      <p className="text-emerald-900 font-semibold">
+                        Action: {language === 'vi' ? ref.recommendedActionVi : ref.recommendedActionEn}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recorded Simulation Sessions */}
+              {(simulatorData.simulationSessions || []).length > 0 && (
+                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 text-xs">
+                  <span className="font-extrabold text-slate-900 block">
+                    {language === 'vi'
+                      ? `Lịch Sử Phiên Mô Phỏng (${simulatorData.simulationSessions.length})`
+                      : `Recorded Simulation Sessions (${simulatorData.simulationSessions.length})`}
+                  </span>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {simulatorData.simulationSessions.slice(0, 8).map((sess) => (
+                      <div
+                        key={sess.id}
+                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900">{sess.scenarioTitle}</div>
+                          <div className="text-[10px] font-mono text-slate-500">
+                            {sess.id} &bull; Decisions: {sess.selectedOptionIds?.length || 0} &bull; {sess.updatedAt}
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            sess.status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {sess.status}
+                          {sess.evaluation?.scores?.overallScore ? ` (${sess.evaluation.scores.overallScore}%)` : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -719,12 +1440,20 @@ export const AIAssistantView: React.FC = () => {
               <span className="font-bold text-slate-500 whitespace-nowrap">
                 {language === 'vi' ? 'Gợi ý nhanh:' : 'Quick Prompts:'}
               </span>
-              {[
-                'Giải thích cấu trúc phân bổ chi phí USALI 11th Edition',
-                'Công thức tính Flow-Through và Flex khi doanh thu biến động',
-                'Checklist quy trình Fast-Close Day 3',
-                'Phân biệt FF&E Reserve và Chi phí bảo trì POM',
-              ].map((q, idx) => (
+              {(language === 'vi'
+                ? [
+                    'Giải thích cấu trúc phân bổ chi phí USALI 11th Edition',
+                    'Công thức tính Flow-Through và Flex khi doanh thu biến động',
+                    'Checklist quy trình Fast-Close Day 3',
+                    'Phân biệt FF&E Reserve và Chi phí bảo trì POM',
+                  ]
+                : [
+                    'Explain USALI 11th Edition Undistributed Cost Allocation',
+                    'How to calculate GOP Flow-Through & Flex Variance',
+                    'Day-3 Fast-Close Month-End Checklist',
+                    'FF&E Reserve vs. Property Operations & Maintenance (POM)',
+                  ]
+              ).map((q, idx) => (
                 <button
                   key={idx}
                   onClick={() => setAdvisorInput(q)}

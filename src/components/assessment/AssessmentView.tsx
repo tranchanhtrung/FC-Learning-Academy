@@ -120,6 +120,7 @@ export const AssessmentView: React.FC = () => {
     gap: number;
     selfNotes?: string;
     supervisorNotes: string;
+    supervisorNotesEn?: string;
     evidenceText?: string;
   }>>({});
 
@@ -135,6 +136,7 @@ export const AssessmentView: React.FC = () => {
         sanitized[k] = {
           ...v,
           supervisorNotes: v.supervisorNotes || '',
+          supervisorNotesEn: v.supervisorNotesEn,
         };
       });
       setScores(sanitized);
@@ -204,7 +206,7 @@ export const AssessmentView: React.FC = () => {
   // Handle text note changes
   const handleNoteChange = (
     code: string,
-    field: 'selfNotes' | 'supervisorNotes' | 'evidenceText',
+    field: 'selfNotes' | 'supervisorNotes' | 'supervisorNotesEn' | 'evidenceText',
     text: string
   ) => {
     setScores((prev) => {
@@ -240,6 +242,7 @@ export const AssessmentView: React.FC = () => {
       gap: number;
       selfNotes?: string;
       supervisorNotes: string;
+      supervisorNotesEn?: string;
       evidenceText?: string;
     }> = {};
 
@@ -250,6 +253,7 @@ export const AssessmentView: React.FC = () => {
         gap: val.gap,
         selfNotes: val.selfNotes,
         supervisorNotes: val.supervisorNotes || '',
+        ...(val.supervisorNotesEn ? { supervisorNotesEn: val.supervisorNotesEn } : {}),
         evidenceText: val.evidenceText,
       };
     });
@@ -417,13 +421,19 @@ export const AssessmentView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold uppercase tracking-wider mb-2">
             <ClipboardCheck className="w-3.5 h-3.5" />
-            <span>Gap = Target Level (4) – Assessed Level | Chuẩn Quốc Tế Marriott, IHG, Accor</span>
+            <span>
+              {language === 'vi'
+                ? 'Gap = Target Level (4) – Assessed Level | Chuẩn Quốc Tế Marriott, IHG, Accor'
+                : 'Gap = Target Level (4) − Assessed Level | Marriott, IHG & Accor Benchmark'}
+            </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {t.assessment.title}
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            Hệ thống đánh giá năng lực 2 chiều (Tự đánh giá & Cấp trên thẩm định), phân tích khoảng cách năng lực thời gian thực và tự động tạo Kế hoạch Phát triển Cá nhân (IDP).
+            {language === 'vi'
+              ? 'Hệ thống đánh giá năng lực 2 chiều (Tự đánh giá & Cấp trên thẩm định), phân tích khoảng cách năng lực thời gian thực và tự động tạo Kế hoạch Phát triển Cá nhân (IDP).'
+              : 'Two-way competency evaluation (Self-Assessment & Supervisor Calibration) with real-time gap analytics and automated Individual Development Plan (IDP) generation.'}
           </p>
         </div>
 
@@ -455,7 +465,9 @@ export const AssessmentView: React.FC = () => {
           ) : (
             <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs font-bold">
               <UserCheck className="w-4 h-4 text-blue-600" />
-              <span>Hồ sơ tự đánh giá của: {activeLearner.name}</span>
+              <span>
+                {language === 'vi' ? 'Hồ sơ tự đánh giá của:' : 'Self-Assessment Profile:'} {activeLearner.name}
+              </span>
             </div>
           )}
 
@@ -482,7 +494,7 @@ export const AssessmentView: React.FC = () => {
             <button
               onClick={() => setShowNewCycleModal(true)}
               className="px-3 py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer shrink-0"
-              title="Khởi tạo kỳ đánh giá mới cho nhân sự"
+              title={language === 'vi' ? 'Khởi tạo kỳ đánh giá mới cho nhân sự' : 'Start a new evaluation cycle'}
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{language === 'vi' ? 'Kỳ Mới' : 'New Cycle'}</span>
@@ -493,7 +505,7 @@ export const AssessmentView: React.FC = () => {
           <button
             onClick={() => setShowRubricModal(true)}
             className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 text-slate-700 transition-all cursor-pointer"
-            title="Xem tiêu chuẩn 4 cấp độ năng lực"
+            title={language === 'vi' ? 'Xem tiêu chuẩn 4 cấp độ năng lực' : 'View 4-level competency rubric'}
           >
             <HelpCircle className="w-4 h-4 text-slate-500" />
           </button>
@@ -547,7 +559,9 @@ export const AssessmentView: React.FC = () => {
 
         {/* Current status badge */}
         <div className="hidden sm:flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium">Trạng thái kỳ đánh giá:</span>
+          <span className="text-xs text-slate-500 font-medium">
+            {language === 'vi' ? 'Trạng thái kỳ đánh giá:' : 'Cycle Status:'}
+          </span>
           <span
             className={`px-2.5 py-1 rounded-full text-xs font-bold ${
               currentAssessment?.status === 'approved'
@@ -558,10 +572,16 @@ export const AssessmentView: React.FC = () => {
             }`}
           >
             {currentAssessment?.status === 'approved'
-              ? 'Đã Phê Duyệt (Approved)'
+              ? language === 'vi'
+                ? 'Đã Phê Duyệt (Approved)'
+                : 'Approved'
               : currentAssessment?.status === 'pending_supervisor'
-              ? 'Chờ Cấp Trên Thẩm Định'
-              : 'Bản Nháp (Draft)'}
+              ? language === 'vi'
+                ? 'Chờ Cấp Trên Thẩm Định'
+                : 'Pending Supervisor'
+              : language === 'vi'
+              ? 'Bản Nháp (Draft)'
+              : 'Draft'}
           </span>
         </div>
       </div>
@@ -586,7 +606,7 @@ export const AssessmentView: React.FC = () => {
                   <p className="text-xs text-slate-500 font-medium">{activeLearner.position} • {activeLearner.property}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                      Mục tiêu: Financial Controller (Level {activeLearner.targetLevel || 4})
+                      {language === 'vi' ? 'Mục tiêu:' : 'Target:'} Financial Controller (Level {activeLearner.targetLevel || 4})
                     </span>
                   </div>
                 </div>
@@ -595,7 +615,7 @@ export const AssessmentView: React.FC = () => {
               {/* Radar Mode Switcher */}
               <div className="pt-3 border-t border-slate-100 space-y-2">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Chế độ so sánh biểu đồ Radar:
+                  {language === 'vi' ? 'Chế độ so sánh biểu đồ Radar:' : 'Radar Comparison Mode:'}
                 </span>
                 <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold">
                   <button
@@ -637,11 +657,7 @@ export const AssessmentView: React.FC = () => {
                   data={radarData}
                   size={320}
                   targetLabel={
-                    radarMode === 'perception_gap'
-                      ? 'Mục tiêu FC (L4)'
-                      : language === 'vi'
-                      ? 'Mục tiêu FC (L4)'
-                      : 'Target FC (L4)'
+                    language === 'vi' ? 'Mục tiêu FC (L4)' : 'Target FC (L4)'
                   }
                   currentLabel={
                     radarMode === 'target_self'
@@ -664,7 +680,7 @@ export const AssessmentView: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
                     <span className="text-[10px] font-bold text-amber-800 uppercase block">
-                      Khoảng Trống Trung Bình:
+                      {language === 'vi' ? 'Khoảng Trống Trung Bình:' : 'Average Gap:'}
                     </span>
                     <span className="text-lg font-extrabold text-amber-900 font-mono">
                       {liveAvgGap} Levels
@@ -673,7 +689,7 @@ export const AssessmentView: React.FC = () => {
 
                   <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
                     <span className="text-[10px] font-bold text-blue-800 uppercase block">
-                      Số Năng Lực Cần Thu Hẹp:
+                      {language === 'vi' ? 'Số Năng Lực Cần Thu Hẹp:' : 'Competencies with Gap:'}
                     </span>
                     <span className="text-lg font-extrabold text-blue-900 font-mono">
                       {Object.values(scores).filter((s) => s.gap > 0).length} / {Object.keys(scores).length}
@@ -696,19 +712,27 @@ export const AssessmentView: React.FC = () => {
             <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
               <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                 <FileText className="w-4 h-4 text-blue-600" />
-                <span>Ý Kiến Đánh Giá & Ghi Chú Phê Duyệt</span>
+                <span>
+                  {language === 'vi' ? 'Ý Kiến Đánh Giá & Ghi Chú Phê Duyệt' : 'Qualitative Review & Approval Notes'}
+                </span>
               </h4>
 
               {/* Learner Reflection */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-slate-700 block">
-                  Tự nhận xét & dẫn chứng của Học viên:
+                  {language === 'vi'
+                    ? 'Tự nhận xét & dẫn chứng của Học viên:'
+                    : 'Learner Self-Reflection & Evidence:'}
                 </label>
                 <textarea
                   value={learnerReflection}
                   onChange={(e) => setLearnerReflection(e.target.value)}
                   disabled={isApprovedLockedForLearner || (isSupervisor && currentAssessment?.status === 'approved')}
-                  placeholder="Học viên ghi nhận cảm nhận về các năng lực tự tin nhất, các thách thức trong công việc hàng ngày..."
+                  placeholder={
+                    language === 'vi'
+                      ? 'Học viên ghi nhận cảm nhận về các năng lực tự tin nhất, các thách thức trong công việc hàng ngày...'
+                      : 'Reflect on strongest capabilities, operational challenges, and key achievements...'
+                  }
                   rows={3}
                   className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-slate-800 disabled:opacity-60"
                 />
@@ -717,7 +741,9 @@ export const AssessmentView: React.FC = () => {
               {/* Supervisor Feedback */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-slate-700 block">
-                  Ý kiến & định hướng phát triển của Cấp Trên (FC):
+                  {language === 'vi'
+                    ? 'Ý kiến & định hướng phát triển của Cấp Trên (FC):'
+                    : 'Supervisor (FC) Assessment & Coaching Guidance:'}
                 </label>
                 <textarea
                   value={supervisorComments}
@@ -725,8 +751,12 @@ export const AssessmentView: React.FC = () => {
                   disabled={!isSupervisor}
                   placeholder={
                     isSupervisor
-                      ? 'Ghi nhận điểm mạnh chuyên môn, khuyến nghị các hoạt động OJT cụ thể, lộ trình chuẩn bị cho vị trí AFC/FC...'
-                      : 'Chỉ Giám đốc Tài chính / Quản lý thẩm định mới có quyền chỉnh sửa mục này'
+                      ? language === 'vi'
+                        ? 'Ghi nhận điểm mạnh chuyên môn, khuyến nghị các hoạt động OJT cụ thể, lộ trình chuẩn bị cho vị trí AFC/FC...'
+                        : 'Document functional strengths, recommended OJT assignments, and AFC/FC readiness milestones...'
+                      : language === 'vi'
+                      ? 'Chỉ Giám đốc Tài chính / Quản lý thẩm định mới có quyền chỉnh sửa mục này'
+                      : 'Only Financial Controllers / Assessors may edit this section'
                   }
                   rows={3}
                   className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800 disabled:opacity-60"
@@ -755,7 +785,7 @@ export const AssessmentView: React.FC = () => {
                     onClick={() => handleSaveAssessment('pending_self')}
                     className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 cursor-pointer"
                   >
-                    {t.common.save} Nháp
+                    {language === 'vi' ? `${t.common.save} Nháp` : `${t.common.save} Draft`}
                   </button>
                 )}
 
@@ -766,7 +796,7 @@ export const AssessmentView: React.FC = () => {
                     className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Nộp Cho Cấp Trên</span>
+                    <span>{language === 'vi' ? 'Nộp Cho Cấp Trên' : 'Submit to Supervisor'}</span>
                   </button>
                 )}
 
@@ -777,7 +807,7 @@ export const AssessmentView: React.FC = () => {
                     className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     <ShieldCheck className="w-4 h-4" />
-                    <span>Phê Duyệt Đánh Giá</span>
+                    <span>{language === 'vi' ? 'Phê Duyệt Đánh Giá' : 'Approve Evaluation'}</span>
                   </button>
                 )}
               </div>
@@ -793,7 +823,7 @@ export const AssessmentView: React.FC = () => {
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
-                Tất Cả ({competencies.length})
+                {language === 'vi' ? 'Tất Cả' : 'All'} ({competencies.length})
               </button>
               {domains.map((dom) => (
                 <button
@@ -856,10 +886,16 @@ export const AssessmentView: React.FC = () => {
                               : 'bg-rose-100 text-rose-800 border border-rose-200'
                           }`}
                         >
-                          {gap === 0 ? 'Đạt Mục Tiêu' : `Gap: -${gap} Cấp`}
+                          {gap === 0
+                            ? language === 'vi'
+                              ? 'Đạt Mục Tiêu'
+                              : 'On Target'
+                            : language === 'vi'
+                            ? `Gap: -${gap} Cấp`
+                            : `Gap: -${gap} Lvl`}
                         </span>
                         <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
-                          Mục tiêu L{targetLevel}
+                          {language === 'vi' ? 'Mục tiêu' : 'Target'} L{targetLevel}
                         </span>
                       </div>
                     </div>
@@ -870,7 +906,7 @@ export const AssessmentView: React.FC = () => {
                       <div className="p-2.5 bg-white rounded-lg border border-slate-200">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] font-bold text-slate-600 uppercase">
-                            1. Học viên tự đánh giá:
+                            {language === 'vi' ? '1. Học viên tự đánh giá:' : '1. Learner Self-Assessment:'}
                           </span>
                           <span className="text-[11px] font-bold text-blue-700 font-mono">
                             Level {scoreObj.selfLevel}
@@ -901,7 +937,7 @@ export const AssessmentView: React.FC = () => {
                       <div className="p-2.5 bg-white rounded-lg border border-slate-200">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] font-bold text-slate-600 uppercase">
-                            2. Cấp trên (FC) thẩm định:
+                            {language === 'vi' ? '2. Cấp trên (FC) thẩm định:' : '2. Supervisor (FC) Rating:'}
                           </span>
                           <span className="text-[11px] font-bold text-amber-700 font-mono">
                             Level {scoreObj.supervisorLevel}
@@ -937,17 +973,35 @@ export const AssessmentView: React.FC = () => {
                           value={scoreObj.selfNotes || ''}
                           disabled={isApprovedLockedForLearner}
                           onChange={(e) => handleNoteChange(comp.code, 'selfNotes', e.target.value)}
-                          placeholder="Dẫn chứng/Ghi chú của học viên (ví dụ: đã tham gia khóa sổ tháng 3)..."
+                          placeholder={
+                            language === 'vi'
+                              ? 'Dẫn chứng/Ghi chú của học viên (ví dụ: đã tham gia khóa sổ tháng 3)...'
+                              : 'Learner evidence/notes (e.g., led March month-end reconciliation)...'
+                          }
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
                         />
                       </div>
                       <div>
                         <input
                           type="text"
-                          value={scoreObj.supervisorNotes || ''}
+                          value={
+                            language === 'vi'
+                              ? scoreObj.supervisorNotes || ''
+                              : scoreObj.supervisorNotesEn ?? scoreObj.supervisorNotes ?? ''
+                          }
                           disabled={!isSupervisor}
-                          onChange={(e) => handleNoteChange(comp.code, 'supervisorNotes', e.target.value)}
-                          placeholder="Góp ý/Chỉ đạo của FC (ví dụ: cần tự lập báo cáo P&L Critique)..."
+                          onChange={(e) =>
+                            handleNoteChange(
+                              comp.code,
+                              language === 'vi' ? 'supervisorNotes' : 'supervisorNotesEn',
+                              e.target.value
+                            )
+                          }
+                          placeholder={
+                            language === 'vi'
+                              ? 'Góp ý/Chỉ đạo của FC (ví dụ: cần tự lập báo cáo P&L Critique)...'
+                              : 'FC coaching notes (e.g., independently author monthly P&L critique)...'
+                          }
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
                         />
                       </div>
@@ -980,7 +1034,10 @@ export const AssessmentView: React.FC = () => {
                 {t.assessment.idpTitle} – {activeLearner.name}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Mục tiêu thăng tiến: <strong className="text-slate-700">{activeIDP?.targetPosition || 'Assistant Financial Controller (AFC)'}</strong> • Hạn hoàn thành: <strong className="text-slate-700">{activeIDP?.targetCompletionDate || '2026-09-30'}</strong>
+                {language === 'vi' ? 'Mục tiêu thăng tiến:' : 'Target Role:'}{' '}
+                <strong className="text-slate-700">{activeIDP?.targetPosition || 'Assistant Financial Controller (AFC)'}</strong> •{' '}
+                {language === 'vi' ? 'Hạn hoàn thành:' : 'Target Date:'}{' '}
+                <strong className="text-slate-700">{activeIDP?.targetCompletionDate || '2026-09-30'}</strong>
               </p>
             </div>
 
@@ -1006,19 +1063,27 @@ export const AssessmentView: React.FC = () => {
           {/* IDP Progress Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-              <span className="text-[10px] font-bold text-slate-500 uppercase block">Tổng Hành Động:</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                {language === 'vi' ? 'Tổng Hành Động:' : 'Total Actions:'}
+              </span>
               <span className="text-2xl font-extrabold text-slate-900 font-mono">{idpTotal}</span>
             </div>
             <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-              <span className="text-[10px] font-bold text-emerald-800 uppercase block">Đã Hoàn Thành:</span>
+              <span className="text-[10px] font-bold text-emerald-800 uppercase block">
+                {language === 'vi' ? 'Đã Hoàn Thành:' : 'Completed:'}
+              </span>
               <span className="text-2xl font-extrabold text-emerald-900 font-mono">{idpCompleted}</span>
             </div>
             <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-              <span className="text-[10px] font-bold text-blue-800 uppercase block">Đang Thực Hiện:</span>
+              <span className="text-[10px] font-bold text-blue-800 uppercase block">
+                {language === 'vi' ? 'Đang Thực Hiện:' : 'In Progress:'}
+              </span>
               <span className="text-2xl font-extrabold text-blue-900 font-mono">{idpInProgress}</span>
             </div>
             <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <span className="text-[10px] font-bold text-amber-800 uppercase block">Tiến Độ IDP:</span>
+              <span className="text-[10px] font-bold text-amber-800 uppercase block">
+                {language === 'vi' ? 'Tiến Độ IDP:' : 'IDP Completion:'}
+              </span>
               <span className="text-2xl font-extrabold text-amber-900 font-mono">{idpCompletionPct}%</span>
             </div>
           </div>
@@ -1027,7 +1092,9 @@ export const AssessmentView: React.FC = () => {
           <div className="flex items-center justify-between border-y border-slate-100 py-3">
             <div className="flex items-center gap-2 text-xs font-bold">
               <Filter className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-600">Lọc theo mức độ ưu tiên:</span>
+              <span className="text-slate-600">
+                {language === 'vi' ? 'Lọc theo mức độ ưu tiên:' : 'Filter by priority:'}
+              </span>
               {(['All', 'High', 'Medium', 'Low'] as const).map((p) => (
                 <button
                   key={p}
@@ -1038,13 +1105,15 @@ export const AssessmentView: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  {p === 'All' ? 'Tất cả' : `${p} Priority`}
+                  {p === 'All' ? (language === 'vi' ? 'Tất cả' : 'All') : `${p} Priority`}
                 </button>
               ))}
             </div>
 
             <span className="text-xs text-slate-500">
-              Hiển thị {filteredIDPItems.length} mục hành động
+              {language === 'vi'
+                ? `Hiển thị ${filteredIDPItems.length} mục hành động`
+                : `Showing ${filteredIDPItems.length} action items`}
             </span>
           </div>
 
@@ -1073,7 +1142,7 @@ export const AssessmentView: React.FC = () => {
                     </span>
                     <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
                       <Calendar className="w-3.5 h-3.5" />
-                      Hạn: {item.targetDate}
+                      {language === 'vi' ? 'Hạn:' : 'Due:'} {item.targetDate}
                     </span>
                   </div>
 
@@ -1102,23 +1171,30 @@ export const AssessmentView: React.FC = () => {
 
                 {/* Practical Activity Details */}
                 <p className="font-bold text-sm text-slate-900 leading-relaxed">
-                  {item.practicalActivity}
+                  {language === 'vi'
+                    ? item.practicalActivity
+                    : item.practicalActivityEn || item.practicalActivity}
                 </p>
 
                 {/* Mentor Notes & Learner Evidence Inputs */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
                   <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80">
                     <span className="text-[10px] font-bold text-amber-900 uppercase block mb-1">
-                      Chỉ đạo & Đánh giá của Mentor (FC):
+                      {language === 'vi' ? 'Chỉ đạo & Đánh giá của Mentor (FC):' : 'Mentor (FC) Coaching Notes:'}
                     </span>
                     <p className="text-slate-700 italic">
-                      {item.mentorNotes || 'Cần phối hợp với GM và Trưởng bộ phận trong kỳ kiểm kê tới.'}
+                      {language === 'vi'
+                        ? item.mentorNotes ||
+                          'Cần phối hợp với GM và Trưởng bộ phận trong kỳ kiểm kê tới.'
+                        : item.mentorNotesEn ||
+                          item.mentorNotes ||
+                          'Coordinate with GM and department heads during the upcoming closing cycle.'}
                     </p>
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <span className="text-[10px] font-bold text-slate-700 uppercase block mb-1">
-                      Dẫn chứng hoàn thành của Học viên:
+                      {language === 'vi' ? 'Dẫn chứng hoàn thành của Học viên:' : 'Learner Completion Evidence:'}
                     </span>
                     <input
                       type="text"
@@ -1139,7 +1215,11 @@ export const AssessmentView: React.FC = () => {
                           );
                         }
                       }}
-                      placeholder="Nhập tên file hoặc link dẫn chứng (ví dụ: đã nộp file Closing_Report.xlsx)..."
+                      placeholder={
+                        language === 'vi'
+                          ? 'Nhập tên file hoặc link dẫn chứng (ví dụ: đã nộp file Closing_Report.xlsx)...'
+                          : 'Enter file name or evidence link (e.g., submitted Closing_Report.xlsx)...'
+                      }
                       className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-800 placeholder:text-slate-400 focus:outline-none"
                     />
                   </div>
@@ -1152,14 +1232,14 @@ export const AssessmentView: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 gap-8 text-center text-xs">
             <div className="space-y-12">
               <span className="font-bold text-slate-700 uppercase tracking-wider block">
-                Học Viên Ký Cam Kết Thực Hiện
+                {language === 'vi' ? 'Học Viên Ký Cam Kết Thực Hiện' : 'Learner Commitment Signature'}
               </span>
               <div className="font-bold text-slate-900">{activeLearner.name}</div>
             </div>
 
             <div className="space-y-12">
               <span className="font-bold text-slate-700 uppercase tracking-wider block">
-                Giám Đốc Tài Chính (FC) Phê Duyệt & Bảo Trợ
+                {language === 'vi' ? 'Giám Đốc Tài Chính (FC) Phê Duyệt & Bảo Trợ' : 'Financial Controller (FC) Sign-Off'}
               </span>
               <div className="font-bold text-slate-900">
                 {activeIDP?.approvedBy || 'David Tran, Cluster FC'}
@@ -1180,7 +1260,9 @@ export const AssessmentView: React.FC = () => {
                 {language === 'vi' ? 'Tiến Trình & Lịch Sử Đánh Giá Năng Lực' : 'Assessment History & Gap Progression'}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Theo dõi sự thu hẹp khoảng cách năng lực qua từng quý của {activeLearner.name}.
+                {language === 'vi'
+                  ? `Theo dõi sự thu hẹp khoảng cách năng lực qua từng quý của ${activeLearner.name}.`
+                  : `Tracking quarterly competency gap reduction for ${activeLearner.name}.`}
               </p>
             </div>
 
@@ -1190,7 +1272,7 @@ export const AssessmentView: React.FC = () => {
                 className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl flex items-center gap-2 transition-all shadow-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Khởi Tạo Kỳ Đánh Giá Mới</span>
+                <span>{language === 'vi' ? 'Khởi Tạo Kỳ Đánh Giá Mới' : 'Start New Evaluation Cycle'}</span>
               </button>
             )}
           </div>
@@ -1200,12 +1282,12 @@ export const AssessmentView: React.FC = () => {
             <table className="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
               <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
                 <tr>
-                  <th className="p-3.5">Kỳ Đánh Giá (Cycle)</th>
-                  <th className="p-3.5">Ngày Đánh Giá</th>
-                  <th className="p-3.5">Người Thẩm Định</th>
-                  <th className="p-3.5 text-center">Gap Trung Bình</th>
-                  <th className="p-3.5 text-center">Trạng Thái</th>
-                  <th className="p-3.5 text-right">Thao Tác</th>
+                  <th className="p-3.5">{language === 'vi' ? 'Kỳ Đánh Giá (Cycle)' : 'Evaluation Cycle'}</th>
+                  <th className="p-3.5">{language === 'vi' ? 'Ngày Đánh Giá' : 'Assessment Date'}</th>
+                  <th className="p-3.5">{language === 'vi' ? 'Người Thẩm Định' : 'Assessor'}</th>
+                  <th className="p-3.5 text-center">{language === 'vi' ? 'Gap Trung Bình' : 'Average Gap'}</th>
+                  <th className="p-3.5 text-center">{language === 'vi' ? 'Trạng Thái' : 'Status'}</th>
+                  <th className="p-3.5 text-right">{language === 'vi' ? 'Thao Tác' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1264,7 +1346,7 @@ export const AssessmentView: React.FC = () => {
                           }}
                           className="px-3 py-1 rounded-lg border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all cursor-pointer"
                         >
-                          Xem Chi Tiết
+                          {language === 'vi' ? 'Xem Chi Tiết' : 'View Details'}
                         </button>
                       </td>
                     </tr>
@@ -1286,7 +1368,9 @@ export const AssessmentView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-amber-500" />
                 <h3 className="font-extrabold text-base text-slate-900">
-                  Thang Tiêu Chuẩn Năng Lực 4 Cấp Độ (FC Competency Rubric)
+                  {language === 'vi'
+                    ? 'Thang Tiêu Chuẩn Năng Lực 4 Cấp Độ (FC Competency Rubric)'
+                    : '4-Level Competency Proficiency Rubric'}
                 </h3>
               </div>
               <button
@@ -1303,10 +1387,14 @@ export const AssessmentView: React.FC = () => {
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white font-mono">
                     LEVEL 1
                   </span>
-                  <h4 className="font-bold text-slate-900">FOUNDATION (Cơ Bản / Nhập Môn)</h4>
+                  <h4 className="font-bold text-slate-900">
+                    {language === 'vi' ? 'FOUNDATION (Cơ Bản / Nhập Môn)' : 'FOUNDATION'}
+                  </h4>
                 </div>
                 <p className="text-slate-600">
-                  Hiểu các nguyên tắc cơ bản của kế toán khách sạn (USALI, kiểm soát nội bộ, luân chuyển chứng từ). Thực hiện các tác vụ định kỳ dưới sự hướng dẫn và giám sát trực tiếp của Kế toán trưởng hoặc FC.
+                  {language === 'vi'
+                    ? 'Hiểu các nguyên tắc cơ bản của kế toán khách sạn (USALI, kiểm soát nội bộ, luân chuyển chứng từ). Thực hiện các tác vụ định kỳ dưới sự hướng dẫn và giám sát trực tiếp của Kế toán trưởng hoặc FC.'
+                    : 'Understands foundational hospitality accounting principles (USALI, internal controls, document flow) and executes routine tasks under direct supervision.'}
                 </p>
               </div>
 
@@ -1315,10 +1403,14 @@ export const AssessmentView: React.FC = () => {
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-white font-mono">
                     LEVEL 2
                   </span>
-                  <h4 className="font-bold text-slate-900">OPERATIONAL (Tác Nghiệp Độc Lập)</h4>
+                  <h4 className="font-bold text-slate-900">
+                    {language === 'vi' ? 'OPERATIONAL (Tác Nghiệp Độc Lập)' : 'OPERATIONAL'}
+                  </h4>
                 </div>
                 <p className="text-slate-600">
-                  Vận hành thành thạo và nhất quán các quy trình khóa sổ tháng, đối soát bảng cân đối kế toán, lập báo cáo doanh thu hàng ngày (Daily Revenue Report), giải quyết các sai lệch tác nghiệp mà không cần giám sát thường xuyên.
+                  {language === 'vi'
+                    ? 'Vận hành thành thạo và nhất quán các quy trình khóa sổ tháng, đối soát bảng cân đối kế toán, lập báo cáo doanh thu hàng ngày (Daily Revenue Report), giải quyết các sai lệch tác nghiệp mà không cần giám sát thường xuyên.'
+                    : 'Independently and consistently executes month-end closing, balance sheet reconciliations, and daily revenue auditing while resolving routine variances.'}
                 </p>
               </div>
 
@@ -1327,10 +1419,14 @@ export const AssessmentView: React.FC = () => {
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-600 text-white font-mono">
                     LEVEL 3
                   </span>
-                  <h4 className="font-bold text-slate-900">ADVANCED (Chuyên Sâu & Phân Tích)</h4>
+                  <h4 className="font-bold text-slate-900">
+                    {language === 'vi' ? 'ADVANCED (Chuyên Sâu & Phân Tích)' : 'ADVANCED'}
+                  </h4>
                 </div>
                 <p className="text-slate-600">
-                  Chủ động xây dựng mô hình dự báo tài chính (Forecasting), lập ngân sách hàng năm, phân tích biến động P&L Critique sắc bén, hướng dẫn và đào tạo nhân viên kế toán cấp dưới, quản lý rủi ro kiểm soát nội bộ.
+                  {language === 'vi'
+                    ? 'Chủ động xây dựng mô hình dự báo tài chính (Forecasting), lập ngân sách hàng năm, phân tích biến động P&L Critique sắc bén, hướng dẫn và đào tạo nhân viên kế toán cấp dưới, quản lý rủi ro kiểm soát nội bộ.'
+                    : 'Builds rolling financial forecasts and annual budgets, authors incisive P&L variance critiques, coaches junior accountants, and manages internal control risks.'}
                 </p>
               </div>
 
@@ -1339,10 +1435,14 @@ export const AssessmentView: React.FC = () => {
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white font-mono">
                     LEVEL 4
                   </span>
-                  <h4 className="font-bold text-slate-900">STRATEGIC FC PARTNER (Đối Tác Chiến Lược Của GM)</h4>
+                  <h4 className="font-bold text-slate-900">
+                    {language === 'vi' ? 'STRATEGIC FC PARTNER (Đối Tác Chiến Lược Của GM)' : 'STRATEGIC FC PARTNER'}
+                  </h4>
                 </div>
                 <p className="text-slate-600">
-                  Hoạt động như một cánh tay phải đắc lực của Tổng Giám Đốc (GM). Cung cấp góc nhìn tài chính chiến lược, tham vấn giá bán và tối ưu hóa lợi nhuận GOP/EBITDA, thẩm định đầu tư CAPEX, bảo vệ tài sản và dẫn dắt văn hóa tuân thủ của toàn khách sạn.
+                  {language === 'vi'
+                    ? 'Hoạt động như một cánh tay phải đắc lực của Tổng Giám Đốc (GM). Cung cấp góc nhìn tài chính chiến lược, tham vấn giá bán và tối ưu hóa lợi nhuận GOP/EBITDA, thẩm định đầu tư CAPEX, bảo vệ tài sản và dẫn dắt văn hóa tuân thủ của toàn khách sạn.'
+                    : 'Acts as strategic financial business partner to the GM—driving commercial pricing, GOP/EBITDA optimization, CAPEX underwriting, asset protection, and property-wide compliance.'}
                 </p>
               </div>
             </div>
@@ -1352,7 +1452,7 @@ export const AssessmentView: React.FC = () => {
                 onClick={() => setShowRubricModal(false)}
                 className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 cursor-pointer"
               >
-                Đã Hiểu
+                {language === 'vi' ? 'Đã Hiểu' : 'Close'}
               </button>
             </div>
           </div>
@@ -1369,7 +1469,7 @@ export const AssessmentView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-amber-500" />
                 <h3 className="font-extrabold text-base text-slate-900">
-                  Khởi Tạo Kỳ Đánh Giá Mới
+                  {language === 'vi' ? 'Khởi Tạo Kỳ Đánh Giá Mới' : 'Create New Evaluation Cycle'}
                 </h3>
               </div>
               <button
@@ -1382,25 +1482,31 @@ export const AssessmentView: React.FC = () => {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nhân Sự Được Đánh Giá:</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Nhân Sự Được Đánh Giá:' : 'Learner Being Evaluated:'}
+                </label>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 font-bold text-slate-900">
                   {activeLearner.name} ({activeLearner.position})
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Tên Kỳ Đánh Giá:</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Tên Kỳ Đánh Giá:' : 'Evaluation Cycle Name:'}
+                </label>
                 <input
                   type="text"
                   value={newCycleName}
                   onChange={(e) => setNewCycleName(e.target.value)}
-                  placeholder="Ví dụ: 2026 Q3 Mid-Year Evaluation"
+                  placeholder={language === 'vi' ? 'Ví dụ: 2026 Q3 Mid-Year Evaluation' : 'e.g., 2026 Q3 Mid-Year Evaluation'}
                   className="w-full p-2.5 text-xs font-semibold rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-900"
                 />
               </div>
 
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Hệ thống sẽ sao chép cấu trúc năng lực chuẩn, đặt trạng thái ban đầu là <strong>Chờ Tự Đánh Giá (pending_self)</strong> để học viên hoàn thành trước khi chuyển đến Cấp Trên thẩm định.
+                {language === 'vi'
+                  ? 'Hệ thống sẽ sao chép cấu trúc năng lực chuẩn, đặt trạng thái ban đầu là Chờ Tự Đánh Giá (pending_self) để học viên hoàn thành trước khi chuyển đến Cấp Trên thẩm định.'
+                  : 'Initializes the full competency structure with status set to pending_self so the learner can complete self-assessment before supervisor calibration.'}
               </p>
             </div>
 
@@ -1409,13 +1515,13 @@ export const AssessmentView: React.FC = () => {
                 onClick={() => setShowNewCycleModal(false)}
                 className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
               >
-                Hủy
+                {language === 'vi' ? 'Hủy' : 'Cancel'}
               </button>
               <button
                 onClick={handleCreateNewCycle}
                 className="px-4 py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs"
               >
-                Tạo Kỳ Đánh Giá
+                {language === 'vi' ? 'Tạo Kỳ Đánh Giá' : 'Create Cycle'}
               </button>
             </div>
           </div>

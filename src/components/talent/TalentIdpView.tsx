@@ -437,7 +437,9 @@ export const TalentIdpView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Mục tiêu tổng thể (VI)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {language === 'vi' ? 'Mục tiêu tổng thể (VI)' : 'Overall Goal (VI)'}
+              </label>
               <input
                 type="text"
                 value={overallGoalVi}

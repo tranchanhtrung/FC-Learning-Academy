@@ -551,7 +551,9 @@ export const TalentActivitiesView: React.FC = () => {
             <div className="p-5 space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Competency</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {language === 'vi' ? 'Năng lực' : 'Competency'}
+                  </label>
                   <select
                     value={customForm.competencyCode || selectedComp?.code}
                     onChange={(e) => setCustomForm((p) => ({ ...p, competencyCode: e.target.value }))}
@@ -559,13 +561,15 @@ export const TalentActivitiesView: React.FC = () => {
                   >
                     {competencies.map((c) => (
                       <option key={c.code} value={c.code}>
-                        {c.code} — {c.nameEn}
+                        {c.code} — {language === 'vi' ? c.nameVi : c.nameEn}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Category (A–E)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {language === 'vi' ? 'Nhóm hoạt động (A–E)' : 'Category (A–E)'}
+                  </label>
                   <select
                     value={customForm.category}
                     onChange={(e) => {
@@ -589,7 +593,9 @@ export const TalentActivitiesView: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Activity Title (EN)</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {language === 'vi' ? 'Tên hoạt động (Tiếng Anh)' : 'Activity Title (EN)'}
+                </label>
                 <input
                   type="text"
                   required
@@ -600,17 +606,25 @@ export const TalentActivitiesView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Activity Title (VI)</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {language === 'vi' ? 'Tên hoạt động (Tiếng Việt)' : 'Activity Title (Vietnamese)'}
+                </label>
                 <input
                   type="text"
                   value={customForm.titleVi}
                   onChange={(e) => setCustomForm((p) => ({ ...p, titleVi: e.target.value }))}
-                  placeholder="Chủ trì phân tích biên lợi nhuận F&B theo chuẩn USALI cùng Bếp trưởng"
+                  placeholder={
+                    language === 'vi'
+                      ? 'Chủ trì phân tích biên lợi nhuận F&B theo chuẩn USALI cùng Bếp trưởng'
+                      : 'Optional Vietnamese title (e.g. Monthly USALI F&B margin analysis)'
+                  }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Deliverable / Description</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  {language === 'vi' ? 'Sản phẩm đầu ra / Mô tả' : 'Deliverable / Description'}
+                </label>
                 <textarea
                   rows={2}
                   value={customForm.descriptionEn}
@@ -620,7 +634,9 @@ export const TalentActivitiesView: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Hours</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {language === 'vi' ? 'Số giờ ước tính' : 'Hours'}
+                  </label>
                   <input
                     type="number"
                     min={1}
@@ -630,7 +646,9 @@ export const TalentActivitiesView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Due Date</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {language === 'vi' ? 'Hạn hoàn thành' : 'Due Date'}
+                  </label>
                   <input
                     type="date"
                     value={customForm.dueDate}
@@ -646,13 +664,13 @@ export const TalentActivitiesView: React.FC = () => {
                 onClick={() => setCustomModalOpen(false)}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg cursor-pointer"
               >
-                Cancel
+                {language === 'vi' ? 'Hủy' : 'Cancel'}
               </button>
               <button
                 type="submit"
                 className="px-4 py-2 text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 rounded-lg cursor-pointer"
               >
-                Create & Assign
+                {language === 'vi' ? 'Tạo & Giao Việc' : 'Create & Assign'}
               </button>
             </div>
           </form>

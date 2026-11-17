@@ -593,6 +593,21 @@ export function matchRecommendationsForCompetency(params: {
 
   // Category B: On-the-Job Training (grounded in competency.evidenceRequirements)
   if (competency.evidenceRequirements && competency.evidenceRequirements.length > 0) {
+    const firstEvidenceEn =
+      competency.evidenceRequirementsEn?.[0] || competency.evidenceRequirements[0];
+    const targetCriteriaEn =
+      targetLevel === 4
+        ? competency.assessmentCriteriaEn?.level4 || competency.assessmentCriteria?.level4
+        : targetLevel === 3
+        ? competency.assessmentCriteriaEn?.level3 || competency.assessmentCriteria?.level3
+        : competency.assessmentCriteriaEn?.level2 || competency.assessmentCriteria?.level2;
+    const targetCriteriaVi =
+      targetLevel === 4
+        ? competency.assessmentCriteria?.level4
+        : targetLevel === 3
+        ? competency.assessmentCriteria?.level3
+        : competency.assessmentCriteria?.level2;
+
     recs.push({
       key: `job_exp_${competency.code}`,
       competencyId: competency.id,
@@ -602,22 +617,10 @@ export function matchRecommendationsForCompetency(params: {
       ratioCategory: '70_experiential',
       sourceType: 'ojt',
       sourceCode: `OJT-${competency.code}`,
-      titleEn: `OJT Stretch Task (L${targetLevel}): ${competency.evidenceRequirements[0]}`,
+      titleEn: `OJT Stretch Task (L${targetLevel}): ${firstEvidenceEn}`,
       titleVi: `Nhiệm vụ OJT thực tế (L${targetLevel}): ${competency.evidenceRequirements[0]}`,
-      descriptionEn: `Lead real property deliverable to achieve Level ${targetLevel}: ${
-        targetLevel === 4
-          ? competency.assessmentCriteria?.level4
-          : targetLevel === 3
-          ? competency.assessmentCriteria?.level3
-          : competency.assessmentCriteria?.level2
-      }`,
-      descriptionVi: `Trực tiếp chủ trì nghiệp vụ thực tế tại khách sạn để đạt cấp độ ${targetLevel}: ${
-        targetLevel === 4
-          ? competency.assessmentCriteria?.level4
-          : targetLevel === 3
-          ? competency.assessmentCriteria?.level3
-          : competency.assessmentCriteria?.level2
-      }`,
+      descriptionEn: `Lead real property deliverable to achieve Level ${targetLevel}: ${targetCriteriaEn || ''}`,
+      descriptionVi: `Trực tiếp chủ trì nghiệp vụ thực tế tại khách sạn để đạt cấp độ ${targetLevel}: ${targetCriteriaVi || ''}`,
       estimatedHours: 24,
       evidenceRequired: true,
       matchReason: 'Grounded in Competency.evidenceRequirements & rubric level criteria',

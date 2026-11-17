@@ -26,6 +26,15 @@ import { TalentActivitiesView } from './components/talent/TalentActivitiesView';
 import { TalentIdpView } from './components/talent/TalentIdpView';
 import { TalentProgressView } from './components/talent/TalentProgressView';
 import { TalentReadinessView } from './components/talent/TalentReadinessView';
+import { SimulationDashboardTab } from './components/simulator/SimulationDashboardTab';
+import { ScenarioLibraryTab } from './components/simulator/ScenarioLibraryTab';
+import { SimulationWorkspaceTab } from './components/simulator/SimulationWorkspaceTab';
+import { ExecutiveMeetingTab } from './components/simulator/ExecutiveMeetingTab';
+import { SimulationHistoryTab } from './components/simulator/SimulationHistoryTab';
+import { PerformanceScoreTab } from './components/simulator/PerformanceScoreTab';
+import { SimulationAdminTab } from './components/simulator/SimulationAdminTab';
+import { ScenarioImportCenterTab } from './components/simulator/ScenarioImportCenterTab';
+import { ScenarioVersionHistoryTab } from './components/simulator/ScenarioVersionHistoryTab';
 import { CertificateModal } from './components/common/CertificateModal';
 import { Course } from './types';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
@@ -51,11 +60,21 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
     const isLearner = currentUser.role === 'learner';
+    const canAccessSimAdmin = [
+      'super_admin',
+      'lnd_manager',
+      'financial_controller',
+      'general_manager',
+    ].includes(currentUser.role);
 
     if ((activeTab === 'administration' || activeTab === 'dataImportCenter') && !isAdminOrLnd) {
       setActiveTab('dashboard');
+    } else if (activeTab === 'simImportCenter' && !isAdminOrLnd) {
+      setActiveTab('simDashboard');
     } else if (activeTab === 'reports' && isLearner) {
       setActiveTab('dashboard');
+    } else if ((activeTab === 'simAdmin' || activeTab === 'simVersionHistory') && !canAccessSimAdmin) {
+      setActiveTab('simDashboard');
     }
   }, [activeTab, currentUser.role, setActiveTab]);
 
@@ -105,6 +124,24 @@ const MainAppContent: React.FC = () => {
           {activeTab === 'talentReadiness' && <TalentReadinessView />}
           {activeTab === 'ojtProjects' && <OJTProjectsView />}
           {activeTab === 'aiAssistant' && <AIAssistantView />}
+          {activeTab === 'simDashboard' && <SimulationDashboardTab />}
+          {activeTab === 'simLibrary' && <ScenarioLibraryTab />}
+          {activeTab === 'simWorkspace' && <SimulationWorkspaceTab />}
+          {activeTab === 'simMeeting' && <ExecutiveMeetingTab />}
+          {activeTab === 'simHistory' && <SimulationHistoryTab />}
+          {activeTab === 'simPerformance' && <PerformanceScoreTab />}
+          {activeTab === 'simImportCenter' &&
+            (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
+              <ScenarioImportCenterTab />
+            )}
+          {activeTab === 'simAdmin' &&
+            ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
+              currentUser.role
+            ) && <SimulationAdminTab />}
+          {activeTab === 'simVersionHistory' &&
+            ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
+              currentUser.role
+            ) && <ScenarioVersionHistoryTab />}
           {activeTab === 'certifications' && <CertificationsView />}
           {activeTab === 'reports' && currentUser.role !== 'learner' && <ReportsView />}
           {activeTab === 'administration' &&

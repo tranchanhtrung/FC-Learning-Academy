@@ -49,7 +49,14 @@ export interface Competency {
     level3: string;
     level4: string;
   };
+  assessmentCriteriaEn?: {
+    level1: string;
+    level2: string;
+    level3: string;
+    level4: string;
+  };
   evidenceRequirements: string[];
+  evidenceRequirementsEn?: string[];
   associatedCourseIds: string[];
 }
 
@@ -77,6 +84,7 @@ export interface AssessmentRecord {
     gap: number;
     selfNotes?: string;
     supervisorNotes: string;
+    supervisorNotesEn?: string;
     evidenceText?: string;
   }>;
   overallGapAverage: number;
@@ -96,8 +104,10 @@ export interface IDPItem {
   targetDate: string;
   recommendedCourseIds: string[];
   practicalActivity: string;
+  practicalActivityEn?: string;
   status: 'Not Started' | 'In Progress' | 'Completed';
   mentorNotes?: string;
+  mentorNotesEn?: string;
   evidenceNotes?: string;
   completedDate?: string;
 }
@@ -113,6 +123,7 @@ export interface IndividualDevelopmentPlan {
   approvedBy?: string;
   approvedDate?: string;
   overallGoal?: string;
+  overallGoalEn?: string;
 }
 
 export interface CourseModule {
@@ -128,6 +139,7 @@ export interface CourseModule {
 export interface CourseMaterial {
   id: string;
   title: string;
+  titleEn?: string;
   type: 'excel' | 'pdf' | 'template' | 'checklist' | 'slide';
   fileSize: string;
   downloadUrl?: string;
@@ -140,12 +152,59 @@ export interface CourseCaseStudy {
   titleVi: string;
   titleEn: string;
   propertyContext: string;
+  propertyContextEn?: string;
   scenarioVi: string;
   scenarioEn: string;
   keyChallengeVi: string;
   keyChallengeEn: string;
   suggestedSolutionVi: string;
   suggestedSolutionEn: string;
+}
+
+export interface CourseSyllabusSession {
+  sessionNumber: number;
+  titleVi: string;
+  titleEn: string;
+  durationHours: number;
+  format: 'Video Masterclass' | 'Live Workshop' | 'Excel Lab' | 'Case Simulation' | 'Capstone & Exam';
+  learningOutcomesVi: string[];
+  learningOutcomesEn: string[];
+  topicsVi: string[];
+  topicsEn: string[];
+  keyStandardsAndFormulas: string[];
+  practicalLabVi: string;
+  practicalLabEn: string;
+  deliverablesVi: string[];
+  deliverablesEn: string[];
+}
+
+export interface CourseAssessmentWeighting {
+  quizWeight: number;
+  caseStudyWeight: number;
+  practicalOjtWeight: number;
+  passingScore: number;
+}
+
+export interface CourseSyllabus {
+  courseCode: string;
+  overviewVi: string;
+  overviewEn: string;
+  targetAudienceVi: string;
+  targetAudienceEn: string;
+  careerTrackStageVi: string;
+  careerTrackStageEn: string;
+  competencyCodes: string[];
+  deliveryFormatVi: string;
+  deliveryFormatEn: string;
+  totalContactHours: number;
+  totalSelfStudyHours: number;
+  assessmentBreakdown: CourseAssessmentWeighting;
+  preWorkVi: string;
+  preWorkEn: string;
+  referencesAndStandards: string[];
+  capstoneDeliverableVi: string;
+  capstoneDeliverableEn: string;
+  sessions: CourseSyllabusSession[];
 }
 
 export interface Course {
@@ -160,6 +219,7 @@ export interface Course {
   instructorName: string;
   instructorTitle: string;
   prerequisites: string[];
+  prerequisitesEn?: string[];
   learningObjectivesVi: string[];
   learningObjectivesEn: string[];
   modules: CourseModule[];
@@ -170,7 +230,9 @@ export interface Course {
   caseStudy?: CourseCaseStudy;
   practicalAssignmentId?: string;
   practicalAssignmentTitle?: string;
+  practicalAssignmentTitleEn?: string;
   quizQuestionIds?: string[];
+  syllabus?: CourseSyllabus;
 }
 
 export interface CourseEnrollment {
@@ -220,6 +282,7 @@ export interface OJTAssignment {
   titleEn: string;
   domainId: string;
   propertyContext: string;
+  propertyContextEn?: string;
   descriptionVi: string;
   descriptionEn: string;
   deliverablesVi: string[];
@@ -636,5 +699,772 @@ export interface LmsNotificationItem {
   time: string;
   read: boolean;
 }
+
+// ============================================================================
+// FIREBASE AUTH PROFILE & FC BUSINESS PARTNER SIMULATOR TYPES
+// ============================================================================
+
+export interface FirebaseUserProfileDoc {
+  uid: string;
+  employeeId: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  position?: string;
+  department?: string;
+  property?: string;
+  supervisorUid?: string;
+  isAdmin?: boolean;
+  emailVerified?: boolean;
+  updatedAt: string;
+}
+
+export interface HotelSimulationProfileDoc {
+  id: string;
+  hotelCode: string;
+  hotelName: string;
+  brandTier: string;
+  city: string;
+  roomsAvailable: number;
+  totalKeys: number;
+  fcPositionLevel: string;
+  currency: string;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export type SimulatorScenarioCategory =
+  | 'GOP & Hotel Financial Performance'
+  | 'Revenue Forecasting & Budgeting'
+  | 'Cost Control & Profitability'
+  | 'Departmental Performance'
+  | 'GM Business Advisory'
+  | 'Executive Meeting & Strategic Finance';
+
+export type SimulatorDifficulty = 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert';
+
+export type SimulatorPersona =
+  | 'General Manager'
+  | 'Director of Operations'
+  | 'Director of Sales & Marketing'
+  | 'Executive Chef / F&B Director'
+  | 'Corporate Finance Reviewer';
+
+export type CoachMode =
+  | 'guided_learning'
+  | 'challenge_mode'
+  | 'executive_mode'
+  | 'reflection_mode';
+
+export type SimulationScenarioKind = 'standard' | 'rolling_forecast' | 'capex';
+
+export type SimulationScenarioStatus = 'Draft' | 'Validated' | 'Published' | 'Archived';
+
+export interface SimulationScenarioDoc {
+  id: string;
+  scenarioCode: string;
+  hotelId: string;
+  titleEn: string;
+  titleVi: string;
+  summaryEn: string;
+  summaryVi: string;
+  category?: SimulatorScenarioCategory;
+  difficultyLabel?: SimulatorDifficulty;
+  difficultyLevel: ProficiencyLevel;
+  targetRole: string;
+  recommendedPositionIds?: string[];
+  competencyIds?: string[];
+  periodLabel: string;
+  estimatedDurationMinutes?: number;
+  learningObjectivesEn?: string[];
+  learningObjectivesVi?: string[];
+  requiredKnowledgeEn?: string[];
+  requiredKnowledgeVi?: string[];
+  expectedOutputsEn?: string[];
+  expectedOutputsVi?: string[];
+  usaliReferenceLabel?: string;
+  scenarioKind?: SimulationScenarioKind;
+  defaultPersona?: SimulatorPersona;
+  languageOptions?: Array<'vi' | 'en'>;
+  datasetVersion?: string;
+  versionNumber?: number;
+  isActive?: boolean;
+  status: SimulationScenarioStatus;
+  validatedBy?: string;
+  validatedAt?: string;
+  publishedBy?: string;
+  publishedAt?: string;
+  unpublishedBy?: string;
+  unpublishedAt?: string;
+  archivedBy?: string;
+  archivedAt?: string;
+  sourceImportJobId?: string;
+  importedAt?: string;
+  importBatchId?: string;
+  updatedAt?: string;
+}
+
+export interface SimulationFinancialRecordDoc {
+  id: string;
+  scenarioId: string;
+  hotelProfileId?: string;
+  periodLabel: string;
+  version?: string; // Actual | Budget | Forecast | Last Year
+  departmentCode: string;
+  departmentName: string;
+  unit?: string;
+  metricType?: string; // Revenue | Expense | Profit | Margin | Statistical
+  departmentalRevenue: number;
+  departmentalExpenses: number;
+  departmentalProfit: number;
+  totalOperatingRevenue: number;
+  totalDepartmentalExpenses: number;
+  totalUndistributedExpenses: number;
+  gop: number;
+  gopMarginPct: number;
+  roomsRevenue: number;
+  budgetGop?: number;
+  varianceAmount?: number;
+  variancePct?: number;
+  varianceClassification?: 'Favorable' | 'Unfavorable' | 'Neutral';
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationOperationalRecordDoc {
+  id: string;
+  scenarioId: string;
+  hotelProfileId?: string;
+  periodLabel: string;
+  version?: string;
+  roomsAvailable: number;
+  roomsSold: number;
+  roomsRevenue: number;
+  occupancyPct: number;
+  adr: number;
+  revpar: number;
+  fbCovers?: number;
+  laborHours?: number;
+  overtimeHours?: number;
+  gssScore?: number;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationBusinessChallengeDoc {
+  id: string;
+  scenarioId: string;
+  challengeCode: string;
+  titleEn: string;
+  titleVi: string;
+  descriptionEn: string;
+  descriptionVi: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  impactArea: string;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationTaskDoc {
+  id: string;
+  scenarioId: string;
+  taskId?: string;
+  taskOrder: number;
+  titleEn: string;
+  titleVi: string;
+  instructionsEn: string;
+  instructionsVi: string;
+  deliverableType: string;
+  maxPoints: number;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationReferenceAnalysisDoc {
+  id: string;
+  scenarioId: string;
+  topic: string;
+  rootCauseEn: string;
+  rootCauseVi: string;
+  benchmarkFormula: string;
+  recommendedActionEn: string;
+  recommendedActionVi: string;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationDecisionOptionDoc {
+  id: string;
+  scenarioId: string;
+  optionCode: string;
+  titleEn: string;
+  titleVi: string;
+  financialImpactEstimate: number;
+  gopImpactPct: number;
+  riskLevel: 'Low' | 'Medium' | 'High';
+  isOptimal: boolean;
+  rationaleEn: string;
+  rationaleVi: string;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationRoleplayPromptDoc {
+  id: string;
+  scenarioId: string;
+  roleplayId?: string;
+  turnOrder: number;
+  speakerRole: string;
+  promptEn: string;
+  promptVi: string;
+  expectedFocusPoints: string;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationEvaluationRubricDoc {
+  id: string;
+  scenarioId: string;
+  criterionCode: string;
+  criterionNameEn: string;
+  criterionNameVi: string;
+  weightPercent: number;
+  maxScore: number;
+  passingScore: number;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export interface SimulationCompetencyMappingDoc {
+  id: string;
+  scenarioId: string;
+  competencyId: string;
+  workbookCompetencyId?: string;
+  competencyCode?: string;
+  competencyNameEn?: string;
+  domainId?: string;
+  targetProficiencyLevel: ProficiencyLevel;
+  weightPercent: number;
+  isPrimary: boolean;
+  importedAt?: string;
+  importBatchId?: string;
+}
+
+export type SimulatorImportStrategy = 'skip' | 'update' | 'insert_new' | 'reject';
+
+export type SimulatorValidationBadge =
+  | 'VALID'
+  | 'WARNING'
+  | 'INVALID'
+  | 'DUPLICATE'
+  | 'MISSING REFERENCE'
+  | 'READY TO IMPORT';
+
+export interface SimulatorFinancialCheckResult {
+  id: string;
+  scenarioId: string;
+  sheet: string;
+  row: number;
+  periodLabel: string;
+  version: string;
+  departmentCode: string;
+  formulaName: string;
+  formulaExpression: string;
+  reportedValue: number;
+  expectedValue: number;
+  difference: number;
+  tolerance: number;
+  passed: boolean;
+  severity: 'error' | 'warning';
+  varianceClassification?: 'Favorable' | 'Unfavorable' | 'Neutral';
+  message: string;
+}
+
+export interface SimulatorScenarioPreviewSummary {
+  scenarioId: string;
+  scenarioCode: string;
+  hotelId: string;
+  hotelName: string;
+  titleEn: string;
+  titleVi: string;
+  summaryEn: string;
+  summaryVi: string;
+  difficultyLevel: ProficiencyLevel;
+  targetRole: string;
+  periodLabel: string;
+  status: SimulationScenarioStatus;
+  badge: SimulatorValidationBadge;
+  isDuplicate: boolean;
+  errorCount: number;
+  warningCount: number;
+  rubricWeightSum: number;
+  decisionOptionsCount: number;
+  childCounts: {
+    financialRows: number;
+    operationalRows: number;
+    challenges: number;
+    tasks: number;
+    referenceAnalyses: number;
+    decisionOptions: number;
+    roleplayPrompts: number;
+    rubrics: number;
+    competencyMappings: number;
+  };
+  financialChecks: SimulatorFinancialCheckResult[];
+  sampleFinancialRows: SimulationFinancialRecordDoc[];
+  sampleOperationalRows: SimulationOperationalRecordDoc[];
+  tasks: SimulationTaskDoc[];
+  challenges: SimulationBusinessChallengeDoc[];
+  decisionOptions: SimulationDecisionOptionDoc[];
+  roleplayPrompts: SimulationRoleplayPromptDoc[];
+  rubrics: SimulationEvaluationRubricDoc[];
+  competencyMappings: SimulationCompetencyMappingDoc[];
+  referenceAnalyses: SimulationReferenceAnalysisDoc[];
+}
+
+export interface ScenarioImportJobDoc {
+  id: string;
+  fileName: string;
+  fileSizeBytes?: number;
+  uploadedByUid?: string;
+  uploadedByEmail?: string;
+  uploadedByName?: string;
+  uploadedByRole?: string;
+  performedById?: string;
+  performedByName?: string;
+  performedByEmail?: string;
+  importMode?: SimulatorImportStrategy;
+  strategy?: SimulatorImportStrategy;
+  targetDestination?: 'firestore' | 'firebase_admin' | 'firebase_client' | 'demo_local';
+  mode?: string;
+  status:
+    | 'validating'
+    | 'validated'
+    | 'importing'
+    | 'paused'
+    | 'interrupted'
+    | 'completed'
+    | 'completed_with_errors'
+    | 'partial_failure'
+    | 'failed';
+  toleranceUsed?: number;
+  totalSheetsDetected?: number;
+  totalRowsDetected?: number;
+  totalRows?: number;
+  totalScenariosDetected?: number;
+  validCount?: number;
+  validRows?: number;
+  invalidCount?: number;
+  warningCount: number;
+  errorCount?: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  totalChunks?: number;
+  completedChunks?: number;
+  checkpointSpecIdx?: number;
+  checkpointBatchIdx?: number;
+  lastProcessedCollection?: string;
+  scenarioIdsAffected?: string[];
+  canResume?: boolean;
+  summaryStats?: {
+    financialChecksRun: number;
+    financialChecksPassed: number;
+    unmappedCompetenciesCount: number;
+  };
+  startedAt: string;
+  completedAt?: string;
+  updatedAt: string;
+}
+
+export interface ScenarioImportErrorDoc {
+  id: string;
+  jobId: string;
+  sheetName: string;
+  collectionName?: string;
+  rowNumber: number;
+  recordId: string;
+  scenarioId?: string;
+  field?: string;
+  fieldName?: string;
+  errorCode?: string;
+  severity: 'error' | 'warning';
+  message: string;
+  rawRowSnapshot?: string;
+  createdAt: string;
+}
+
+export interface ScenarioVersionDoc {
+  id: string;
+  scenarioId: string;
+  scenarioCode: string;
+  versionNumber: number;
+  datasetVersion: string;
+  status: SimulationScenarioStatus;
+  isActive?: boolean;
+  changeSummary: string;
+  sourceImportJobId?: string;
+  importJobId?: string;
+  createdBy?: string;
+  createdAt?: string;
+  changedById?: string;
+  changedByName?: string;
+  changedByRole?: string;
+  changedAt?: string;
+  snapshotSummary?: {
+    hotelId: string;
+    titleEn: string;
+    titleVi: string;
+    difficultyLevel?: ProficiencyLevel;
+    financialRows?: number;
+    financialRowCount?: number;
+    operationalRows?: number;
+    tasksCount?: number;
+    decisionOptionsCount?: number;
+    roleplayTurnsCount?: number;
+    rubricsCount?: number;
+    competencyIds: string[];
+    totalRevenueActual?: number;
+    gopActual?: number;
+    budgetGop?: number;
+    gopMarginPctActual?: number;
+  };
+}
+
+export interface ScenarioCompetencyMappingDoc {
+  id: string; // sanitized workbookCompetencyId
+  workbookCompetencyId: string;
+  lmsCompetencyId: string;
+  lmsCompetencyCode?: string;
+  lmsCompetencyName?: string;
+  targetCompetencyId?: string;
+  targetCompetencyCode?: string;
+  targetCompetencyNameEn?: string;
+  targetCompetencyNameVi?: string;
+  domainId?: string;
+  verifiedBy?: string;
+  verifiedById?: string;
+  verifiedByName?: string;
+  verifiedAt: string;
+  notes?: string;
+}
+
+// Versioned Hotel Data Engine Snapshot (Actual, Budget, Forecast, Last Year)
+export type FinancialStatementVersionKey = 'actual' | 'budget' | 'forecast' | 'lastYear';
+
+export interface HotelStatementColumns {
+  // A. Rooms Division
+  availableRooms: number;
+  occupiedRooms: number;
+  occupancyPct: number;
+  adr: number;
+  revpar: number;
+  roomsRevenue: number;
+  complimentaryRooms: number;
+  houseUseRooms: number;
+  cancelledRooms: number;
+  otaSharePct: number;
+  directSharePct: number;
+  corporateSharePct: number;
+  distributionCost: number;
+  roomsPayroll: number;
+  roomsOtherExpenses: number;
+  roomsExpenses: number;
+  roomsProfit: number;
+  // B. Food & Beverage
+  restaurantRevenue: number;
+  barRevenue: number;
+  banquetRevenue: number;
+  fbRevenue: number;
+  foodRevenue: number;
+  beverageRevenue: number;
+  foodCost: number;
+  beverageCost: number;
+  foodCostPct: number;
+  beverageCostPct: number;
+  fbPayroll: number;
+  fbOtherOpEx: number;
+  fbExpenses: number;
+  fbProfit: number;
+  // C. Other Operating Departments
+  spaRevenue: number;
+  recreationRevenue: number;
+  otherDeptRevenue: number;
+  otherOperatingRevenue: number;
+  otherDeptDirectExpenses: number;
+  otherDeptProfit: number;
+  // D. Undistributed Operating Expenses
+  adminAndGeneral: number;
+  salesAndMarketing: number;
+  propertyOperationsMaintenance: number;
+  utilities: number;
+  totalUndistributedExpenses: number;
+  // E. Hotel Profitability
+  totalOperatingRevenue: number;
+  totalDepartmentalExpenses: number;
+  totalDepartmentalProfit: number;
+  gop: number;
+  gopMarginPct: number;
+  managementFees: number;
+  nonOperatingItems: number;
+  ebitda: number;
+  totalLaborCost: number;
+  laborCostPct: number;
+}
+
+export interface CapexAssumptions {
+  equipmentNameEn: string;
+  equipmentNameVi: string;
+  initialInvestment: number;
+  usefulLifeYears: number;
+  annualMaintenanceCost: number;
+  annualEnergySavings: number;
+  annualLaborSavings: number;
+  annualIncrementalRevenue: number;
+  discountRatePct: number;
+  financingNoteEn: string;
+  financingNoteVi: string;
+}
+
+export interface RollingForecastMonthInput {
+  monthLabel: string;
+  availableRooms: number;
+  budgetOccupancyPct: number;
+  budgetAdr: number;
+  bookingPacePct: number;
+  cancellationRatePct: number;
+  groupRoomsBooked: number;
+  suggestedBaseOccPct: number;
+  suggestedBaseAdr: number;
+  suggestedUpsideOccPct: number;
+  suggestedUpsideAdr: number;
+  suggestedDownsideOccPct: number;
+  suggestedDownsideAdr: number;
+  fbCapturePerOccupiedRoom: number;
+  variableCostRatio: number;
+  fixedOperatingExpenses: number;
+}
+
+export interface HotelSimulationDatasetSnapshot {
+  datasetId: string;
+  scenarioId: string;
+  hotelSimulationId: string;
+  hotelName: string;
+  hotelType: string;
+  numberOfRooms: number;
+  numberOfOutlets: number;
+  marketSegment: string;
+  currency: string;
+  reportingPeriod: string;
+  reportingBasis: string;
+  usaliLicenseReference?: string;
+  budgetAssumptions: string;
+  operationalAssumptions: string;
+  datasetVersion: string;
+  generatedAt: string;
+  periods: Record<FinancialStatementVersionKey, HotelStatementColumns>;
+  monthlySeries?: Array<{
+    monthLabel: string;
+    actualRev: number;
+    budgetRev: number;
+    actualGop: number;
+    budgetGop: number;
+    gopMarginPct: number;
+  }>;
+  capexAssumptions?: CapexAssumptions;
+  rollingForecastInputs?: RollingForecastMonthInput[];
+}
+
+export interface CalculationAuditItem {
+  metricKey: string;
+  labelEn: string;
+  labelVi: string;
+  formula: string;
+  denominatorDefinition: string;
+  actualValue: number | null;
+  budgetValue: number | null;
+  variance: number | null;
+  variancePct: number | null;
+  unit: 'currency' | 'percent' | 'rooms' | 'years' | 'ratio';
+  accountNature: 'revenue' | 'profit' | 'expense' | 'kpi_higher_better' | 'kpi_lower_better';
+  classification: 'Favorable' | 'Unfavorable' | 'Neutral' | 'N/A';
+  explanationEn: string;
+  explanationVi: string;
+}
+
+export interface LearnerAnalysisWorkspace {
+  significantVariances: string;
+  rootCauseDepartments: string[];
+  symptomsVsRootCauses: string;
+  quantifiedFinancialImpact: string;
+  risksAndOpportunities: string;
+  alternativeSolutions: string;
+  submittedOccPct?: string;
+  submittedAdr?: string;
+  submittedGopMarginPct?: string;
+  submittedFoodCostPct?: string;
+  rollingForecastUserScenarios?: Array<{
+    monthLabel: string;
+    baseOccPct: number;
+    baseAdr: number;
+    upsideOccPct: number;
+    upsideAdr: number;
+    downsideOccPct: number;
+    downsideAdr: number;
+  }>;
+  capexUserInputs?: {
+    paybackYears?: string;
+    roiPct?: string;
+    npv?: string;
+    irrPct?: string;
+  };
+}
+
+export interface LearnerDecisionWorkspace {
+  selectedOptionIds: string[];
+  recommendedAction: string;
+  rationale: string;
+  estimatedFinancialImpact: string;
+  implementationTiming: string;
+  responsibleDepartments: string;
+  risksAndMitigation: string;
+  followupKpis: string;
+}
+
+export interface LearnerExecutiveReport {
+  language: 'vi' | 'en';
+  executiveSummary: string;
+  keyFinancialFindings: string;
+  rootCauseAnalysis: string;
+  recommendedActions: string;
+  financialImpact: string;
+  riskAssessment: string;
+  implementationPlan: string;
+  requiredManagementDecision: string;
+}
+
+export interface SimulationRoleplayConfig {
+  persona: SimulatorPersona;
+  difficulty: SimulatorDifficulty;
+  maxQuestions: number;
+  language: 'vi' | 'en';
+  challengeIntensity: 'Supportive' | 'Balanced' | 'Rigorous';
+  timeLimitMinutes: number;
+  coachMode: CoachMode;
+}
+
+export interface SimulationEvaluationCriterionScore {
+  criterionCode: string;
+  criterionNameEn: string;
+  criterionNameVi: string;
+  weightPercent: number;
+  score: number;
+  behavioralLevel: ProficiencyLevel;
+  behavioralAnchor: string;
+  evidence: string;
+  feedback: string;
+}
+
+export interface SimulationEvaluationDoc {
+  id: string;
+  sessionId: string;
+  scenarioId: string;
+  learnerId: string;
+  learnerUid?: string;
+  scoringCriteria: SimulationEvaluationCriterionScore[];
+  totalScore: number;
+  adjustedTotalScore?: number;
+  adjustmentReason?: string;
+  assessorType: 'deterministic_plus_ai' | 'human_reviewed';
+  strengths: string[];
+  improvementAreas: string[];
+  missedOpportunities: string[];
+  calculationErrors: string[];
+  recommendations: string[];
+  recommendedCompetencies: Array<{
+    competencyId: string;
+    competencyCode: string;
+    suggestedLevel: ProficiencyLevel;
+    rationale: string;
+    requiresHumanApproval: true;
+  }>;
+  recommendedCourseIds: string[];
+  recommendedPracticalIds: string[];
+  suggestedIdpObjectives: Array<{
+    competencyCode: string;
+    titleEn: string;
+    titleVi: string;
+    linkedCourseId?: string;
+    linkedPracticalId?: string;
+  }>;
+  advisoryDisclaimer: string;
+  reviewerId?: string;
+  reviewerName?: string;
+  reviewedAt?: string;
+  assessorComments?: string;
+  createdAt: string;
+}
+
+export interface SimulationAssignmentDoc {
+  id: string;
+  scenarioId: string;
+  learnerId: string;
+  assignedById: string;
+  assignedByName: string;
+  dueDate: string;
+  mandatory: boolean;
+  note?: string;
+  status: 'assigned' | 'in_progress' | 'completed';
+  assignedAt: string;
+}
+
+export interface SimulationAuditLogDoc {
+  id: string;
+  sessionId?: string;
+  scenarioId?: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  details: string;
+  timestamp: string;
+}
+
+export interface SimulationSessionDoc {
+  id: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  hotelSimulationId?: string;
+  employeeId: string;
+  employeeUid: string;
+  language?: 'vi' | 'en';
+  difficulty?: SimulatorDifficulty;
+  currentStep?: number;
+  datasetVersion?: string;
+  versionNumber?: number;
+  datasetSnapshot?: HotelSimulationDatasetSnapshot;
+  analysisNotes?: string;
+  analysisWorkspace?: LearnerAnalysisWorkspace;
+  decisionWorkspace?: LearnerDecisionWorkspace;
+  executiveReport?: LearnerExecutiveReport;
+  roleplayConfig?: SimulationRoleplayConfig;
+  selectedOptionIds: string[];
+  learnerAnalysis: string;
+  conversation: Array<{ role: 'gm' | 'user' | 'coach'; persona?: string; text: string; timestamp?: string }>;
+  evaluation?: Record<string, any>;
+  evaluationId?: string;
+  finalScore?: number;
+  competencyResults?: Array<{ competencyCode: string; suggestedLevel: ProficiencyLevel }>;
+  feedbackSummary?: string;
+  evidenceUrl?: string;
+  status: 'in_progress' | 'completed';
+  startedAt: string;
+  submittedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+}
+
+
 
 

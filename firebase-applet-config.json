@@ -1,12 +1,12 @@
 {
-  "projectId": "gen-lang-client-0172011867",
-  "appId": "1:367517224798:web:82d064a18d510a520089cf",
-  "apiKey": "AIzaSyAlEheVn3OMeL7R-K9iM8tnbAGSbGX3DbY",
-  "authDomain": "gen-lang-client-0172011867.firebaseapp.com",
+  "projectId": "fc-learning-academy",
+  "appId": "1:956479366109:web:d7fe86b043b9ba29c08c34",
+  "apiKey": "AIzaSyA8Hv9VZW4LjnpqKJ2xTiZON5-bcgPsqAA",
+  "authDomain": "fc-learning-academy.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-fclearningacadem-774a1449-f0df-4a0b-93ca-e9354f4f5bdb",
-  "storageBucket": "gen-lang-client-0172011867.firebasestorage.app",
-  "messagingSenderId": "367517224798",
+  "storageBucket": "fc-learning-academy.firebasestorage.app",
+  "messagingSenderId": "956479366109",
   "measurementId": "",
-  "oAuthClientId": "367517224798-a4t22j5bnlqihj2ra021nceeqq6tfjqf.apps.googleusercontent.com",
+  "oAuthClientId": "956479366109-f6009cn8c60h17kmr5pb78ip8q6r4mqc.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

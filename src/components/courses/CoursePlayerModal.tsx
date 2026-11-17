@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Course, CourseModule } from '../../types';
+import { getCourseSyllabus, generateCourseSyllabusMarkdown } from '../../data/courseSyllabi';
 import {
   X,
   Play,
@@ -14,6 +15,8 @@ import {
   Briefcase,
   AlertCircle,
   FileCheck,
+  FileText,
+  Target,
 } from 'lucide-react';
 
 interface CoursePlayerModalProps {
@@ -27,16 +30,37 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
   onClose,
   onStartQuiz,
 }) => {
-  const { enrollments, updateCourseProgress, currentUser, language, t, setActiveTab } = useApp();
-  const [activeTabSub, setActiveTabSub] = useState<'modules' | 'materials' | 'case_study' | 'assignment'>('modules');
+  const { enrollments, updateCourseProgress, currentUser, language, t, setActiveTab, domains } = useApp();
+  const [activeTabSub, setActiveTabSub] = useState<'syllabus' | 'modules' | 'materials' | 'case_study' | 'assignment'>('modules');
   const [activeModuleIndex, setActiveModuleIndex] = useState<number>(0);
+  const [thumbError, setThumbError] = useState<boolean>(false);
 
   useEffect(() => {
     setActiveModuleIndex(0);
     setActiveTabSub('modules');
+    setThumbError(false);
   }, [course?.id]);
 
   if (!course) return null;
+
+  const isVi = language === 'vi';
+  const syllabus = getCourseSyllabus(course);
+  const domainObj = domains.find((d) => d.id === course.domainId);
+  const matchingSession =
+    syllabus?.sessions[Math.min(activeModuleIndex, Math.max(0, (syllabus?.sessions.length || 1) - 1))];
+
+  const handleDownloadSyllabusMd = () => {
+    const md = generateCourseSyllabusMarkdown(course, domainObj, language);
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${course.code}_Syllabus_${language.toUpperCase()}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const enrollment = enrollments.find(
     (e) => e.userId === currentUser.id && e.courseId === course.id
@@ -109,7 +133,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
         <div className="flex items-center gap-1 sm:gap-2 px-6 py-2 bg-slate-100 border-b border-slate-200 overflow-x-auto text-xs font-bold">
           <button
             onClick={() => setActiveTabSub('modules')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               activeTabSub === 'modules'
                 ? 'bg-white text-slate-950 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -117,6 +141,21 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
           >
             <BookOpen className="w-3.5 h-3.5 text-blue-600" />
             <span>{language === 'vi' ? 'Nội Dung Bài Học' : 'Lessons & Video'}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTabSub('syllabus')}
+            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              activeTabSub === 'syllabus'
+                ? 'bg-white text-slate-950 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-600" />
+            <span>{language === 'vi' ? 'Đề Cương (Syllabus)' : 'Full Syllabus'}</span>
+            {syllabus && (
+              <span className="font-mono text-[10px] text-slate-500">({syllabus.sessions.length})</span>
+            )}
           </button>
 
           <button
@@ -182,12 +221,15 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
               {/* Main Stage (70%) */}
               <div className="flex-1 p-6 overflow-y-auto space-y-6">
                 {/* Simulated Video Player */}
-                <div className="relative rounded-2xl overflow-hidden bg-slate-950 shadow-md border border-slate-800 aspect-video flex items-center justify-center group">
-                  <img
-                    src={course.thumbnail}
-                    alt={course.titleVi}
-                    className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity"
-                  />
+                <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#0A192F] via-slate-900 to-blue-950 shadow-md border border-slate-800 aspect-video flex items-center justify-center group">
+                  {!thumbError && course.thumbnail && (
+                    <img
+                      src={course.thumbnail}
+                      alt={isVi ? course.titleVi : course.titleEn}
+                      onError={() => setThumbError(true)}
+                      className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:opacity-45 transition-opacity"
+                    />
+                  )}
                   <div className="relative z-10 flex flex-col items-center gap-3 text-center px-4">
                     <div className="w-16 h-16 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 cursor-pointer">
                       <Play className="w-7 h-7 fill-slate-950 ml-1" />
@@ -220,7 +262,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                     <div>
                       <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
-                        Phần {activeModuleIndex + 1} / {course.modules.length} • {activeModule?.type.toUpperCase()}
+                        {isVi ? 'Phần' : 'Module'} {activeModuleIndex + 1} / {course.modules.length} • {activeModule?.type.toUpperCase()}
                       </span>
                       <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
                         {language === 'vi' ? activeModule?.titleVi : activeModule?.titleEn}
@@ -233,7 +275,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
                       >
                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                        <span>Tải Mô Hình Excel</span>
+                        <span>{isVi ? 'Tải Mô Hình Excel' : 'Download Excel Model'}</span>
                       </button>
 
                       <button
@@ -250,10 +292,40 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Matching Syllabus Session Context */}
+                  {matchingSession && (
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 uppercase text-[11px] tracking-wider">
+                          {isVi ? 'Trọng tâm Đề cương Học phần tương ứng:' : 'Aligned Syllabus Session Focus:'}
+                        </span>
+                        <span className="font-mono text-[11px] text-blue-700 font-bold">
+                          {matchingSession.durationHours}h · {matchingSession.format}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-slate-900">
+                        {isVi ? matchingSession.titleVi : matchingSession.titleEn}
+                      </p>
+                      <p className="text-slate-600">
+                        <strong>{isVi ? 'Thực hành Lab:' : 'Lab:'}</strong>{' '}
+                        {isVi ? matchingSession.practicalLabVi : matchingSession.practicalLabEn}
+                      </p>
+                      {matchingSession.keyStandardsAndFormulas.length > 0 && (
+                        <div className="pt-1 space-y-0.5">
+                          {matchingSession.keyStandardsAndFormulas.map((f, idx) => (
+                            <div key={idx} className="font-mono text-[11px] text-slate-800">
+                              {f}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Learning Objectives Reminder */}
                   <div className="space-y-2">
                     <span className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider block">
-                      Mục tiêu cốt lõi của khóa học:
+                      {isVi ? 'Mục tiêu cốt lõi của khóa học:' : 'Core Course Learning Objectives:'}
                     </span>
                     <ul className="space-y-1 text-xs text-slate-600">
                       {(language === 'vi' ? course.learningObjectivesVi : course.learningObjectivesEn).map((obj, i) => (
@@ -307,7 +379,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                             {language === 'vi' ? mod.titleVi : mod.titleEn}
                           </h5>
                           <span className="text-[10px] text-slate-400 mt-1 block font-mono">
-                            {mod.durationMinutes} phút &bull; {mod.type}
+                            {mod.durationMinutes} {isVi ? 'phút' : 'min'} &bull; {mod.type}
                           </span>
                         </div>
                       </button>
@@ -318,48 +390,180 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
             </>
           )}
 
+          {/* TAB 1B: FULL COURSE SYLLABUS */}
+          {activeTabSub === 'syllabus' && (
+            <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6 max-w-4xl mx-auto w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div>
+                  <span className="text-[11px] font-mono font-bold text-blue-700 uppercase tracking-wider">
+                    {course.code} · {domainObj?.code || course.category} · {course.durationHours}h
+                  </span>
+                  <h3 className="text-xl font-extrabold text-slate-900 mt-1">
+                    {isVi ? 'Đề Cương Chi Tiết Khóa Học (Official Syllabus)' : 'Official Course Syllabus'}
+                  </h3>
+                </div>
+                <button
+                  onClick={handleDownloadSyllabusMd}
+                  className="px-4 py-2 rounded-xl bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs flex items-center gap-2 cursor-pointer shrink-0 whitespace-nowrap"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isVi ? 'Tải Syllabus (.md)' : 'Download Syllabus (.md)'}</span>
+                </button>
+              </div>
+
+              {syllabus ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 space-y-2.5 text-xs">
+                      <p className="text-slate-700 leading-relaxed">
+                        {isVi ? syllabus.overviewVi : syllabus.overviewEn}
+                      </p>
+                      <div className="text-slate-600 pt-1 space-y-1">
+                        <div>
+                          <strong className="text-slate-800">{isVi ? 'Đối tượng:' : 'Audience:'}</strong>{' '}
+                          {isVi ? syllabus.targetAudienceVi : syllabus.targetAudienceEn}
+                        </div>
+                        <div>
+                          <strong className="text-slate-800">{isVi ? 'Năng lực:' : 'Competencies:'}</strong>{' '}
+                          <span className="font-mono text-blue-700 font-bold">
+                            {syllabus.competencyCodes.join(' · ')}
+                          </span>
+                        </div>
+                        <div>
+                          <strong className="text-slate-800">{isVi ? 'Pre-work:' : 'Pre-work:'}</strong>{' '}
+                          {isVi ? syllabus.preWorkVi : syllabus.preWorkEn}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                      <div className="font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Target className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{isVi ? 'Đánh giá' : 'Grading'}</span>
+                      </div>
+                      <div className="space-y-1.5 font-mono tabular-nums pt-1">
+                        <div className="flex justify-between">
+                          <span className="font-sans text-slate-600">Quiz</span>
+                          <span className="font-bold">{syllabus.assessmentBreakdown.quizWeight}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-sans text-slate-600">Case Study</span>
+                          <span className="font-bold">{syllabus.assessmentBreakdown.caseStudyWeight}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-sans text-slate-600">OJT Project</span>
+                          <span className="font-bold">{syllabus.assessmentBreakdown.practicalOjtWeight}%</span>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-100 flex justify-between font-bold text-emerald-700">
+                          <span className="font-sans">{isVi ? 'Điểm Đạt' : 'Pass'}</span>
+                          <span>&ge; {syllabus.assessmentBreakdown.passingScore}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {syllabus.sessions.map((s) => (
+                      <div key={s.sessionNumber} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                          <h4 className="font-bold text-sm text-slate-900">
+                            {isVi ? s.titleVi : s.titleEn}
+                          </h4>
+                          <span className="font-mono text-xs text-blue-700 font-semibold shrink-0 tabular-nums">
+                            {s.durationHours}h · {s.format}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                          <div>
+                            <div className="font-bold text-slate-700 mb-1">
+                              {isVi ? 'Nội dung chính:' : 'Key Topics:'}
+                            </div>
+                            <ul className="list-disc pl-4 space-y-1 text-slate-600">
+                              {(isVi ? s.topicsVi : s.topicsEn).map((tp, i) => (
+                                <li key={i}>{tp}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="space-y-1.5">
+                            <div className="font-bold text-slate-700">
+                              {isVi ? 'Bài thực hành Excel / Lab:' : 'Practical Lab:'}
+                            </div>
+                            <p className="text-slate-600">{isVi ? s.practicalLabVi : s.practicalLabEn}</p>
+                            <div className="font-semibold text-emerald-700">
+                              {(isVi ? s.deliverablesVi : s.deliverablesEn).join(' · ')}
+                            </div>
+                          </div>
+                        </div>
+                        {s.keyStandardsAndFormulas.length > 0 && (
+                          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1">
+                            {s.keyStandardsAndFormulas.map((f, idx) => (
+                              <div key={idx} className="font-mono text-[11px] text-slate-800">
+                                {f}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">
+                  {isVi ? 'Đang cập nhật đề cương chi tiết.' : 'Detailed syllabus updating.'}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB 2: DOWNLOADABLE MATERIALS & EXCEL WORKING MODELS */}
           {activeTabSub === 'materials' && (
             <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6">
               <div>
                 <h3 className="text-lg font-extrabold text-slate-900">
-                  Tài Liệu Học Tập & File Excel Mẫu Thực Hành
+                  {isVi ? 'Tài Liệu Học Tập & File Excel Mẫu Thực Hành' : 'Learning Materials & Excel Working Models'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Toàn bộ các biểu mẫu chuẩn USALI 11th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn để tải về máy và ứng dụng ngay tại khách sạn.
+                  {isVi
+                    ? 'Toàn bộ các biểu mẫu chuẩn USALI 11th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn để tải về máy và ứng dụng ngay tại khách sạn.'
+                    : 'USALI 11th & 12th Edition templates, month-end closing checklists, Flow-Through models, and CAPEX underwriting workbooks ready for immediate hotel deployment.'}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(course.materials || []).map((mat) => (
-                  <div
-                    key={mat.id}
-                    className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between space-y-4 hover:border-amber-400 transition-all"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 font-mono">
-                          {mat.type.toUpperCase()}
-                        </span>
-                        <span className="text-xs text-slate-400 font-mono">{mat.fileSize}</span>
-                      </div>
-                      <h4 className="font-bold text-sm text-slate-900 leading-snug">
-                        {mat.title}
-                      </h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">
-                        {mat.descriptionVi}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => handleDownloadExcel(mat.title)}
-                      className="w-full py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                {(course.materials || []).map((mat) => {
+                  const matTitle = isVi ? mat.title : mat.titleEn || mat.title;
+                  return (
+                    <div
+                      key={mat.id}
+                      className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between space-y-4 hover:border-amber-400 transition-all"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Tải Về Máy Ngay</span>
-                    </button>
-                  </div>
-                ))}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 font-mono">
+                            {mat.type.toUpperCase()}
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">{mat.fileSize}</span>
+                        </div>
+                        <h4 className="font-bold text-sm text-slate-900 leading-snug">
+                          {matTitle}
+                        </h4>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          {isVi
+                            ? mat.descriptionVi || mat.descriptionEn
+                            : mat.descriptionEn || mat.descriptionVi}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleDownloadExcel(matTitle)}
+                        className="w-full py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Tải Về Máy Ngay' : 'Download Template'}</span>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -371,23 +575,26 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                 <div className="space-y-6">
                   <div className="border-b border-slate-200 pb-4">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 uppercase tracking-wider">
-                      Tình Huống Thực Tế Chuẩn Tập Đoàn Quốc Tế
+                      {isVi ? 'Tình Huống Thực Tế Chuẩn Tập Đoàn Quốc Tế' : 'International Hospitality Group Case Study'}
                     </span>
                     <h3 className="text-xl font-extrabold text-slate-900 mt-2">
-                      {language === 'vi' ? course.caseStudy.titleVi : course.caseStudy.titleEn}
+                      {isVi ? course.caseStudy.titleVi : course.caseStudy.titleEn}
                     </h3>
                     <p className="text-xs text-slate-500 mt-1 font-semibold">
-                      Bối cảnh khách sạn: {course.caseStudy.propertyContext}
+                      {isVi ? 'Bối cảnh khách sạn:' : 'Property Context:'}{' '}
+                      {isVi
+                        ? course.caseStudy.propertyContext
+                        : course.caseStudy.propertyContextEn || course.caseStudy.propertyContext}
                     </p>
                   </div>
 
                   {/* Scenario Narrative */}
                   <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
                     <span className="text-xs font-bold text-slate-900 uppercase tracking-wider block">
-                      1. Bối cảnh & Diễn biến sự việc:
+                      {isVi ? '1. Bối cảnh & Diễn biến sự việc:' : '1. Operational Context & Scenario:'}
                     </span>
                     <p className="text-xs text-slate-700 leading-relaxed">
-                      {language === 'vi' ? course.caseStudy.scenarioVi : course.caseStudy.scenarioEn}
+                      {isVi ? course.caseStudy.scenarioVi : course.caseStudy.scenarioEn}
                     </p>
                   </div>
 
@@ -395,10 +602,10 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 space-y-2">
                     <span className="text-xs font-bold text-rose-900 uppercase tracking-wider flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span>2. Thách thức cốt lõi đặt ra cho Financial Controller:</span>
+                      <span>{isVi ? '2. Thách thức cốt lõi đặt ra cho Financial Controller:' : '2. Core Financial Controller Challenge:'}</span>
                     </span>
                     <p className="text-xs text-rose-800 leading-relaxed">
-                      {language === 'vi' ? course.caseStudy.keyChallengeVi : course.caseStudy.keyChallengeEn}
+                      {isVi ? course.caseStudy.keyChallengeVi : course.caseStudy.keyChallengeEn}
                     </p>
                   </div>
 
@@ -406,16 +613,16 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
                     <span className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      <span>3. Khuyến nghị giải pháp & Kế hoạch hành động chuẩn mực:</span>
+                      <span>{isVi ? '3. Khuyến nghị giải pháp & Kế hoạch hành động chuẩn mực:' : '3. Recommended Solution & Action Plan:'}</span>
                     </span>
                     <p className="text-xs text-emerald-900 leading-relaxed">
-                      {language === 'vi' ? course.caseStudy.suggestedSolutionVi : course.caseStudy.suggestedSolutionEn}
+                      {isVi ? course.caseStudy.suggestedSolutionVi : course.caseStudy.suggestedSolutionEn}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-12 text-slate-500 text-xs">
-                  Không có dữ liệu tình huống cho khóa học này.
+                  {isVi ? 'Không có dữ liệu tình huống cho khóa học này.' : 'No case study available for this course.'}
                 </div>
               )}
             </div>
@@ -426,40 +633,59 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
             <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6 max-w-4xl mx-auto">
               <div className="border-b border-slate-200 pb-4">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
-                  Bài Tập Thực Hành Tại Khách Sạn (On-the-Job Training)
+                  {isVi ? 'Bài Tập Thực Hành Tại Khách Sạn (On-the-Job Training)' : 'On-the-Job Training (OJT) Practical Assignment'}
                 </span>
                 <h3 className="text-xl font-extrabold text-slate-900 mt-2">
-                  {course.practicalAssignmentTitle || 'Thực Hành Tác Nghiệp Khóa Sổ & Phân Tích Tài Chính'}
+                  {(isVi
+                    ? course.practicalAssignmentTitle
+                    : course.practicalAssignmentTitleEn || course.practicalAssignmentTitle) ||
+                    (isVi ? 'Thực Hành Tác Nghiệp Khóa Sổ & Phân Tích Tài Chính' : 'Hotel Month-End Closing & Financial Analysis Practicum')}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Bài tập yêu cầu người học áp dụng trực tiếp kiến thức đã học vào số liệu vận hành thực tế tại khách sạn và nộp bài để Giám đốc Tài chính chấm điểm thẩm định.
+                  {isVi
+                    ? 'Bài tập yêu cầu người học áp dụng trực tiếp kiến thức đã học vào số liệu vận hành thực tế tại khách sạn và nộp bài để Giám đốc Tài chính chấm điểm thẩm định.'
+                    : 'Learners apply course concepts directly to live hotel operational data and submit deliverables for Cluster Financial Controller rubric grading.'}
                 </p>
               </div>
 
               <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
                 <div className="space-y-2">
                   <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
-                    Sản phẩm đầu ra cần nộp (Deliverables):
+                    {isVi ? 'Sản phẩm đầu ra cần nộp (Deliverables):' : 'Required Deliverables:'}
                   </h4>
                   <ul className="space-y-1.5 text-xs text-slate-700">
                     <li className="flex items-center gap-2">
                       <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>File Excel tính toán chi tiết mô hình theo mẫu chuẩn mực USALI</span>
+                      <span>
+                        {isVi
+                          ? 'File Excel tính toán chi tiết mô hình theo mẫu chuẩn mực USALI'
+                          : 'USALI-compliant Excel calculation & reconciliation workbook'}
+                      </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>Bản giải trình báo cáo phân tích phương sai (P&L Critique Memo)</span>
+                      <span>
+                        {isVi
+                          ? 'Bản giải trình báo cáo phân tích phương sai (P&L Critique Memo)'
+                          : 'Executive variance explanation memo (P&L Critique Memo)'}
+                      </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>Kế hoạch hành động 30 ngày khắc phục chi phí gửi Tổng Giám Đốc</span>
+                      <span>
+                        {isVi
+                          ? 'Kế hoạch hành động 30 ngày khắc phục chi phí gửi Tổng Giám Đốc'
+                          : '30-day corrective cost-control action plan for the General Manager'}
+                      </span>
                     </li>
                   </ul>
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-xs text-slate-500">
-                    Được đánh giá theo thang điểm 100 bởi Cluster Financial Controller
+                    {isVi
+                      ? 'Được đánh giá theo thang điểm 100 bởi Cluster Financial Controller'
+                      : 'Graded on a 100-point rubric by the Cluster Financial Controller'}
                   </span>
                   <button
                     onClick={() => {
@@ -468,7 +694,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                     }}
                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
                   >
-                    <span>Mở Phân Hệ Nộp Bài OJT</span>
+                    <span>{isVi ? 'Mở Phân Hệ Nộp Bài OJT' : 'Open OJT Submission Hub'}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>

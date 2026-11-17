@@ -13,28 +13,32 @@ import {
 const PROPERTIES_META = [
   {
     name: 'Grand Horizon Saigon Hotel & Residences',
-    keys: '350 phòng + 120 căn hộ dịch vụ cao cấp',
+    keysVi: '350 phòng + 120 căn hộ dịch vụ cao cấp',
+    keysEn: '350 rooms + 120 luxury serviced residences',
     gm: 'Richard Vance',
     fc: 'David Tran',
     brand: 'Luxury Collection Benchmark',
   },
   {
     name: 'Royal Palm Resort & Spa Danang',
-    keys: '450 phòng & Biệt thự biển 5 sao',
+    keysVi: '450 phòng & Biệt thự biển 5 sao',
+    keysEn: '450 rooms & 5-star beachfront villas',
     gm: 'Helena Berg',
     fc: 'Sarah Jenkins',
     brand: 'Resort & Lifestyle Benchmark',
   },
   {
     name: 'Marina Bay Heritage Hotel Hanoi',
-    keys: '280 phòng di sản tại trung tâm phố cổ',
+    keysVi: '280 phòng di sản tại trung tâm phố cổ',
+    keysEn: '280 heritage keys in the Old Quarter',
     gm: 'Thomas Laurent',
     fc: 'David Tran (Cluster)',
     brand: 'Boutique Heritage Benchmark',
   },
   {
     name: 'Emerald Bay Luxury Suites Nha Trang',
-    keys: '310 căn hộ nghỉ dưỡng biển',
+    keysVi: '310 căn hộ nghỉ dưỡng biển',
+    keysEn: '310 beachfront luxury resort suites',
     gm: 'Arthur Pendelton',
     fc: 'Sarah Jenkins (Cluster)',
     brand: 'Extended Stay Luxury',
@@ -207,7 +211,9 @@ export const AdminManagementView: React.FC = () => {
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-bold text-base text-slate-900">
-              Danh Sách Nhân Sự & Phân Quyền Hệ Thống ({users.length})
+              {language === 'vi'
+                ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${users.length})`
+                : `System Users & Role Permissions (${users.length})`}
             </h3>
             {isSuperAdmin && (
               <button
@@ -224,12 +230,14 @@ export const AdminManagementView: React.FC = () => {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-2.5 px-3">Họ và tên</th>
-                  <th className="py-2.5 px-3">Vai trò hệ thống</th>
-                  <th className="py-2.5 px-3">Chức vụ chuyên môn</th>
-                  <th className="py-2.5 px-3">Đơn vị công tác</th>
-                  <th className="py-2.5 px-3 text-center">Cấp độ</th>
-                  {isSuperAdmin && <th className="py-2.5 px-3 text-right">Thao tác</th>}
+                  <th className="py-2.5 px-3">{language === 'vi' ? 'Họ và tên' : 'Full Name'}</th>
+                  <th className="py-2.5 px-3">{language === 'vi' ? 'Vai trò hệ thống' : 'System Role'}</th>
+                  <th className="py-2.5 px-3">{language === 'vi' ? 'Chức vụ chuyên môn' : 'Job Title'}</th>
+                  <th className="py-2.5 px-3">{language === 'vi' ? 'Đơn vị công tác' : 'Property'}</th>
+                  <th className="py-2.5 px-3 text-center">{language === 'vi' ? 'Cấp độ' : 'Level'}</th>
+                  {isSuperAdmin && (
+                    <th className="py-2.5 px-3 text-right">{language === 'vi' ? 'Thao tác' : 'Actions'}</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -288,10 +296,12 @@ export const AdminManagementView: React.FC = () => {
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
                     {p.brand}
                   </span>
-                  <span className="text-xs font-bold text-slate-600">{learnerCount} học viên</span>
+                  <span className="text-xs font-bold text-slate-600">
+                    {learnerCount} {language === 'vi' ? 'học viên' : 'learners'}
+                  </span>
                 </div>
                 <h4 className="font-extrabold text-sm text-slate-900">{p.name}</h4>
-                <p className="text-xs text-slate-500">{p.keys}</p>
+                <p className="text-xs text-slate-500">{language === 'vi' ? p.keysVi : p.keysEn}</p>
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                   <span>GM: <strong>{p.gm}</strong></span>
                   <span>FC: <strong>{p.fc}</strong></span>
@@ -309,7 +319,11 @@ export const AdminManagementView: React.FC = () => {
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Database className="w-4 h-4 text-emerald-600" />
-              <span>Kiến Trúc Kỹ Thuật & Cấu Hình Dịch Vụ Đám Mây</span>
+              <span>
+                {language === 'vi'
+                  ? 'Kiến Trúc Kỹ Thuật & Cấu Hình Dịch Vụ Đám Mây'
+                  : 'Technical Architecture & Cloud Service Status'}
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -336,7 +350,9 @@ export const AdminManagementView: React.FC = () => {
           {/* Audit Trail */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
             <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500">
-              Nhật Ký Kiểm Toán Vận Hành ({auditLogs.length})
+              {language === 'vi'
+                ? `Nhật Ký Kiểm Toán Vận Hành (${auditLogs.length})`
+                : `Operational Audit Logs (${auditLogs.length})`}
             </h4>
             <div className="space-y-2 text-xs max-h-[420px] overflow-y-auto pr-1">
               {auditLogs.length === 0 ? (
@@ -395,7 +411,9 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Họ và tên</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Họ và tên' : 'Full Name'}
+                </label>
                 <input
                   type="text"
                   required
@@ -418,7 +436,9 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Vai trò (RBAC Role)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Vai trò (RBAC Role)' : 'System Role (RBAC)'}
+                </label>
                 <select
                   value={userForm.role}
                   onChange={(e) => setUserForm({ ...userForm, role: e.target.value as UserRole })}
@@ -432,7 +452,9 @@ export const AdminManagementView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Chức vụ chuyên môn</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Chức vụ chuyên môn' : 'Job Title'}
+                </label>
                 <input
                   type="text"
                   value={userForm.position}
@@ -443,7 +465,9 @@ export const AdminManagementView: React.FC = () => {
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Khách sạn / Đơn vị</label>
+              <label className="font-bold text-slate-700 block mb-1">
+                {language === 'vi' ? 'Khách sạn / Đơn vị' : 'Hotel / Property'}
+              </label>
               <select
                 value={userForm.property}
                 onChange={(e) => setUserForm({ ...userForm, property: e.target.value })}
@@ -458,7 +482,9 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Cấp độ hiện tại</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Cấp độ hiện tại' : 'Current Level'}
+                </label>
                 <select
                   value={userForm.currentLevel}
                   onChange={(e) =>
@@ -472,7 +498,9 @@ export const AdminManagementView: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Cấp độ mục tiêu</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Cấp độ mục tiêu' : 'Target Level'}
+                </label>
                 <select
                   value={userForm.targetLevel}
                   onChange={(e) =>

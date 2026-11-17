@@ -52,7 +52,11 @@ export const OJTProjectsView: React.FC = () => {
   const [gradeFeedback, setGradeFeedback] = useState<string>('');
 
   const handleDownloadTemplate = (assignment: OJTAssignment) => {
-    const csvData = `FC LEARNING ACADEMY - OJT DELIVERABLE TEMPLATE\nAssignment: ${assignment.code} - ${assignment.titleEn}\nContext: ${assignment.propertyContext}\nDeliverables Required: ${assignment.deliverablesEn.join('; ')}\n\nMonth,Room Revenue,F&B Revenue,Other Revenue,Total Revenue,Departmental Expenses,GOP,Flow-Through %\nJan,$850000,$420000,$110000,$1380000,$780000,$600000,-\nFeb,$920000,$460000,$120000,$1500000,$810000,$690000,75.0%\nMar,$980000,$490000,$130000,$1600000,$845000,$755000,65.0%`;
+    const contextText =
+      language === 'vi'
+        ? assignment.propertyContext
+        : assignment.propertyContextEn || assignment.propertyContext;
+    const csvData = `FC LEARNING ACADEMY - OJT DELIVERABLE TEMPLATE\nAssignment: ${assignment.code} - ${assignment.titleEn}\nContext: ${contextText}\nDeliverables Required: ${assignment.deliverablesEn.join('; ')}\n\nMonth,Room Revenue,F&B Revenue,Other Revenue,Total Revenue,Departmental Expenses,GOP,Flow-Through %\nJan,$850000,$420000,$110000,$1380000,$780000,$600000,-\nFeb,$920000,$460000,$120000,$1500000,$810000,$690000,75.0%\nMar,$980000,$490000,$130000,$1600000,$845000,$755000,65.0%`;
 
     const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -199,7 +203,9 @@ export const OJTProjectsView: React.FC = () => {
                 </h3>
 
                 <p className="text-xs text-amber-700 font-semibold bg-amber-50/70 p-2 rounded-lg border border-amber-200/60">
-                  {assignment.propertyContext}
+                  {language === 'vi'
+                    ? assignment.propertyContext
+                    : assignment.propertyContextEn || assignment.propertyContext}
                 </p>
 
                 <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
@@ -353,7 +359,9 @@ export const OJTProjectsView: React.FC = () => {
 
             {/* Deliverables Checklist */}
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs">
-              <span className="font-bold text-slate-800 block">Sản phẩm đầu ra yêu cầu:</span>
+              <span className="font-bold text-slate-800 block">
+                {language === 'vi' ? 'Sản phẩm đầu ra yêu cầu:' : 'Required Deliverables:'}
+              </span>
               <ul className="list-disc list-inside space-y-1 text-slate-600">
                 {(language === 'vi' ? selectedAssignment.deliverablesVi : selectedAssignment.deliverablesEn).map((d, i) => (
                   <li key={i}>{d}</li>
@@ -387,7 +395,7 @@ export const OJTProjectsView: React.FC = () => {
                 onClick={() => setFileName(`Deliverable_${Date.now()}.xlsx`)}
                 className="px-2.5 py-1 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
-                Đổi file
+                {language === 'vi' ? 'Đổi file' : 'Change File'}
               </button>
             </div>
 
@@ -405,7 +413,13 @@ export const OJTProjectsView: React.FC = () => {
                 onClick={handleAiPreAudit}
                 className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {isAiEvaluating ? 'Đang thẩm định...' : 'Thẩm định ngay'}
+                {isAiEvaluating
+                  ? language === 'vi'
+                    ? 'Đang thẩm định...'
+                    : 'Auditing...'
+                  : language === 'vi'
+                  ? 'Thẩm định ngay'
+                  : 'Run AI Audit'}
               </button>
             </div>
 
@@ -421,9 +435,17 @@ export const OJTProjectsView: React.FC = () => {
             {aiEvalResult && (
               <div className="p-4 bg-white rounded-xl border border-amber-300 space-y-3 text-xs">
                 <div className="flex items-center justify-between font-bold">
-                  <span className="text-slate-900">Điểm dự kiến AI: {aiEvalResult.score} / 100</span>
+                  <span className="text-slate-900">
+                    {language === 'vi' ? 'Điểm dự kiến AI:' : 'AI Estimated Score:'} {aiEvalResult.score} / 100
+                  </span>
                   <span className={aiEvalResult.passed ? 'text-emerald-700' : 'text-amber-700'}>
-                    {aiEvalResult.passed ? 'ĐẠT YÊU CẦU' : 'CẦN BỔ SUNG'}
+                    {aiEvalResult.passed
+                      ? language === 'vi'
+                        ? 'ĐẠT YÊU CẦU'
+                        : 'PASSED'
+                      : language === 'vi'
+                      ? 'CẦN BỔ SUNG'
+                      : 'NEEDS REVISION'}
                   </span>
                 </div>
                 <p className="text-slate-600 text-[11px] leading-relaxed italic bg-slate-50 p-2.5 rounded-lg">
@@ -500,7 +522,7 @@ export const OJTProjectsView: React.FC = () => {
             <div className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Điểm số (0 - 100):
+                  {language === 'vi' ? 'Điểm số (0 - 100):' : 'Score (0 - 100):'}
                 </label>
                 <input
                   type="number"
@@ -514,13 +536,19 @@ export const OJTProjectsView: React.FC = () => {
 
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  Nhận xét & Hướng dẫn phát triển từ Trưởng bộ phận:
+                  {language === 'vi'
+                    ? 'Nhận xét & Hướng dẫn phát triển từ Trưởng bộ phận:'
+                    : 'Supervisor Evaluation & Coaching Feedback:'}
                 </label>
                 <textarea
                   rows={4}
                   value={gradeFeedback}
                   onChange={(e) => setGradeFeedback(e.target.value)}
-                  placeholder="Ghi nhận điểm mạnh và các điểm cần hoàn thiện..."
+                  placeholder={
+                    language === 'vi'
+                      ? 'Ghi nhận điểm mạnh và các điểm cần hoàn thiện...'
+                      : 'Document analytical strengths and required improvements...'
+                  }
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>

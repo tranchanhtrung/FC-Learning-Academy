@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Bell,
-  Globe,
   ChevronDown,
   UserCheck,
   Shield,
@@ -12,8 +11,11 @@ import {
   Building2,
   Check,
   Menu,
+  ShieldCheck,
+  LogIn,
 } from 'lucide-react';
 import { UserRole } from '../../types';
+import { FirebaseAuthModal } from './FirebaseAuthModal';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -29,10 +31,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
     t,
     notifications,
     markAllNotificationsRead,
+    firebaseUser,
+    dataSourceMode,
   } = useApp();
 
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -75,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
                   {t.appName}
                 </span>
                 <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-400/10 text-amber-300 border border-amber-400/30">
-                  LMS ENTERPRISE
+                  {dataSourceMode === 'firestore' ? 'FIRESTORE LIVE' : 'LMS ENTERPRISE'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 hidden md:block">
@@ -85,7 +90,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
           </div>
 
           {/* Right Controls */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Firebase Auth Trigger */}
+            <button
+              onClick={() => {
+                setShowAuthModal(true);
+                setShowRoleMenu(false);
+                setShowNotifications(false);
+              }}
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer ${
+                firebaseUser?.emailVerified
+                  ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/25'
+                  : firebaseUser
+                  ? 'bg-amber-500/15 border-amber-400/40 text-amber-300 hover:bg-amber-500/25'
+                  : 'bg-slate-800/90 border-slate-700 text-slate-200 hover:bg-slate-800'
+              }`}
+              title={firebaseUser ? `Firebase Auth: ${firebaseUser.email}` : 'Connect Firebase Auth'}
+            >
+              {firebaseUser ? (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="max-w-[120px] truncate">
+                    {firebaseUser.emailVerified ? 'Firebase' : 'Verify Email'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Firebase Sign In</span>
+                </>
+              )}
+            </button>
+
             {/* Language Switcher */}
             <div className="flex items-center bg-slate-800/80 rounded-lg p-0.5 border border-slate-700 text-xs">
               <button
@@ -185,15 +221,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
               {/* Role Switcher Menu */}
               {showRoleMenu && (
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-2 z-50 divide-y divide-slate-800">
-                  <div className="px-4 py-2">
-                    <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                      {language === 'vi' ? 'Chuyển đổi vai trò trải nghiệm' : 'Switch Demo Role Persona'}
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      {language === 'vi'
-                        ? 'Trải nghiệm 5 vai trò hệ thống đầy đủ phân quyền'
-                        : 'Explore all 5 role-based dashboards and permissions'}
-                    </p>
+                  <div className="px-4 py-2 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                        {language === 'vi' ? 'Chuyển đổi vai trò trải nghiệm' : 'Switch Demo Role Persona'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {language === 'vi'
+                          ? 'Trải nghiệm 5 vai trò hệ thống'
+                          : 'Explore 5 role-based dashboards'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowRoleMenu(false);
+                        setShowAuthModal(true);
+                      }}
+                      className="text-[10px] px-2 py-1 rounded bg-amber-500 text-slate-950 font-bold cursor-pointer"
+                    >
+                      Firebase Auth
+                    </button>
                   </div>
 
                   <div className="py-1 max-h-80 overflow-y-auto">
@@ -243,6 +290,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
           </div>
         </div>
       </div>
+
+      {showAuthModal && <FirebaseAuthModal onClose={() => setShowAuthModal(false)} />}
     </header>
   );
 };

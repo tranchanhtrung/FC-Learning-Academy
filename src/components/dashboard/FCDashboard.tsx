@@ -171,7 +171,9 @@ export const FCDashboard: React.FC = () => {
 
                 <div className="flex items-center gap-3 text-right">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-semibold">Cấp độ hiện tại</span>
+                    <span className="text-[10px] text-slate-400 block font-semibold">
+                      {language === 'vi' ? 'Cấp độ hiện tại' : 'Current Level'}
+                    </span>
                     <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
                       Level {member.currentLevel} / {member.targetLevel}
                     </span>

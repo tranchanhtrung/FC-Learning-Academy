@@ -1,6 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type { User as FirebaseUser } from 'firebase/auth';
+import {
+  auth,
+  subscribeFirebaseAuth,
+  resolveAuthenticatedUserProfile,
+  fetchAllProductionMasterData,
+  publishSimulationScenarioInFirestore,
+  syncRecordToFirestore,
+  getFirestoreCollectionDocs,
+} from '../lib/firebase';
 import {
   User,
+  ProficiencyLevel,
   CompetencyDomain,
   Competency,
   Course,
@@ -22,6 +33,27 @@ import {
   IdpReviewLogDoc,
   TalentConfigDoc,
   LmsNotificationItem,
+  FirebaseUserProfileDoc,
+  HotelSimulationProfileDoc,
+  SimulationScenarioDoc,
+  SimulationFinancialRecordDoc,
+  SimulationOperationalRecordDoc,
+  SimulationBusinessChallengeDoc,
+  SimulationTaskDoc,
+  SimulationReferenceAnalysisDoc,
+  SimulationDecisionOptionDoc,
+  SimulationRoleplayPromptDoc,
+  SimulationEvaluationRubricDoc,
+  SimulationCompetencyMappingDoc,
+  SimulationSessionDoc,
+  HotelSimulationDatasetSnapshot,
+  SimulationEvaluationDoc,
+  SimulationAssignmentDoc,
+  SimulationAuditLogDoc,
+  SimulationScenarioStatus,
+  ScenarioVersionDoc,
+  ScenarioImportJobDoc,
+  ScenarioCompetencyMappingDoc,
 } from '../types';
 import { DEFAULT_TALENT_CONFIG } from '../lib/talentEngine';
 import {
@@ -36,6 +68,7 @@ import {
   INITIAL_CERTIFICATES,
   SUCCESSION_CANDIDATES,
 } from '../data/initialData';
+import { COURSE_SYLLABI_BY_CODE } from '../data/courseSyllabi';
 import { translations, Language } from '../i18n/translations';
 
 export interface ToastMessage {
@@ -151,6 +184,80 @@ interface AppContextType {
   updateTalentIdpObjective: (idpId: string, objId: string, payload: any) => Promise<IndividualDevelopmentPlanDoc | null>;
   submitTalentReassessment: (payload: any) => Promise<{ reassessment?: CompetencyReassessmentDoc; newAssessment?: CompetencyAssessmentDoc } | null>;
   submitCareerReadinessReview: (payload: any) => Promise<CareerReadinessReviewDoc | null>;
+
+  // Firebase Live Auth, Production Mode & FC Business Partner Simulator
+  firebaseUser: FirebaseUser | null;
+  firebaseProfile: FirebaseUserProfileDoc | null;
+  dataSourceMode: 'demo' | 'firestore';
+  setDataSourceMode: (mode: 'demo' | 'firestore') => void;
+  productionCounts: Record<string, number>;
+  refreshFromFirestore: (forceMode?: 'demo' | 'firestore') => Promise<void>;
+  simulatorData: {
+    hotelSimulationProfiles: HotelSimulationProfileDoc[];
+    simulationScenarios: SimulationScenarioDoc[];
+    simulationFinancialData: SimulationFinancialRecordDoc[];
+    simulationOperationalData: SimulationOperationalRecordDoc[];
+    simulationBusinessChallenges: SimulationBusinessChallengeDoc[];
+    simulationTasks: SimulationTaskDoc[];
+    simulationReferenceAnalysis: SimulationReferenceAnalysisDoc[];
+    simulationDecisionOptions: SimulationDecisionOptionDoc[];
+    simulationRoleplayPrompts: SimulationRoleplayPromptDoc[];
+    simulationEvaluationRubrics: SimulationEvaluationRubricDoc[];
+    simulationCompetencyMappings: SimulationCompetencyMappingDoc[];
+    simulationSessions: SimulationSessionDoc[];
+  };
+  simulatorWorkspace: {
+    datasets: Record<string, HotelSimulationDatasetSnapshot>;
+    evaluations: SimulationEvaluationDoc[];
+    assignments: SimulationAssignmentDoc[];
+    auditLogs: SimulationAuditLogDoc[];
+  };
+  selectedSimulatorScenarioId: string;
+  setSelectedSimulatorScenarioId: (id: string) => void;
+  activeSimulatorSessionId: string | null;
+  setActiveSimulatorSessionId: (id: string | null) => void;
+  refreshSimulatorData: () => Promise<void>;
+  refreshSimulatorWorkspace: () => Promise<void>;
+  scenarioVersions: ScenarioVersionDoc[];
+  scenarioImportJobs: ScenarioImportJobDoc[];
+  scenarioCompetencyMappings: ScenarioCompetencyMappingDoc[];
+  refreshScenarioGovernance: () => Promise<void>;
+  transitionScenarioStatus: (
+    scenarioId: string,
+    status: SimulationScenarioStatus,
+    note?: string
+  ) => Promise<boolean>;
+  toggleScenarioPublish: (scenarioId: string, status: SimulationScenarioStatus, note?: string) => Promise<boolean>;
+  saveSimulationSession: (payload: Partial<SimulationSessionDoc> & { scenarioId: string }) => Promise<SimulationSessionDoc | null>;
+  evaluateSimulationSession: (
+    sessionId: string,
+    payload: {
+      analysisWorkspace?: any;
+      decisionWorkspace?: any;
+      executiveReport?: any;
+      conversation?: any[];
+      language?: 'vi' | 'en';
+    }
+  ) => Promise<{ session: SimulationSessionDoc; evaluation: SimulationEvaluationDoc; aiFallbackUsed?: boolean } | null>;
+  reviewSimulationEvaluation: (
+    evaluationId: string,
+    payload: {
+      adjustedTotalScore?: number;
+      criterionAdjustments?: Record<string, number>;
+      adjustmentReason: string;
+      assessorComments?: string;
+    }
+  ) => Promise<SimulationEvaluationDoc | null>;
+  assignSimulatorScenario: (payload: {
+    scenarioId: string;
+    learnerId: string;
+    dueDate: string;
+    mandatory?: boolean;
+    note?: string;
+  }) => Promise<SimulationAssignmentDoc | null>;
+  upsertSimulatorScenario: (payload: any, existingId?: string) => Promise<SimulationScenarioDoc | null>;
+  upsertHotelProfile: (payload: any) => Promise<HotelSimulationProfileDoc | null>;
+  launchSimulationWorkspace: (scenarioId: string, subTab?: string, sessionId?: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -194,7 +301,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('fc_active_user_id', user.id);
   }, []);
 
-  // Data collections (bootstrapped from /api/bootstrap on mount)
+  // Data collections (bootstrapped from /api/bootstrap & optionally Firestore Live)
+  const [domains, setDomains] = useState<CompetencyDomain[]>(COMPETENCY_DOMAINS);
+  const [courses, setCourses] = useState<Course[]>(COURSES);
+  const [learningPaths, setLearningPaths] = useState<LearningPath[]>(LEARNING_PATHS);
   const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
@@ -203,6 +313,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [idps, setIdps] = useState<IndividualDevelopmentPlan[]>(INITIAL_IDPS);
   const [certificates, setCertificates] = useState<Certificate[]>(INITIAL_CERTIFICATES);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+
+  // Firebase Auth & Production Firestore State
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(() => auth.currentUser);
+  const [firebaseProfile, setFirebaseProfile] = useState<FirebaseUserProfileDoc | null>(null);
+  const [dataSourceMode, setDataSourceMode] = useState<'demo' | 'firestore'>('demo');
+  const [productionCounts, setProductionCounts] = useState<Record<string, number>>({});
+
+  // Simulator Collections
+  const [simulatorData, setSimulatorData] = useState<{
+    hotelSimulationProfiles: HotelSimulationProfileDoc[];
+    simulationScenarios: SimulationScenarioDoc[];
+    simulationFinancialData: SimulationFinancialRecordDoc[];
+    simulationOperationalData: SimulationOperationalRecordDoc[];
+    simulationBusinessChallenges: SimulationBusinessChallengeDoc[];
+    simulationTasks: SimulationTaskDoc[];
+    simulationReferenceAnalysis: SimulationReferenceAnalysisDoc[];
+    simulationDecisionOptions: SimulationDecisionOptionDoc[];
+    simulationRoleplayPrompts: SimulationRoleplayPromptDoc[];
+    simulationEvaluationRubrics: SimulationEvaluationRubricDoc[];
+    simulationCompetencyMappings: SimulationCompetencyMappingDoc[];
+    simulationSessions: SimulationSessionDoc[];
+  }>({
+    hotelSimulationProfiles: [],
+    simulationScenarios: [],
+    simulationFinancialData: [],
+    simulationOperationalData: [],
+    simulationBusinessChallenges: [],
+    simulationTasks: [],
+    simulationReferenceAnalysis: [],
+    simulationDecisionOptions: [],
+    simulationRoleplayPrompts: [],
+    simulationEvaluationRubrics: [],
+    simulationCompetencyMappings: [],
+    simulationSessions: [],
+  });
+  const [simulatorWorkspace, setSimulatorWorkspace] = useState<{
+    datasets: Record<string, HotelSimulationDatasetSnapshot>;
+    evaluations: SimulationEvaluationDoc[];
+    assignments: SimulationAssignmentDoc[];
+    auditLogs: SimulationAuditLogDoc[];
+  }>({
+    datasets: {},
+    evaluations: [],
+    assignments: [],
+    auditLogs: [],
+  });
+  const [selectedSimulatorScenarioId, setSelectedSimulatorScenarioId] = useState<string>('sim_scn_01');
+  const [activeSimulatorSessionId, setActiveSimulatorSessionId] = useState<string | null>(null);
+  const [scenarioVersions, setScenarioVersions] = useState<ScenarioVersionDoc[]>([]);
+  const [scenarioImportJobs, setScenarioImportJobs] = useState<ScenarioImportJobDoc[]>([]);
+  const [scenarioCompetencyMappings, setScenarioCompetencyMappings] = useState<ScenarioCompetencyMappingDoc[]>([]);
 
   // Competency Gap Engine & IDP state
   const [talentConfig, setTalentConfig] = useState<TalentConfigDoc>(DEFAULT_TALENT_CONFIG);
@@ -220,19 +381,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     {
       id: 'notif_1',
       title: 'Đánh giá năng lực Q1/2026 đã được Giám Đốc Tài Chính David Tran phê duyệt.',
+      titleEn: 'Q1/2026 Competency Evaluation approved by Financial Controller David Tran.',
       time: '10 phút trước',
+      timeEn: '10 mins ago',
       read: false,
     },
     {
       id: 'notif_2',
       title: 'Kế hoạch phát triển cá nhân (IDP) mới đã được tạo dựa trên khoảng trống năng lực.',
+      titleEn: 'New Individual Development Plan (IDP) generated from competency gap analysis.',
       time: '2 giờ trước',
+      timeEn: '2 hours ago',
       read: false,
     },
     {
       id: 'notif_3',
       title: 'Kịch bản khủng hoảng mới có sẵn trên FC Business Partner Simulator với GM.',
+      titleEn: 'New crisis simulation scenario available in the FC Business Partner Simulator.',
       time: '1 ngày trước',
+      timeEn: '1 day ago',
       read: true,
     },
   ]);
@@ -326,6 +493,604 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [refreshTalentData, currentUser.id, currentUser.role]);
 
+  const refreshSimulatorWorkspace = useCallback(async () => {
+    try {
+      const res = await fetch('/api/simulator/workspace', {
+        headers: {
+          'x-user-id': currentUser.id,
+          'x-user-role': currentUser.role,
+        },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setSimulatorWorkspace({
+        datasets: data.datasets || {},
+        evaluations: Array.isArray(data.evaluations) ? data.evaluations : [],
+        assignments: Array.isArray(data.assignments) ? data.assignments : [],
+        auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
+      });
+    } catch {
+      // ignore offline
+    }
+  }, [currentUser.id, currentUser.role]);
+
+  const refreshSimulatorData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/simulator/data', {
+        headers: {
+          'x-user-id': currentUser.id,
+          'x-user-role': currentUser.role,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSimulatorData({
+          hotelSimulationProfiles: data.hotelSimulationProfiles || [],
+          simulationScenarios: data.simulationScenarios || [],
+          simulationFinancialData: data.simulationFinancialData || [],
+          simulationOperationalData: data.simulationOperationalData || [],
+          simulationBusinessChallenges: data.simulationBusinessChallenges || [],
+          simulationTasks: data.simulationTasks || [],
+          simulationReferenceAnalysis: data.simulationReferenceAnalysis || [],
+          simulationDecisionOptions: data.simulationDecisionOptions || [],
+          simulationRoleplayPrompts: data.simulationRoleplayPrompts || [],
+          simulationEvaluationRubrics: data.simulationEvaluationRubrics || [],
+          simulationCompetencyMappings: data.simulationCompetencyMappings || [],
+          simulationSessions: data.simulationSessions || [],
+        });
+      }
+    } catch {
+      // ignore network error
+    }
+  }, [currentUser.id, currentUser.role]);
+
+  useEffect(() => {
+    refreshSimulatorData();
+  }, [refreshSimulatorData]);
+
+  const refreshScenarioGovernance = useCallback(async () => {
+    const isSupOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
+      currentUser.role
+    );
+    if (!isSupOrAdmin) {
+      setScenarioVersions([]);
+      setScenarioImportJobs([]);
+      setScenarioCompetencyMappings([]);
+      return;
+    }
+    try {
+      const headers = { 'x-user-id': currentUser.id, 'x-user-role': currentUser.role };
+      const verRes = await fetch('/api/simulator/versions', { headers });
+      if (verRes.ok) {
+        const d = await verRes.json();
+        setScenarioVersions(Array.isArray(d.versions) ? d.versions : []);
+      }
+      if (['super_admin', 'lnd_manager'].includes(currentUser.role)) {
+        const [jobsRes, mapRes] = await Promise.all([
+          fetch('/api/simulator/import-jobs', { headers }),
+          fetch('/api/simulator/competency-mappings', { headers }),
+        ]);
+        if (jobsRes.ok) {
+          const jd = await jobsRes.json();
+          setScenarioImportJobs(Array.isArray(jd.jobs) ? jd.jobs : []);
+        }
+        if (mapRes.ok) {
+          const md = await mapRes.json();
+          setScenarioCompetencyMappings(Array.isArray(md.mappings) ? md.mappings : []);
+        }
+      }
+    } catch {
+      // ignore offline
+    }
+  }, [currentUser.id, currentUser.role]);
+
+  useEffect(() => {
+    refreshScenarioGovernance();
+  }, [refreshScenarioGovernance]);
+
+  const refreshFromFirestore = useCallback(async (forceMode?: 'demo' | 'firestore') => {
+    const fb = auth.currentUser;
+    if (!fb || !fb.emailVerified) return;
+
+    const activeMode = forceMode ?? dataSourceMode;
+
+    try {
+      const profile = await resolveAuthenticatedUserProfile(fb);
+      if (profile) {
+        setFirebaseProfile(profile);
+      }
+      const isAdminOrLnd = Boolean(
+        profile?.isAdmin ||
+          profile?.role === 'super_admin' ||
+          profile?.role === 'lnd_manager' ||
+          currentUser.role === 'super_admin' ||
+          currentUser.role === 'lnd_manager'
+      );
+
+      const { masterCollections, counts } = await fetchAllProductionMasterData(isAdminOrLnd);
+      setProductionCounts(counts);
+
+      const hasProdAcademy =
+        (counts.competencyDomains || 0) > 0 || (counts.competencies || 0) > 0 || (counts.courses || 0) > 0;
+      const hasProdSim = (counts.simulationScenarios || 0) > 0;
+
+      if (activeMode === 'firestore' || hasProdAcademy || hasProdSim) {
+        if (hasProdAcademy && activeMode === 'firestore') {
+          if (masterCollections.competencyDomains?.length > 0) {
+            setDomains(
+              masterCollections.competencyDomains.map((d: any) => {
+                const fallbackDom = COMPETENCY_DOMAINS.find((fd) => fd.id === d.id || fd.code === d.code);
+                return {
+                  id: d.id,
+                  code: d.code,
+                  nameEn: d.nameEn,
+                  nameVi: d.nameVi,
+                  descriptionEn: d.descriptionEn || fallbackDom?.descriptionEn || '',
+                  descriptionVi: d.descriptionVi || fallbackDom?.descriptionVi || '',
+                  iconName: fallbackDom?.iconName || 'BookOpen',
+                  color: fallbackDom?.color || 'blue',
+                };
+              })
+            );
+          }
+          if (masterCollections.competencies?.length > 0) {
+            setCompetencies(
+              masterCollections.competencies.map((c: any) => {
+                const fallbackComp = COMPETENCIES.find((fc) => fc.id === c.id || fc.code === c.code);
+                const tgt = (Math.min(4, Math.max(1, Number(c.targetLevel) || 3))) as ProficiencyLevel;
+                return {
+                  id: c.id,
+                  code: c.code,
+                  domainId: c.domainId,
+                  nameEn: c.nameEn,
+                  nameVi: c.nameVi,
+                  definitionEn: c.definitionEn || fallbackComp?.definitionEn || '',
+                  definitionVi: c.definitionVi || fallbackComp?.definitionVi || '',
+                  expectedLevelByPosition: fallbackComp?.expectedLevelByPosition || {
+                    Accountant: 1,
+                    'Senior Accountant': 2,
+                    'Assistant Financial Controller': 3,
+                    'Financial Controller': tgt,
+                    'Strategic Finance Business Partner': 4,
+                  },
+                  assessmentCriteria: fallbackComp?.assessmentCriteria || {
+                    level1: 'Foundation proficiency',
+                    level2: 'Operational proficiency',
+                    level3: 'Advanced proficiency',
+                    level4: 'Strategic FC partner',
+                  },
+                  assessmentCriteriaEn: fallbackComp?.assessmentCriteriaEn,
+                  evidenceRequirements: fallbackComp?.evidenceRequirements || ['Practical OJT Deliverable'],
+                  evidenceRequirementsEn: fallbackComp?.evidenceRequirementsEn,
+                  associatedCourseIds: fallbackComp?.associatedCourseIds || [],
+                };
+              })
+            );
+          }
+          if (masterCollections.courses?.length > 0) {
+            setCourses(
+              masterCollections.courses.map((c: any) => {
+                const fallbackCourse = COURSES.find((fc) => fc.id === c.id || fc.code === c.code);
+                const domainObj = COMPETENCY_DOMAINS.find((d) => d.id === c.domainId);
+                return {
+                  id: c.id,
+                  code: c.code,
+                  titleEn: c.titleEn,
+                  titleVi: c.titleVi,
+                  category: fallbackCourse?.category || domainObj?.nameEn || 'Hospitality Finance',
+                  domainId: c.domainId,
+                  difficulty:
+                    Number(c.targetLevel) === 1
+                      ? 'Foundation'
+                      : Number(c.targetLevel) === 2
+                      ? 'Operational'
+                      : Number(c.targetLevel) === 3
+                      ? 'Advanced'
+                      : 'Strategic',
+                  durationHours: Number(c.durationHours || fallbackCourse?.durationHours || 4),
+                  instructorName: fallbackCourse?.instructorName || 'FC Academy Faculty',
+                  instructorTitle: fallbackCourse?.instructorTitle || 'Hospitality Financial Controller',
+                  prerequisites: fallbackCourse?.prerequisites || [],
+                  prerequisitesEn: fallbackCourse?.prerequisitesEn,
+                  learningObjectivesEn: fallbackCourse?.learningObjectivesEn || [c.descriptionEn || c.titleEn],
+                  learningObjectivesVi: fallbackCourse?.learningObjectivesVi || [c.descriptionVi || c.titleVi],
+                  modules: fallbackCourse?.modules || [],
+                  passingScore: Number(c.passingScore || fallbackCourse?.passingScore || 80),
+                  thumbnail: fallbackCourse?.thumbnail || '/assets/courses/usali.jpg',
+                  isMandatoryForFC: Number(c.targetLevel) >= 3,
+                  materials: fallbackCourse?.materials,
+                  caseStudy: fallbackCourse?.caseStudy,
+                  practicalAssignmentId: fallbackCourse?.practicalAssignmentId,
+                  practicalAssignmentTitle: fallbackCourse?.practicalAssignmentTitle,
+                  practicalAssignmentTitleEn: fallbackCourse?.practicalAssignmentTitleEn,
+                  quizQuestionIds: fallbackCourse?.quizQuestionIds,
+                  syllabus: fallbackCourse?.syllabus || COURSE_SYLLABI_BY_CODE[c.code],
+                };
+              })
+            );
+          }
+          if (masterCollections.careerPaths?.length > 0) {
+            setLearningPaths(
+              masterCollections.careerPaths.map((p: any, idx: number) => {
+                const fallbackPath = LEARNING_PATHS.find((lp) => lp.id === p.id || lp.code === p.code);
+                const reqCourses = Array.isArray(p.requiredCourseIds) ? p.requiredCourseIds : [];
+                return {
+                  id: p.id,
+                  code: p.code || `CP-${idx + 1}`,
+                  titleEn: p.nameEn || p.titleEn || `${p.fromRole} → ${p.toRole}`,
+                  titleVi: p.nameVi || p.titleVi || `${p.fromRole} → ${p.toRole}`,
+                  targetRole: p.toRole || fallbackPath?.targetRole || 'Financial Controller',
+                  descriptionEn: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} months)`,
+                  descriptionVi: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} tháng)`,
+                  totalHours: fallbackPath?.totalHours || Math.max(8, reqCourses.length * 4),
+                  stages: fallbackPath?.stages || [
+                    {
+                      stageNumber: 1,
+                      titleEn: p.nameEn || 'Core Track',
+                      titleVi: p.nameVi || 'Lộ Trình Cốt Lõi',
+                      requiredCourses: reqCourses,
+                      requiredOjtAssignments: Array.isArray(p.requiredPracticalIds) ? p.requiredPracticalIds : [],
+                      readinessCriteriaEn: `Minimum Assessment Score: ${p.minAssessmentScore || 80}%`,
+                      readinessCriteriaVi: `Điểm đánh giá tối thiểu: ${p.minAssessmentScore || 80}%`,
+                    },
+                  ],
+                };
+              })
+            );
+          }
+        }
+
+        if (hasProdSim) {
+          let sessionsDocs: SimulationSessionDoc[] = [];
+          try {
+            const sessSnap = await getFirestoreCollectionDocs('simulationSessions');
+            sessionsDocs = sessSnap.docs as SimulationSessionDoc[];
+          } catch {
+            sessionsDocs = [];
+          }
+          setSimulatorData({
+            hotelSimulationProfiles: masterCollections.hotelSimulationProfiles as HotelSimulationProfileDoc[],
+            simulationScenarios: masterCollections.simulationScenarios as SimulationScenarioDoc[],
+            simulationFinancialData: masterCollections.simulationFinancialData as SimulationFinancialRecordDoc[],
+            simulationOperationalData: masterCollections.simulationOperationalData as SimulationOperationalRecordDoc[],
+            simulationBusinessChallenges: masterCollections.simulationBusinessChallenges as SimulationBusinessChallengeDoc[],
+            simulationTasks: masterCollections.simulationTasks as SimulationTaskDoc[],
+            simulationReferenceAnalysis: masterCollections.simulationReferenceAnalysis as SimulationReferenceAnalysisDoc[],
+            simulationDecisionOptions: masterCollections.simulationDecisionOptions as SimulationDecisionOptionDoc[],
+            simulationRoleplayPrompts: masterCollections.simulationRoleplayPrompts as SimulationRoleplayPromptDoc[],
+            simulationEvaluationRubrics: masterCollections.simulationEvaluationRubrics as SimulationEvaluationRubricDoc[],
+            simulationCompetencyMappings: masterCollections.simulationCompetencyMappings as SimulationCompetencyMappingDoc[],
+            simulationSessions: sessionsDocs,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Firestore refresh note:', err instanceof Error ? err.message : String(err));
+    }
+  }, [currentUser.role, dataSourceMode]);
+
+  useEffect(() => {
+    const unsub = subscribeFirebaseAuth(async (user) => {
+      setFirebaseUser(user);
+      if (user && user.emailVerified) {
+        const profile = await resolveAuthenticatedUserProfile(user);
+        setFirebaseProfile(profile);
+        await refreshFromFirestore();
+      } else {
+        setFirebaseProfile(null);
+      }
+    });
+    return () => unsub();
+  }, [refreshFromFirestore]);
+
+  useEffect(() => {
+    refreshSimulatorWorkspace();
+  }, [refreshSimulatorWorkspace]);
+
+  useEffect(() => {
+    if (dataSourceMode === 'demo') {
+      setDomains(COMPETENCY_DOMAINS);
+      setCourses(COURSES);
+      setLearningPaths(LEARNING_PATHS);
+      setCompetencies(COMPETENCIES);
+      refreshSimulatorData();
+      refreshSimulatorWorkspace();
+    } else {
+      refreshFromFirestore();
+      refreshSimulatorWorkspace();
+    }
+  }, [dataSourceMode, refreshFromFirestore, refreshSimulatorData, refreshSimulatorWorkspace]);
+
+  const transitionScenarioStatus = async (
+    scenarioId: string,
+    status: SimulationScenarioStatus,
+    note?: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/simulator/scenarios/${encodeURIComponent(scenarioId)}/status`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ status, note }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        showToast(d.error || 'Failed to update scenario status.', 'error');
+        return false;
+      }
+      const d = await res.json();
+      if (auth.currentUser?.emailVerified) {
+        await publishSimulationScenarioInFirestore(scenarioId, status, currentUser.name).catch(() => {});
+      }
+      setSimulatorData((prev) => ({
+        ...prev,
+        simulationScenarios: prev.simulationScenarios.map((s) =>
+          s.id === scenarioId
+            ? {
+                ...s,
+                ...(d.scenario || {}),
+                status,
+                isActive: status === 'Published',
+              }
+            : s
+        ),
+      }));
+      refreshScenarioGovernance();
+      refreshSimulatorWorkspace();
+      showToast(
+        language === 'vi'
+          ? `Đã chuyển trạng thái kịch bản sang ${status}.`
+          : `Scenario status set to ${status}.`,
+        'success'
+      );
+      return true;
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating scenario status.', 'error');
+      return false;
+    }
+  };
+
+  const toggleScenarioPublish = transitionScenarioStatus;
+
+  const saveSimulationSession = async (
+    payload: Partial<SimulationSessionDoc> & { scenarioId: string }
+  ): Promise<SimulationSessionDoc | null> => {
+    try {
+      const res = await fetch('/api/simulator/sessions', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save simulation session.', 'error');
+        return null;
+      }
+      const saved: SimulationSessionDoc = data.session;
+      if (auth.currentUser?.emailVerified && saved?.id) {
+        await syncRecordToFirestore(
+          'simulationSessions',
+          saved.id,
+          {
+            ...saved,
+            employeeUid: auth.currentUser.uid,
+          },
+          true
+        ).catch(() => {});
+      }
+      setSimulatorData((prev) => ({
+        ...prev,
+        simulationSessions: [
+          saved,
+          ...prev.simulationSessions.filter((s) => s.id !== saved.id),
+        ],
+      }));
+      return saved;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save simulation session.', 'error');
+      return null;
+    }
+  };
+
+  const evaluateSimulationSession = async (
+    sessionId: string,
+    payload: {
+      analysisWorkspace?: any;
+      decisionWorkspace?: any;
+      executiveReport?: any;
+      conversation?: any[];
+      language?: 'vi' | 'en';
+    }
+  ) => {
+    try {
+      const res = await fetch(`/api/simulator/sessions/${encodeURIComponent(sessionId)}/evaluate`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to evaluate simulation session.', 'error');
+        return null;
+      }
+      const savedSession: SimulationSessionDoc = data.session;
+      const evalDoc: SimulationEvaluationDoc = data.evaluation;
+
+      if (auth.currentUser?.emailVerified) {
+        if (savedSession?.id) {
+          syncRecordToFirestore(
+            'simulationSessions',
+            savedSession.id,
+            { ...savedSession, employeeUid: auth.currentUser.uid },
+            true
+          ).catch(() => {});
+        }
+        if (evalDoc?.id) {
+          syncRecordToFirestore(
+            'simulationEvaluations',
+            evalDoc.id,
+            { ...evalDoc, learnerUid: auth.currentUser.uid },
+            true
+          ).catch(() => {});
+        }
+      }
+
+      await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
+      showToast(
+        language === 'vi'
+          ? `Đã chấm điểm phiên mô phỏng: ${evalDoc.totalScore}/100.`
+          : `Simulation evaluated: ${evalDoc.totalScore}/100.`,
+        'success'
+      );
+      return {
+        session: savedSession,
+        evaluation: evalDoc,
+        aiFallbackUsed: Boolean(data.aiFallbackUsed),
+      };
+    } catch (err: any) {
+      showToast(err?.message || 'Simulation evaluation failed.', 'error');
+      return null;
+    }
+  };
+
+  const reviewSimulationEvaluation = async (
+    evaluationId: string,
+    payload: {
+      adjustedTotalScore?: number;
+      criterionAdjustments?: Record<string, number>;
+      adjustmentReason: string;
+      assessorComments?: string;
+    }
+  ): Promise<SimulationEvaluationDoc | null> => {
+    try {
+      const res = await fetch(`/api/simulator/evaluations/${encodeURIComponent(evaluationId)}/review`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Assessor review denied.', 'error');
+        return null;
+      }
+      if (auth.currentUser?.emailVerified && data.evaluation?.id) {
+        syncRecordToFirestore('simulationEvaluations', data.evaluation.id, data.evaluation, true).catch(() => {});
+      }
+      await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
+      showToast(
+        language === 'vi'
+          ? 'Đã lưu điều chỉnh điểm và nhận xét của Người đánh giá.'
+          : 'Human assessor score adjustment saved.',
+        'success'
+      );
+      return data.evaluation;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save assessor review.', 'error');
+      return null;
+    }
+  };
+
+  const assignSimulatorScenario = async (payload: {
+    scenarioId: string;
+    learnerId: string;
+    dueDate: string;
+    mandatory?: boolean;
+    note?: string;
+  }): Promise<SimulationAssignmentDoc | null> => {
+    try {
+      const res = await fetch('/api/simulator/assignments', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to assign simulation.', 'error');
+        return null;
+      }
+      if (auth.currentUser?.emailVerified && data.assignment?.id) {
+        syncRecordToFirestore('simulationAssignments', data.assignment.id, data.assignment, true).catch(() => {});
+      }
+      await refreshSimulatorWorkspace();
+      showToast(
+        language === 'vi' ? 'Đã giao kịch bản mô phỏng cho học viên.' : 'Simulation scenario assigned to learner.',
+        'success'
+      );
+      return data.assignment;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to assign scenario.', 'error');
+      return null;
+    }
+  };
+
+  const upsertSimulatorScenario = async (
+    payload: any,
+    existingId?: string
+  ): Promise<SimulationScenarioDoc | null> => {
+    try {
+      const url = existingId
+        ? `/api/simulator/scenarios/${encodeURIComponent(existingId)}`
+        : '/api/simulator/scenarios';
+      const res = await fetch(url, {
+        method: existingId ? 'PUT' : 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save scenario.', 'error');
+        return null;
+      }
+      if (auth.currentUser?.emailVerified && data.scenario?.id) {
+        syncRecordToFirestore('simulationScenarios', data.scenario.id, data.scenario, true).catch(() => {});
+      }
+      await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
+      showToast(
+        language === 'vi' ? 'Đã lưu kịch bản mô phỏng & bộ dữ liệu USALI.' : 'Scenario & USALI dataset saved.',
+        'success'
+      );
+      return data.scenario;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save scenario.', 'error');
+      return null;
+    }
+  };
+
+  const upsertHotelProfile = async (payload: any): Promise<HotelSimulationProfileDoc | null> => {
+    try {
+      const res = await fetch('/api/simulator/hotel-profiles', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to save hotel profile.', 'error');
+        return null;
+      }
+      if (auth.currentUser?.emailVerified && data.profile?.id) {
+        syncRecordToFirestore('hotelSimulationProfiles', data.profile.id, data.profile, true).catch(() => {});
+      }
+      await refreshSimulatorData();
+      showToast(
+        language === 'vi' ? 'Đã lưu hồ sơ khách sạn mô phỏng.' : 'Hotel simulation profile saved.',
+        'success'
+      );
+      return data.profile;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to save hotel profile.', 'error');
+      return null;
+    }
+  };
+
+  const launchSimulationWorkspace = useCallback(
+    (scenarioId: string, subTab = 'simWorkspace', sessionId: string | null = null) => {
+      setSelectedSimulatorScenarioId(scenarioId);
+      setActiveSimulatorSessionId(sessionId);
+      setActiveTab(subTab);
+    },
+    []
+  );
+
   const enrollCourse = async (courseId: string) => {
     const existing = enrollments.find((e) => e.userId === currentUser.id && e.courseId === courseId);
     if (existing) return;
@@ -354,6 +1119,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             data.enrollment,
             ...prev.filter((e) => !(e.userId === currentUser.id && e.courseId === courseId)),
           ]);
+          if (auth.currentUser?.emailVerified) {
+            syncRecordToFirestore('enrollments', data.enrollment.id, {
+              ...data.enrollment,
+              employeeUid: auth.currentUser.uid,
+              updatedAt: new Date().toISOString(),
+            }).catch(() => {});
+          }
         }
       }
     } catch (e) {
@@ -449,7 +1221,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     try {
-      await fetch('/api/quizzes/attempt', {
+      const res = await fetch('/api/quizzes/attempt', {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -462,6 +1234,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           answers,
         }),
       });
+      if (res.ok && auth.currentUser?.emailVerified) {
+        const qData = await res.json();
+        if (qData.attempt?.id) {
+          syncRecordToFirestore('quizAttempts', qData.attempt.id, {
+            ...qData.attempt,
+            employeeUid: auth.currentUser.uid,
+          }).catch(() => {});
+        }
+      }
     } catch (e) {
       console.warn('Quiz attempt saved locally:', e);
     }
@@ -506,6 +1287,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const data = await res.json();
         if (data.submission) {
           setSubmissions((prev) => [data.submission, ...prev.filter((s) => s.id !== newSub.id)]);
+          if (auth.currentUser?.emailVerified) {
+            syncRecordToFirestore('practicalSubmissions', data.submission.id, {
+              ...data.submission,
+              employeeUid: auth.currentUser.uid,
+            }).catch(() => {});
+          }
         }
         refreshAuditLogs();
       }
@@ -697,8 +1484,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           targetDate: new Date(Date.now() + (idx + 1) * 30 * 86400000).toISOString().split('T')[0],
           recommendedCourseIds: comp?.associatedCourseIds || ['course_01'],
           practicalActivity: `Hoàn thành bài tập OJT và tham gia 1 buổi coaching chuyên sâu về ${comp?.nameVi || code}.`,
+          practicalActivityEn: `Complete targeted OJT deliverable and 1 executive coaching session on ${comp?.nameEn || code}.`,
           status: 'Not Started' as const,
           mentorNotes: `Tự động tạo từ khoảng trống năng lực (Gap = ${s.gap}).`,
+          mentorNotesEn: `Auto-generated from competency gap (Gap = ${s.gap}).`,
         };
       });
 
@@ -713,6 +1502,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       approvedBy: approvedBy || currentUser.name,
       approvedDate: new Date().toISOString().split('T')[0],
       overallGoal: `Kế hoạch hành động thu hẹp ${items.length} khoảng trống năng lực để bổ nhiệm ${targetPosition || 'AFC'}.`,
+      overallGoalEn: `Action plan to close ${items.length} competency gaps for ${targetPosition || 'AFC'} readiness.`,
     };
 
     await saveIDPPlan(newIDP);
@@ -1118,7 +1908,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       time: n.time,
       read: n.read,
     })),
-    ...notifications,
+    ...notifications.map((n) => ({
+      id: n.id,
+      title: language === 'vi' ? n.title : n.titleEn || n.title,
+      time: language === 'vi' ? n.time : n.timeEn || n.time,
+      read: n.read,
+    })),
   ];
 
   return (
@@ -1135,14 +1930,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast,
         dismissToast,
         users,
-        domains: COMPETENCY_DOMAINS,
+        domains,
         competencies,
-        courses: COURSES,
+        courses,
         enrollments,
         quizAttempts,
         ojtAssignments: OJT_ASSIGNMENTS,
         submissions,
-        learningPaths: LEARNING_PATHS,
+        learningPaths,
         assessments,
         idps,
         certificates,
@@ -1195,6 +1990,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTalentIdpObjective,
         submitTalentReassessment,
         submitCareerReadinessReview,
+        firebaseUser,
+        firebaseProfile,
+        dataSourceMode,
+        setDataSourceMode,
+        productionCounts,
+        refreshFromFirestore,
+        simulatorData,
+        simulatorWorkspace,
+        selectedSimulatorScenarioId,
+        setSelectedSimulatorScenarioId,
+        activeSimulatorSessionId,
+        setActiveSimulatorSessionId,
+        refreshSimulatorData,
+        refreshSimulatorWorkspace,
+        scenarioVersions,
+        scenarioImportJobs,
+        scenarioCompetencyMappings,
+        refreshScenarioGovernance,
+        transitionScenarioStatus,
+        toggleScenarioPublish,
+        saveSimulationSession,
+        evaluateSimulationSession,
+        reviewSimulationEvaluation,
+        assignSimulatorScenario,
+        upsertSimulatorScenario,
+        upsertHotelProfile,
+        launchSimulationWorkspace,
       }}
     >
       {children}

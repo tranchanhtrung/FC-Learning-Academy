@@ -108,6 +108,7 @@ export interface ValidationIssue {
   row: number; // 1-indexed Excel row number (header = row 1, first data row = 2)
   field: string;
   recordId: string;
+  scenarioId?: string;
   severity: 'error' | 'warning';
   reason: string;
 }
@@ -178,6 +179,10 @@ const SHEET_HEADER_HINT_TOKENS: Record<string, string[]> = {
 function normalizeHeaderKey(rawKey: string): string {
   return String(rawKey || '')
     .replace(/^\uFEFF/, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/%/g, ' percent ')
     .replace(/[()[\]{}*#:?!.,/\\|"'`]+/g, ' ')
@@ -189,14 +194,17 @@ function normalizeHeaderKey(rawKey: string): string {
 }
 
 function stripNonLangParens(rawKey: string): string {
-  // Strip parenthetical hints such as "(1-4)", "(YYYY-MM-DD)", "(Yes/No)" while preserving (EN), (VI), (%)
+  // Strip parenthetical hints such as "(1-4)", "(YYYY-MM-DD)", "(Yes/No)" while preserving (EN), (VI), (VN), (%)
   return String(rawKey || '').replace(
-    /\((?!\s*(?:en|vi|english|vietnamese|%)\s*\))[^)]*\)/gi,
+    /\((?!\s*(?:en|vi|vn|english|vietnamese|%)\s*\))[^)]*\)/gi,
     ' '
   );
 }
 
-function normalizeRowKeys(row: Record<string, any>): Record<string, any> {
+function normalizeRowKeys(
+  row: Record<string, any>,
+  columnMappings?: Record<string, string>
+): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(row)) {
     const primary = normalizeHeaderKey(k);
@@ -206,12 +214,23 @@ function normalizeRowKeys(row: Record<string, any>): Record<string, any> {
       if (stripped && stripped !== primary && out[stripped] === undefined) {
         out[stripped] = v;
       }
+      if (columnMappings) {
+        const directTarget = columnMappings[k] || columnMappings[primary];
+        if (directTarget) {
+          const mappedKey = normalizeHeaderKey(directTarget);
+          if (mappedKey) out[mappedKey] = v;
+        }
+      }
     }
   }
   return out;
 }
 
-function extractSheetTable(ws: XLSX.WorkSheet, sheetName: string): {
+function extractSheetTable(
+  ws: XLSX.WorkSheet,
+  sheetName: string,
+  columnMappings?: Record<string, string>
+): {
   rawRows: Record<string, any>[];
   detectedHeaders: string[];
   normalizedHeaders: Set<string>;
@@ -226,7 +245,7 @@ function extractSheetTable(ws: XLSX.WorkSheet, sheetName: string): {
   let headerRowIdx = 0;
   let bestScore = -1;
 
-  const scanLimit = Math.min(6, matrix.length);
+  const scanLimit = Math.min(12, matrix.length);
   for (let r = 0; r < scanLimit; r++) {
     const cells = Array.isArray(matrix[r]) ? matrix[r] : [];
     const nonEmptyCells = cells.map((c) => strVal(c)).filter(Boolean);
@@ -271,6 +290,13 @@ function extractSheetTable(ws: XLSX.WorkSheet, sheetName: string): {
     const k2 = normalizeHeaderKey(stripNonLangParens(headerText));
     if (k1) normalizedHeaders.add(k1);
     if (k2) normalizedHeaders.add(k2);
+    if (columnMappings) {
+      const mapped = columnMappings[headerText] || (k1 ? columnMappings[k1] : '');
+      if (mapped) {
+        const mk = normalizeHeaderKey(mapped);
+        if (mk) normalizedHeaders.add(mk);
+      }
+    }
   });
 
   const rawRows: Array<Record<string, any> & { __excelRow: number }> = [];
@@ -329,9 +355,13 @@ function parseFiniteNum(val: any): number | null {
   }
   const s = String(val).trim();
   if (!s) return null;
-  // Support "20%" or "20.5 %" strings
-  if (/^-?\d+(?:\.\d+)?\s*%$/.test(s)) {
-    const n = Number(s.replace('%', '').trim());
+  // Support "20%", "20.5 %", "8 hrs", "10 pts", "12 months"
+  const unitMatch = s.match(/^(-?\d+(?:[.,]\d+)?)\s*(?:%|pts?|points?|hrs?|hours?|h|mths?|months?|days?)$/i);
+  if (unitMatch) {
+    const numStr = unitMatch[1].includes(',') && !unitMatch[1].includes('.')
+      ? unitMatch[1].replace(',', '.')
+      : unitMatch[1].replace(/,/g, '');
+    const n = Number(numStr);
     return Number.isFinite(n) ? n : null;
   }
   const cleaned = s.replace(/,/g, '');
@@ -344,11 +374,21 @@ function parseProficiencyLevel(val: any): number | null {
   if (direct !== null) return direct;
   const s = strVal(val);
   if (!s) return null;
-  const match = s.match(/^(?:level|lvl|cap|l)[\s\-_]*(\d+)$/i);
-  if (match) {
-    const n = Number(match[1]);
+  const prefixMatch = s.match(/^(?:level|lvl|cap|tier|grade|pl|l)[\s\-_.:]*(\d+)(?:\b|[\s\-_.:/(]|$)/i);
+  if (prefixMatch) {
+    const n = Number(prefixMatch[1]);
     return Number.isFinite(n) ? n : null;
   }
+  const leadNumMatch = s.match(/^(\d+)\s*[\-.:)]\s*[a-zA-Z]/);
+  if (leadNumMatch) {
+    const n = Number(leadNumMatch[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  const lower = s.toLowerCase();
+  if (/\b(?:foundation|foundational|basic|entry|nen tang)\b/.test(lower)) return 1;
+  if (/\b(?:operational|intermediate|practitioner|van hanh)\b/.test(lower)) return 2;
+  if (/\b(?:advanced|proficient|chuyen sau)\b/.test(lower)) return 3;
+  if (/\b(?:strategic|master|expert|chien luoc)\b/.test(lower)) return 4;
   return null;
 }
 
@@ -357,7 +397,17 @@ function parseMonthVal(val: any): number | null {
   if (direct !== null) return direct;
   const s = strVal(val);
   if (!s) return null;
-  const mMatch = s.match(/^(?:month|thang|m)[\s\-_]*(\d{1,2})$/i);
+  const ymMatch = s.match(/^\d{4}[\-\/](\d{1,2})$/);
+  if (ymMatch) {
+    const n = Number(ymMatch[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  const myMatch = s.match(/^(\d{1,2})[\-\/]\d{4}$/);
+  if (myMatch) {
+    const n = Number(myMatch[1]);
+    return Number.isFinite(n) ? n : null;
+  }
+  const mMatch = s.match(/^(?:month|thang|m|t)[\s\-_]*(\d{1,2})(?:\b|$)/i);
   if (mMatch) {
     const n = Number(mMatch[1]);
     return Number.isFinite(n) ? n : null;
@@ -376,7 +426,8 @@ function parseMonthVal(val: any): number | null {
     nov: 11, november: 11,
     dec: 12, december: 12,
   };
-  return monthNames[s.toLowerCase()] ?? null;
+  const firstWord = s.toLowerCase().split(/[\s\-\/,]+/)[0];
+  return monthNames[s.toLowerCase()] ?? monthNames[firstWord] ?? null;
 }
 
 function normalizeQuestionType(raw: string): string {
@@ -421,7 +472,7 @@ function parseIdList(val: any): string[] {
     }
   }
   return s
-    .split(/[,;|]+/)
+    .split(/[,;|\r\n]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -441,11 +492,31 @@ function parseIsoDate(val: any): string | null {
     return null;
   }
   const s = strVal(val);
-  const match = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:T.*)?$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+  let year: number;
+  let month: number;
+  let day: number;
+
+  const isoMatch = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    year = Number(isoMatch[1]);
+    month = Number(isoMatch[2]);
+    day = Number(isoMatch[3]);
+  } else {
+    const dmyMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:\s.*)?$/);
+    if (!dmyMatch) return null;
+    const p1 = Number(dmyMatch[1]);
+    const p2 = Number(dmyMatch[2]);
+    year = Number(dmyMatch[3]);
+    // Support DD/MM/YYYY (default) or MM/DD/YYYY when second component exceeds 12
+    if (p2 > 12 && p1 <= 12) {
+      month = p1;
+      day = p2;
+    } else {
+      day = p1;
+      month = p2;
+    }
+  }
+
   const dt = new Date(Date.UTC(year, month - 1, day));
   if (
     dt.getUTCFullYear() !== year ||
@@ -505,8 +576,19 @@ export function parseAndValidateWorkbook(params: {
   fileName: string;
   selectedSheets?: string[];
   existingIdsByCollection?: Record<string, string[]>;
+  existingCodeToIdByCollection?: Record<string, Record<string, string>>;
+  columnMappingsBySheet?: Record<string, Record<string, string>>;
+  editedRowsBySheet?: Record<string, Record<number, Record<string, any>>>;
 }): ParseValidateResult {
-  const { buffer, fileName, selectedSheets, existingIdsByCollection = {} } = params;
+  const {
+    buffer,
+    fileName,
+    selectedSheets,
+    existingIdsByCollection = {},
+    existingCodeToIdByCollection = {},
+    columnMappingsBySheet = {},
+    editedRowsBySheet = {},
+  } = params;
   const wb = XLSX.read(buffer, { type: 'buffer' });
   const detectedAll = wb.SheetNames || [];
   const readmeDetected = detectedAll.some((n) => n.trim().toUpperCase() === README_SHEET_NAME);
@@ -536,7 +618,15 @@ export function parseAndValidateWorkbook(params: {
   const resolvedDocsById: Record<string, Record<string, Record<string, any>>> = {};
   for (const spec of IMPORT_ORDER_SPEC) {
     knownIds[spec.collectionName] = new Set(existingIdsByCollection[spec.collectionName] || []);
-    codeToId[spec.collectionName] = new Map();
+    const codeMap = new Map<string, string>();
+    const preCodes = existingCodeToIdByCollection[spec.collectionName] || {};
+    for (const [k, v] of Object.entries(preCodes)) {
+      if (v) {
+        codeMap.set(k.trim().toLowerCase(), v);
+        knownIds[spec.collectionName].add(v);
+      }
+    }
+    codeToId[spec.collectionName] = codeMap;
     resolvedDocsById[spec.collectionName] = {};
   }
 
@@ -567,9 +657,12 @@ export function parseAndValidateWorkbook(params: {
     }
 
     const ws = wb.Sheets[matchingSheetName];
+    const sheetColumnMappings = columnMappingsBySheet[spec.sheetName];
+    const sheetRowEdits = editedRowsBySheet[spec.sheetName] || {};
     const { rawRows, detectedHeaders, normalizedHeaders, headerRowNumber } = extractSheetTable(
       ws,
-      spec.sheetName
+      spec.sheetName,
+      sheetColumnMappings
     );
     const existingSet = new Set(existingIdsByCollection[spec.collectionName] || []);
 
@@ -616,18 +709,32 @@ export function parseAndValidateWorkbook(params: {
     const hasDedicatedViNameHeader = hasHeader(
       normalizedHeaders,
       'name_vi',
+      'name_vn',
       'nameVi',
       'title_vi',
+      'title_vn',
       'titleVi',
       'domain_name_vi',
+      'domain_name_vn',
       'level_name_vi',
+      'level_name_vn',
+      'level_title_vi',
+      'level_title_vn',
       'competency_name_vi',
+      'competency_name_vn',
+      'competency_title_vi',
+      'competency_title_vn',
       'course_title_vi',
+      'course_title_vn',
       'course_name_vi',
+      'course_name_vn',
       'assignment_title_vi',
+      'assignment_title_vn',
       'path_name_vi',
+      'path_name_vn',
       'name_vietnamese',
       'ten_vi',
+      'ten_vn',
       'ten_tieng_viet',
       'ten_mien',
       'ten_cap_do',
@@ -639,7 +746,13 @@ export function parseAndValidateWorkbook(params: {
 
     rawRows.forEach((rawRow, idx) => {
       const excelRow = typeof (rawRow as any).__excelRow === 'number' ? (rawRow as any).__excelRow : idx + 2;
-      const row = normalizeRowKeys(rawRow);
+      const row = normalizeRowKeys(rawRow, sheetColumnMappings);
+      const override = sheetRowEdits[excelRow];
+      if (override) {
+        for (const [ok, ov] of Object.entries(override)) {
+          row[normalizeHeaderKey(ok)] = ov;
+        }
+      }
       const id = strVal(pickField(row, ...idAliases));
       const rowErrCountBefore = sheetErrors;
 
@@ -694,23 +807,35 @@ export function parseAndValidateWorkbook(params: {
           pickField(
             row,
             'name_vi',
+            'name_vn',
             'nameVi',
             'domain_name_vi',
+            'domain_name_vn',
             'title_vi',
+            'title_vn',
             'domain_vi',
+            'domain_vn',
             'name_vietnamese',
             'domain_name_vietnamese',
             'ten_tieng_viet',
             'ten_vi',
+            'ten_vn',
             'ten_mien'
           )
         );
         const nameVi = rawNameVi || (!hasDedicatedViNameHeader ? nameEn : '');
         const descriptionEn = strVal(pickField(row, 'description_en', 'descriptionEn', 'domain_description_en', 'desc_en', 'description'));
-        const descriptionVi = strVal(pickField(row, 'description_vi', 'descriptionVi', 'domain_description_vi', 'desc_vi'));
-        const weightPercent = parseFiniteNum(
-          pickField(row, 'weight_percent', 'weightPercent', 'domain_weight_percent', 'weight_pct', 'weight', 'domain_weight', 'percentage', 'ty_trong', 'trong_so')
-        );
+        const descriptionVi = strVal(pickField(row, 'description_vi', 'description_vn', 'descriptionVi', 'domain_description_vi', 'domain_description_vn', 'desc_vi', 'desc_vn'));
+        const weightAliasList = [
+          'weight_percent', 'weightPercent', 'domain_weight_percent', 'weight_pct', 'weight',
+          'domain_weight', 'percentage', 'weight_share', 'allocation_percent', 'allocation',
+          'ty_trong', 'trong_so', 'trong_so_percent', 'ty_le'
+        ];
+        const hasWeightCol = hasHeader(normalizedHeaders, ...weightAliasList);
+        const rawDomainWeight = pickField(row, ...weightAliasList);
+        const parsedDomainWeight = parseFiniteNum(rawDomainWeight);
+        const isMissingDomainWeight = !hasWeightCol || rawDomainWeight === undefined;
+        const weightPercent = isMissingDomainWeight ? 0 : parsedDomainWeight;
         const hasSortCol = hasHeader(normalizedHeaders, 'sort_order', 'sortOrder', 'order', 'display_order', 'sequence', 'seq', 'sort', 'stt');
         const sortOrder = hasSortCol
           ? parseFiniteNum(pickField(row, 'sort_order', 'sortOrder', 'order', 'display_order', 'sequence', 'seq', 'sort', 'stt'))
@@ -719,7 +844,7 @@ export function parseAndValidateWorkbook(params: {
         if (!code) addRowError(excelRow, 'code', id, 'Required field "code" is empty.');
         if (!nameEn) addRowError(excelRow, 'name_en', id, 'Required field "name_en" is empty.');
         if (!nameVi) addRowError(excelRow, 'name_vi', id, 'Required field "name_vi" is empty.');
-        if (weightPercent === null || weightPercent < 0 || weightPercent > 100) {
+        if (!isMissingDomainWeight && (weightPercent === null || weightPercent < 0 || weightPercent > 100)) {
           addRowError(excelRow, 'weight_percent', id, 'weight_percent must be a number between 0 and 100.');
         }
         if (sortOrder === null || sortOrder < 0) {
@@ -736,36 +861,46 @@ export function parseAndValidateWorkbook(params: {
             descriptionVi: descriptionVi ? descriptionVi.slice(0, 1000) : undefined,
             weightPercent: weightPercent!,
             sortOrder: sortOrder!,
+            _autoDomainWeight: isMissingDomainWeight,
             importedAt,
             importBatchId,
           });
         }
       } else if (spec.sheetName === 'Proficiency_Levels') {
-        const level = parseProficiencyLevel(
-          pickField(row, 'level', 'proficiency_level', 'level_number', 'level_no', 'level_num', 'tier', 'grade', 'rank')
-        );
         const hasCodeCol = hasHeader(normalizedHeaders, 'code', 'level_code', 'short_code');
         const rawCode = strVal(pickField(row, 'code', 'level_code', 'short_code'));
-        const code = hasCodeCol ? rawCode : level !== null ? `L${level}` : id.slice(0, 32);
+        const hasLevelCol = hasHeader(normalizedHeaders, 'level', 'proficiency_level', 'level_number', 'level_no', 'level_num', 'level_order', 'tier', 'grade', 'rank', 'cap_do', 'bac');
+        const rawLevelVal = pickField(row, 'level', 'proficiency_level', 'level_number', 'level_no', 'level_num', 'level_order', 'tier', 'grade', 'rank', 'cap_do', 'bac');
+        const parsedLevelDirect = parseProficiencyLevel(rawLevelVal);
+        const level =
+          parsedLevelDirect !== null
+            ? parsedLevelDirect
+            : !hasLevelCol || rawLevelVal === undefined
+            ? parseProficiencyLevel(rawCode) ?? parseProficiencyLevel(id)
+            : null;
+        const code = hasCodeCol && rawCode ? rawCode : level !== null ? `L${level}` : id.slice(0, 32);
         const nameEn = strVal(
           pickField(
             row,
             'name_en',
             'nameEn',
             'level_name_en',
+            'level_title_en',
             'proficiency_name_en',
+            'proficiency_title_en',
             'title_en',
+            'label_en',
             'name_english',
-            ...(hasDedicatedViNameHeader ? [] : ['name', 'level_name', 'proficiency_name', 'title', 'label'])
+            ...(hasDedicatedViNameHeader ? [] : ['name', 'level_name', 'proficiency_name', 'title', 'label', 'level_title'])
           )
         );
         const rawNameVi = strVal(
-          pickField(row, 'name_vi', 'nameVi', 'level_name_vi', 'proficiency_name_vi', 'title_vi', 'name_vietnamese', 'ten_vi', 'ten_cap_do')
+          pickField(row, 'name_vi', 'name_vn', 'nameVi', 'level_name_vi', 'level_name_vn', 'level_title_vi', 'level_title_vn', 'proficiency_name_vi', 'proficiency_name_vn', 'title_vi', 'title_vn', 'label_vi', 'name_vietnamese', 'ten_vi', 'ten_vn', 'ten_cap_do')
         );
         const nameVi = rawNameVi || (!hasDedicatedViNameHeader ? nameEn : '');
-        const descriptionEn = strVal(pickField(row, 'description_en', 'descriptionEn', 'behavioral_descriptor_en', 'desc_en', 'description', 'descriptor', 'summary'));
-        const descriptionVi = strVal(pickField(row, 'description_vi', 'descriptionVi', 'behavioral_descriptor_vi', 'desc_vi'));
-        const targetRole = strVal(pickField(row, 'target_role', 'targetRole', 'role', 'applicable_role', 'applicable_roles', 'job_role', 'target_roles'));
+        const descriptionEn = strVal(pickField(row, 'description_en', 'descriptionEn', 'behavioral_descriptor_en', 'descriptor_en', 'desc_en', 'description', 'descriptor', 'summary'));
+        const descriptionVi = strVal(pickField(row, 'description_vi', 'description_vn', 'descriptionVi', 'behavioral_descriptor_vi', 'behavioral_descriptor_vn', 'descriptor_vi', 'descriptor_vn', 'desc_vi', 'desc_vn'));
+        const targetRole = strVal(pickField(row, 'target_role', 'targetRole', 'role', 'applicable_role', 'applicable_roles', 'job_role', 'target_roles', 'typical_role', 'chuc_danh'));
 
         if (level === null || !Number.isInteger(level) || level < 1 || level > 4) {
           addRowError(excelRow, 'level', id, 'Proficiency level must be an integer between 1 and 4.');
@@ -791,7 +926,7 @@ export function parseAndValidateWorkbook(params: {
       } else if (spec.sheetName === 'Competencies') {
         const hasCodeCol = hasHeader(normalizedHeaders, 'code', 'competency_code', 'comp_code');
         const code = hasCodeCol ? strVal(pickField(row, 'code', 'competency_code', 'comp_code')) : id.slice(0, 32);
-        const rawDomainRef = strVal(pickField(row, 'domain_id', 'domainId', 'competency_domain_id', 'domain_code', 'domain'));
+        const rawDomainRef = strVal(pickField(row, 'domain_id', 'domainId', 'competency_domain_id', 'domain_code', 'domain', 'parent_domain_id', 'parent_domain', 'mien_nang_luc'));
         const domainId = resolveFk('competencyDomains', rawDomainRef);
         const nameEn = strVal(
           pickField(
@@ -799,19 +934,20 @@ export function parseAndValidateWorkbook(params: {
             'name_en',
             'nameEn',
             'competency_name_en',
+            'competency_title_en',
             'title_en',
             'name_english',
             ...(hasDedicatedViNameHeader ? [] : ['name', 'competency_name', 'competency', 'title'])
           )
         );
         const rawNameVi = strVal(
-          pickField(row, 'name_vi', 'nameVi', 'competency_name_vi', 'title_vi', 'name_vietnamese', 'ten_vi', 'ten_nang_luc')
+          pickField(row, 'name_vi', 'name_vn', 'nameVi', 'competency_name_vi', 'competency_name_vn', 'competency_title_vi', 'competency_title_vn', 'title_vi', 'title_vn', 'name_vietnamese', 'ten_vi', 'ten_vn', 'ten_nang_luc')
         );
         const nameVi = rawNameVi || (!hasDedicatedViNameHeader ? nameEn : '');
-        const definitionEn = strVal(pickField(row, 'definition_en', 'definitionEn', 'description_en', 'desc_en', 'definition', 'description'));
-        const definitionVi = strVal(pickField(row, 'definition_vi', 'definitionVi', 'description_vi', 'desc_vi'));
+        const definitionEn = strVal(pickField(row, 'definition_en', 'definitionEn', 'description_en', 'desc_en', 'definition', 'description', 'summary_en'));
+        const definitionVi = strVal(pickField(row, 'definition_vi', 'definition_vn', 'definitionVi', 'description_vi', 'description_vn', 'desc_vi', 'desc_vn', 'summary_vi'));
         const targetLevel = parseProficiencyLevel(
-          pickField(row, 'target_level', 'targetLevel', 'required_level', 'proficiency_level', 'level', 'target_proficiency_level', 'fc_target_level')
+          pickField(row, 'target_level', 'targetLevel', 'required_level', 'proficiency_level', 'level', 'target_proficiency_level', 'fc_target_level', 'fc_level', 'expected_level', 'benchmark_level', 'recommended_level', 'target_proficiency', 'required_proficiency', 'cap_do_muc_tieu')
         );
         const rawWeight = pickField(row, 'weight_percent', 'weightPercent', 'weight_pct', 'weight', 'trong_so');
         const weightPercent = rawWeight !== undefined ? parseFiniteNum(rawWeight) : undefined;
@@ -852,32 +988,67 @@ export function parseAndValidateWorkbook(params: {
           });
         }
       } else if (spec.sheetName === 'Competency_Rubric') {
-        const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency'));
+        const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency', 'parent_competency_id', 'ma_nang_luc'));
         const competencyId = resolveFk('competencies', rawCompRef);
         const proficiencyLevelId = resolveFk(
           'proficiencyLevels',
           strVal(pickField(row, 'proficiency_level_id', 'proficiencyLevelId', 'level_id'))
         );
-        const hasLevelCol = hasHeader(normalizedHeaders, 'proficiency_level', 'proficiencyLevel', 'level', 'level_number', 'proficiency_level_number', 'tier');
+        const rawLevelCell = pickField(row, 'proficiency_level', 'proficiencyLevel', 'level', 'level_number', 'proficiency_level_number', 'tier', 'rubric_level', 'level_code', 'cap_do');
         const levelDoc = proficiencyLevelId ? resolvedDocsById.proficiencyLevels[proficiencyLevelId] : undefined;
-        const parsedLevel = parseProficiencyLevel(
-          pickField(row, 'proficiency_level', 'proficiencyLevel', 'level', 'level_number', 'proficiency_level_number', 'tier')
-        );
-        const proficiencyLevel = parsedLevel !== null ? parsedLevel : !hasLevelCol && levelDoc ? Number(levelDoc.level) : null;
+        const parsedLevel = parseProficiencyLevel(rawLevelCell);
+        const proficiencyLevel =
+          parsedLevel !== null
+            ? parsedLevel
+            : rawLevelCell === undefined && levelDoc
+            ? Number(levelDoc.level)
+            : rawLevelCell === undefined && proficiencyLevelId
+            ? parseProficiencyLevel(proficiencyLevelId)
+            : null;
 
         const hasCriteriaViHeader = hasHeader(
           normalizedHeaders,
           'criteria_vi',
+          'criteria_vn',
           'criteriaVi',
           'rubric_criteria_vi',
+          'rubric_criteria_vn',
           'behavioral_criteria_vi',
+          'behavioral_criteria_vn',
           'indicator_vi',
+          'indicator_vn',
+          'behavioral_indicator_vi',
+          'behavioral_indicator_vn',
           'observable_behavior_vi',
+          'observable_behavior_vn',
+          'behavioral_descriptor_vi',
+          'behavioral_descriptor_vn',
+          'level_descriptor_vi',
+          'level_descriptor_vn',
+          'level_description_vi',
+          'rubric_description_vi',
+          'behavior_vi',
+          'behavior_vn',
+          'standard_vi',
+          'standard_vn',
+          'performance_standard_vi',
+          'performance_criteria_vi',
+          'assessment_criteria_vi',
+          'expected_behavior_vi',
           'description_vi',
+          'description_vn',
           'descriptor_vi',
-          'tieu_chi_vi'
+          'descriptor_vn',
+          'title_vi',
+          'title_vn',
+          'name_vi',
+          'name_vn',
+          'tieu_chi_vi',
+          'tieu_chi_vn'
         );
-        const criteriaEn = strVal(
+        const observableBehavior = strVal(pickField(row, 'observable_behavior', 'observableBehavior', 'observable_behaviors', 'behavior', 'behavioral_evidence', 'examples', 'key_behaviors'));
+        const evidenceRequired = strVal(pickField(row, 'evidence_required', 'evidenceRequired', 'evidence', 'required_evidence', 'proof_required', 'assessment_method'));
+        const rawCriteriaEn = strVal(
           pickField(
             row,
             'criteria_en',
@@ -885,36 +1056,79 @@ export function parseAndValidateWorkbook(params: {
             'rubric_criteria_en',
             'behavioral_criteria_en',
             'indicator_en',
+            'behavioral_indicator_en',
             'observable_behavior_en',
-            'description_en',
+            'behavioral_descriptor_en',
             'descriptor_en',
+            'level_descriptor_en',
+            'level_description_en',
+            'rubric_description_en',
+            'behavior_en',
+            'standard_en',
+            'performance_standard_en',
+            'performance_criteria_en',
+            'assessment_criteria_en',
+            'expected_behavior_en',
+            'description_en',
+            'title_en',
+            'name_en',
             ...(hasCriteriaViHeader
               ? []
-              : ['criteria', 'rubric_criteria', 'behavioral_criteria', 'indicator', 'behavioral_indicator', 'descriptor', 'description'])
+              : ['criteria', 'rubric_criteria', 'behavioral_criteria', 'indicator', 'behavioral_indicator', 'behavioral_descriptor', 'descriptor', 'level_descriptor', 'rubric_description', 'behavior', 'standard', 'performance_criteria', 'assessment_criteria', 'description', 'observable_behavior'])
           )
         );
         const rawCriteriaVi = strVal(
           pickField(
             row,
             'criteria_vi',
+            'criteria_vn',
             'criteriaVi',
             'rubric_criteria_vi',
+            'rubric_criteria_vn',
             'behavioral_criteria_vi',
+            'behavioral_criteria_vn',
             'indicator_vi',
+            'indicator_vn',
+            'behavioral_indicator_vi',
+            'behavioral_indicator_vn',
             'observable_behavior_vi',
+            'observable_behavior_vn',
+            'behavioral_descriptor_vi',
+            'behavioral_descriptor_vn',
+            'level_descriptor_vi',
+            'level_descriptor_vn',
+            'level_description_vi',
+            'rubric_description_vi',
+            'behavior_vi',
+            'behavior_vn',
+            'standard_vi',
+            'standard_vn',
+            'performance_standard_vi',
+            'performance_criteria_vi',
+            'assessment_criteria_vi',
+            'expected_behavior_vi',
             'description_vi',
+            'description_vn',
             'descriptor_vi',
-            'tieu_chi_vi'
+            'descriptor_vn',
+            'title_vi',
+            'title_vn',
+            'name_vi',
+            'name_vn',
+            'tieu_chi_vi',
+            'tieu_chi_vn'
           )
         );
-        const criteriaVi = rawCriteriaVi || (!hasCriteriaViHeader ? criteriaEn : '');
-        const observableBehavior = strVal(pickField(row, 'observable_behavior', 'observableBehavior', 'observable_behaviors', 'behavior', 'behavioral_evidence', 'examples'));
-        const evidenceRequired = strVal(pickField(row, 'evidence_required', 'evidenceRequired', 'evidence', 'required_evidence', 'proof_required'));
+        const criteriaEn = rawCriteriaEn || observableBehavior || evidenceRequired || rawCriteriaVi;
+        const criteriaVi = rawCriteriaVi || rawCriteriaEn || observableBehavior || evidenceRequired;
 
-        const hasWeightCol = hasHeader(normalizedHeaders, 'assessment_weight', 'assessmentWeight', 'assessment_weight_percent', 'weight_percent', 'weight_pct', 'weight');
-        const assessmentWeight = hasWeightCol
-          ? parseFiniteNum(pickField(row, 'assessment_weight', 'assessmentWeight', 'assessment_weight_percent', 'weight_percent', 'weight_pct', 'weight'))
-          : 25; // Even placeholder; re-balanced per competency group below if column omitted
+        const rubricWeightAliases = ['assessment_weight', 'assessmentWeight', 'assessment_weight_percent', 'weight_percent', 'weight_pct', 'weight', 'trong_so'];
+        const hasWeightCol = hasHeader(normalizedHeaders, ...rubricWeightAliases);
+        const rawRubricWeight = pickField(row, ...rubricWeightAliases);
+        const isMissingRubricWeight = !hasWeightCol || rawRubricWeight === undefined;
+        const assessmentWeight = isMissingRubricWeight
+          ? 25
+          : parseFiniteNum(rawRubricWeight);
 
         if (!competencyId) {
           addRowError(excelRow, 'competency_id', id, 'Required foreign key "competency_id" is empty.');
@@ -968,23 +1182,26 @@ export function parseAndValidateWorkbook(params: {
             observableBehavior: observableBehavior ? observableBehavior.slice(0, 1000) : undefined,
             evidenceRequired: evidenceRequired ? evidenceRequired.slice(0, 500) : undefined,
             assessmentWeight: assessmentWeight!,
-            _autoRubricWeight: !hasWeightCol,
+            _autoRubricWeight: isMissingRubricWeight,
             importedAt,
             importBatchId,
           });
         }
       } else if (spec.sheetName === 'Course_Catalog') {
-        const hasCodeCol = hasHeader(normalizedHeaders, 'code', 'course_code', 'crs_code');
-        const code = hasCodeCol ? strVal(pickField(row, 'code', 'course_code', 'crs_code')) : id.slice(0, 32);
+        const rawCourseCode = strVal(pickField(row, 'code', 'course_code', 'crs_code'));
+        const code = rawCourseCode || id.slice(0, 32);
         const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency'));
-        const competencyId = resolveFk('competencies', rawCompRef);
+        const mappedCompIds = parseIdList(
+          pickField(row, 'mapped_competency_ids', 'mappedCompetencyIds', 'competency_ids', 'linked_competency_ids', 'competencies')
+        ).map((cid) => resolveFk('competencies', cid));
+        const firstMappedCompId = mappedCompIds.find((cid) => knownIds.competencies.has(cid)) || mappedCompIds[0] || '';
+        const competencyId = rawCompRef ? resolveFk('competencies', rawCompRef) : firstMappedCompId;
 
-        const hasDomainCol = hasHeader(normalizedHeaders, 'domain_id', 'domainId', 'competency_domain_id', 'domain_code', 'domain');
         const rawDomainRef = strVal(pickField(row, 'domain_id', 'domainId', 'competency_domain_id', 'domain_code', 'domain'));
-        const inferredDomainId = !hasDomainCol && competencyId ? resolvedDocsById.competencies[competencyId]?.domainId || '' : '';
+        const inferredDomainId = competencyId ? resolvedDocsById.competencies[competencyId]?.domainId || '' : '';
         const domainId = rawDomainRef ? resolveFk('competencyDomains', rawDomainRef) : inferredDomainId;
 
-        const titleEn = strVal(
+        const rawTitleEn = strVal(
           pickField(
             row,
             'title_en',
@@ -996,44 +1213,38 @@ export function parseAndValidateWorkbook(params: {
           )
         );
         const rawTitleVi = strVal(
-          pickField(row, 'title_vi', 'titleVi', 'course_title_vi', 'name_vi', 'course_name_vi', 'ten_khoa_hoc', 'ten_vi')
+          pickField(row, 'title_vi', 'title_vn', 'titleVi', 'course_title_vi', 'course_title_vn', 'name_vi', 'name_vn', 'course_name_vi', 'course_name_vn', 'ten_khoa_hoc', 'ten_vi', 'ten_vn')
         );
-        const titleVi = rawTitleVi || (!hasDedicatedViNameHeader ? titleEn : '');
+        const titleEn = rawTitleEn || rawTitleVi;
+        const titleVi = rawTitleVi || rawTitleEn;
         const descriptionEn = strVal(pickField(row, 'description_en', 'descriptionEn', 'course_description_en', 'summary_en', 'description', 'overview'));
-        const descriptionVi = strVal(pickField(row, 'description_vi', 'descriptionVi', 'course_description_vi', 'summary_vi'));
-        const targetLevel = parseProficiencyLevel(
-          pickField(row, 'target_level', 'targetLevel', 'proficiency_level', 'level', 'target_proficiency_level')
-        );
+        const descriptionVi = strVal(pickField(row, 'description_vi', 'description_vn', 'descriptionVi', 'course_description_vi', 'course_description_vn', 'summary_vi', 'summary_vn'));
+        const rawTargetLevel = pickField(row, 'target_level', 'targetLevel', 'proficiency_level', 'level', 'target_proficiency_level', 'required_level', 'cap_do');
+        const parsedTargetLevel = parseProficiencyLevel(rawTargetLevel);
+        const targetLevel =
+          parsedTargetLevel !== null
+            ? parsedTargetLevel
+            : rawTargetLevel === undefined && competencyId && resolvedDocsById.competencies[competencyId]
+            ? Number(resolvedDocsById.competencies[competencyId].targetLevel) || 2
+            : null;
         const durationHours = parseFiniteNum(
           pickField(row, 'duration_hours', 'durationHours', 'duration', 'hours', 'duration_hrs', 'credit_hours', 'est_hours')
         );
-        const hasPassingCol = hasHeader(normalizedHeaders, 'passing_score', 'passingScore', 'passing_score_percent', 'pass_score', 'pass_mark', 'passing_mark', 'min_score', 'min_passing_score');
-        const passingScore = hasPassingCol
-          ? parseFiniteNum(
-              pickField(row, 'passing_score', 'passingScore', 'passing_score_percent', 'pass_score', 'pass_mark', 'passing_mark', 'min_score', 'min_passing_score')
-            )
-          : 80;
+        const rawPassingScore = pickField(row, 'passing_score', 'passingScore', 'passing_score_percent', 'pass_score', 'pass_mark', 'passing_mark', 'min_score', 'min_passing_score');
+        const passingScore = rawPassingScore !== undefined ? parseFiniteNum(rawPassingScore) : 80;
 
-        const hasQuizWeightCol = hasHeader(normalizedHeaders, 'assessment_weight_quiz', 'assessmentWeightQuiz', 'assessment_weight_quiz_percent', 'quiz_weight', 'quiz_weight_percent', 'quiz_percent', 'theory_weight');
-        const hasPracticalWeightCol = hasHeader(normalizedHeaders, 'assessment_weight_practical', 'assessmentWeightPractical', 'assessment_weight_practical_percent', 'practical_weight', 'practical_weight_percent', 'practical_percent', 'ojt_weight');
+        const rawQuizWeight = pickField(row, 'assessment_weight_quiz', 'assessmentWeightQuiz', 'assessment_weight_quiz_percent', 'quiz_weight', 'quiz_weight_percent', 'quiz_percent', 'theory_weight');
+        const rawPracticalWeight = pickField(row, 'assessment_weight_practical', 'assessmentWeightPractical', 'assessment_weight_practical_percent', 'practical_weight', 'practical_weight_percent', 'practical_percent', 'ojt_weight');
 
-        let assessmentWeightQuiz = hasQuizWeightCol
-          ? parseFiniteNum(
-              pickField(row, 'assessment_weight_quiz', 'assessmentWeightQuiz', 'assessment_weight_quiz_percent', 'quiz_weight', 'quiz_weight_percent', 'quiz_percent', 'theory_weight')
-            )
-          : null;
-        let assessmentWeightPractical = hasPracticalWeightCol
-          ? parseFiniteNum(
-              pickField(row, 'assessment_weight_practical', 'assessmentWeightPractical', 'assessment_weight_practical_percent', 'practical_weight', 'practical_weight_percent', 'practical_percent', 'ojt_weight')
-            )
-          : null;
+        let assessmentWeightQuiz = rawQuizWeight !== undefined ? parseFiniteNum(rawQuizWeight) : null;
+        let assessmentWeightPractical = rawPracticalWeight !== undefined ? parseFiniteNum(rawPracticalWeight) : null;
 
-        if (!hasQuizWeightCol && !hasPracticalWeightCol) {
+        if (rawQuizWeight === undefined && rawPracticalWeight === undefined) {
           assessmentWeightQuiz = 40;
           assessmentWeightPractical = 60;
-        } else if (hasQuizWeightCol && !hasPracticalWeightCol && assessmentWeightQuiz !== null && assessmentWeightQuiz >= 0 && assessmentWeightQuiz <= 100) {
+        } else if (rawQuizWeight !== undefined && rawPracticalWeight === undefined && assessmentWeightQuiz !== null && assessmentWeightQuiz >= 0 && assessmentWeightQuiz <= 100) {
           assessmentWeightPractical = Number((100 - assessmentWeightQuiz).toFixed(2));
-        } else if (!hasQuizWeightCol && hasPracticalWeightCol && assessmentWeightPractical !== null && assessmentWeightPractical >= 0 && assessmentWeightPractical <= 100) {
+        } else if (rawQuizWeight === undefined && rawPracticalWeight !== undefined && assessmentWeightPractical !== null && assessmentWeightPractical >= 0 && assessmentWeightPractical <= 100) {
           assessmentWeightQuiz = Number((100 - assessmentWeightPractical).toFixed(2));
         } else if (
           assessmentWeightQuiz !== null &&
@@ -1114,6 +1325,11 @@ export function parseAndValidateWorkbook(params: {
         }
 
         if (sheetErrors === rowErrCountBefore) {
+          const roundedQuiz = Math.round(assessmentWeightQuiz! * 100) / 100;
+          const roundedPractical =
+            Math.abs(roundedQuiz + Math.round(assessmentWeightPractical! * 100) / 100 - 100) <= 0.05
+              ? Number((100 - roundedQuiz).toFixed(2))
+              : Math.round(assessmentWeightPractical! * 100) / 100;
           candidateDoc = pruneUndefined({
             id,
             code: code.slice(0, 32),
@@ -1126,8 +1342,8 @@ export function parseAndValidateWorkbook(params: {
             targetLevel: targetLevel!,
             durationHours: durationHours!,
             passingScore: passingScore!,
-            assessmentWeightQuiz: assessmentWeightQuiz!,
-            assessmentWeightPractical: assessmentWeightPractical!,
+            assessmentWeightQuiz: roundedQuiz,
+            assessmentWeightPractical: roundedPractical,
             deliveryMode: deliveryMode ? deliveryMode.slice(0, 100) : undefined,
             importedAt,
             importBatchId,
@@ -1136,16 +1352,15 @@ export function parseAndValidateWorkbook(params: {
       } else if (spec.sheetName === 'Question_Bank') {
         const rawCourseRef = strVal(pickField(row, 'course_id', 'courseId', 'course_code', 'course'));
         const courseId = resolveFk('courses', rawCourseRef);
-        const hasCompCol = hasHeader(normalizedHeaders, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency');
         const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency'));
-        const inferredCompId = !hasCompCol && courseId ? resolvedDocsById.courses[courseId]?.competencyId || '' : '';
+        const inferredCompId = courseId ? resolvedDocsById.courses[courseId]?.competencyId || '' : '';
         const competencyId = rawCompRef ? resolveFk('competencies', rawCompRef) : inferredCompId;
 
         const rawTypeInput = strVal(pickField(row, 'question_type', 'questionType', 'type', 'q_type', 'format'));
         const rawType = normalizeQuestionType(rawTypeInput);
 
-        const hasQTextViHeader = hasHeader(normalizedHeaders, 'question_text_vi', 'questionTextVi', 'question_vi', 'prompt_vi', 'stem_vi', 'text_vi', 'cau_hoi');
-        const questionTextEn = strVal(
+        const hasQTextViHeader = hasHeader(normalizedHeaders, 'question_text_vi', 'question_text_vn', 'questionTextVi', 'question_vi', 'question_vn', 'prompt_vi', 'prompt_vn', 'stem_vi', 'text_vi', 'text_vn', 'content_vi', 'content_vn', 'cau_hoi');
+        const rawQTextEn = strVal(
           pickField(
             row,
             'question_text_en',
@@ -1154,36 +1369,35 @@ export function parseAndValidateWorkbook(params: {
             'prompt_en',
             'stem_en',
             'text_en',
-            ...(hasQTextViHeader ? [] : ['question_text', 'question', 'prompt', 'stem'])
+            'content_en',
+            'body_en',
+            ...(hasQTextViHeader ? [] : ['question_text', 'question', 'prompt', 'stem', 'content', 'question_content'])
           )
         );
         const rawQTextVi = strVal(
-          pickField(row, 'question_text_vi', 'questionTextVi', 'question_vi', 'prompt_vi', 'stem_vi', 'text_vi', 'cau_hoi')
+          pickField(row, 'question_text_vi', 'question_text_vn', 'questionTextVi', 'question_vi', 'question_vn', 'prompt_vi', 'prompt_vn', 'stem_vi', 'text_vi', 'text_vn', 'content_vi', 'content_vn', 'body_vi', 'cau_hoi')
         );
-        const questionTextVi = rawQTextVi || (!hasQTextViHeader ? questionTextEn : '');
-        const optionA = strVal(pickField(row, 'option_a', 'optionA', 'opt_a', 'choice_a', 'a'));
-        const optionB = strVal(pickField(row, 'option_b', 'optionB', 'opt_b', 'choice_b', 'b'));
-        const optionC = strVal(pickField(row, 'option_c', 'optionC', 'opt_c', 'choice_c', 'c'));
-        const optionD = strVal(pickField(row, 'option_d', 'optionD', 'opt_d', 'choice_d', 'd'));
-        const rawCorrectAnswer = strVal(pickField(row, 'correct_answer', 'correctAnswer', 'answer', 'key', 'correct_option'));
+        const questionTextEn = rawQTextEn || rawQTextVi;
+        const questionTextVi = rawQTextVi || rawQTextEn;
+        const optionA = strVal(pickField(row, 'option_a', 'optionA', 'opt_a', 'choice_a', 'option_1', 'choice_1', 'a'));
+        const optionB = strVal(pickField(row, 'option_b', 'optionB', 'opt_b', 'choice_b', 'option_2', 'choice_2', 'b'));
+        const optionC = strVal(pickField(row, 'option_c', 'optionC', 'opt_c', 'choice_c', 'option_3', 'choice_3', 'c'));
+        const optionD = strVal(pickField(row, 'option_d', 'optionD', 'opt_d', 'choice_d', 'option_4', 'choice_4', 'd'));
+        const rawCorrectAnswer = strVal(pickField(row, 'correct_answer', 'correctAnswer', 'answer', 'key', 'correct_option', 'dap_an'));
         const explanationEn = strVal(pickField(row, 'explanation_en', 'explanationEn', 'rationale_en', 'explanation', 'rationale'));
-        const explanationVi = strVal(pickField(row, 'explanation_vi', 'explanationVi', 'rationale_vi'));
+        const explanationVi = strVal(pickField(row, 'explanation_vi', 'explanation_vn', 'explanationVi', 'rationale_vi', 'rationale_vn'));
 
-        const hasLevelCol = hasHeader(normalizedHeaders, 'proficiency_level', 'proficiencyLevel', 'level', 'difficulty_level', 'target_level');
-        const parsedQLevel = parseProficiencyLevel(
-          pickField(row, 'proficiency_level', 'proficiencyLevel', 'level', 'difficulty_level', 'target_level')
-        );
+        const rawQLevel = pickField(row, 'proficiency_level', 'proficiencyLevel', 'level', 'difficulty_level', 'difficulty', 'target_level', 'question_level', 'cap_do');
+        const parsedQLevel = parseProficiencyLevel(rawQLevel);
         const proficiencyLevel =
           parsedQLevel !== null
             ? parsedQLevel
-            : !hasLevelCol && courseId && resolvedDocsById.courses[courseId]
+            : rawQLevel === undefined && courseId && resolvedDocsById.courses[courseId]
             ? Number(resolvedDocsById.courses[courseId].targetLevel) || 2
             : null;
 
-        const hasPointsCol = hasHeader(normalizedHeaders, 'points', 'score', 'marks', 'max_points');
-        const points = hasPointsCol
-          ? parseFiniteNum(pickField(row, 'points', 'score', 'marks', 'max_points'))
-          : 1;
+        const rawPoints = pickField(row, 'points', 'score', 'marks', 'max_points');
+        const points = rawPoints !== undefined ? parseFiniteNum(rawPoints) : 1;
 
         const supportedTypes = ['multiple_choice', 'single_choice', 'numeric', 'true_false'];
         if (!courseId) {
@@ -1221,7 +1435,17 @@ export function parseAndValidateWorkbook(params: {
         if (!rawCorrectAnswer) {
           addRowError(excelRow, 'correct_answer', id, 'Required field "correct_answer" is empty.');
         } else if (rawType === 'multiple_choice' || rawType === 'single_choice') {
-          const upper = rawCorrectAnswer.toUpperCase();
+          let upper = rawCorrectAnswer.trim().toUpperCase();
+          const optPrefixMatch = upper.match(/^(?:OPTION|CHOICE)?\s*([ABCD])(?:[.):\-\s].*)?$/);
+          if (optPrefixMatch) {
+            upper = optPrefixMatch[1];
+          } else {
+            const lowerAns = rawCorrectAnswer.trim().toLowerCase();
+            if (optionA && optionA.trim().toLowerCase() === lowerAns) upper = 'A';
+            else if (optionB && optionB.trim().toLowerCase() === lowerAns) upper = 'B';
+            else if (optionC && optionC.trim().toLowerCase() === lowerAns) upper = 'C';
+            else if (optionD && optionD.trim().toLowerCase() === lowerAns) upper = 'D';
+          }
           if (!['A', 'B', 'C', 'D'].includes(upper)) {
             addRowError(
               excelRow,
@@ -1301,19 +1525,16 @@ export function parseAndValidateWorkbook(params: {
           });
         }
       } else if (spec.sheetName === 'Practical_Assignments') {
-        const hasCodeCol = hasHeader(normalizedHeaders, 'code', 'assignment_code', 'practical_code', 'ojt_code');
-        const code = hasCodeCol
-          ? strVal(pickField(row, 'code', 'assignment_code', 'practical_code', 'ojt_code'))
-          : id.slice(0, 32);
+        const rawPracticalCode = strVal(pickField(row, 'code', 'assignment_code', 'practical_code', 'ojt_code'));
+        const code = rawPracticalCode || id.slice(0, 32);
         const rawCourseRef = strVal(pickField(row, 'course_id', 'courseId', 'course_code', 'course'));
         const courseId = resolveFk('courses', rawCourseRef);
 
-        const hasCompCol = hasHeader(normalizedHeaders, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency');
         const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency'));
-        const inferredCompId = !hasCompCol && courseId ? resolvedDocsById.courses[courseId]?.competencyId || '' : '';
+        const inferredCompId = courseId ? resolvedDocsById.courses[courseId]?.competencyId || '' : '';
         const competencyId = rawCompRef ? resolveFk('competencies', rawCompRef) : inferredCompId;
 
-        const titleEn = strVal(
+        const rawTitleEn = strVal(
           pickField(
             row,
             'title_en',
@@ -1324,20 +1545,22 @@ export function parseAndValidateWorkbook(params: {
           )
         );
         const rawTitleVi = strVal(
-          pickField(row, 'title_vi', 'titleVi', 'assignment_title_vi', 'name_vi', 'ten_bai_tap', 'ten_vi')
+          pickField(row, 'title_vi', 'title_vn', 'titleVi', 'assignment_title_vi', 'assignment_title_vn', 'name_vi', 'name_vn', 'ten_bai_tap', 'ten_vi', 'ten_vn')
         );
-        const titleVi = rawTitleVi || (!hasDedicatedViNameHeader ? titleEn : '');
+        const titleEn = rawTitleEn || rawTitleVi;
+        const titleVi = rawTitleVi || rawTitleEn;
         const scenarioEn = strVal(pickField(row, 'scenario_en', 'scenarioEn', 'case_study_en', 'description_en', 'scenario', 'description', 'brief'));
-        const scenarioVi = strVal(pickField(row, 'scenario_vi', 'scenarioVi', 'case_study_vi', 'description_vi'));
+        const scenarioVi = strVal(pickField(row, 'scenario_vi', 'scenario_vn', 'scenarioVi', 'case_study_vi', 'case_study_vn', 'description_vi', 'description_vn'));
         const deliverables = strVal(pickField(row, 'deliverables', 'deliverable', 'expected_output', 'submission_requirements'));
-        const hasMaxCol = hasHeader(normalizedHeaders, 'max_score', 'maxScore', 'maximum_score', 'total_score', 'full_score', 'points');
-        const maxScore = hasMaxCol
-          ? parseFiniteNum(pickField(row, 'max_score', 'maxScore', 'maximum_score', 'total_score', 'full_score', 'points'))
-          : 100;
-        const hasPassCol = hasHeader(normalizedHeaders, 'passing_score', 'passingScore', 'pass_score', 'min_passing_score', 'min_score');
-        const passingScore = hasPassCol
-          ? parseFiniteNum(pickField(row, 'passing_score', 'passingScore', 'pass_score', 'min_passing_score', 'min_score'))
-          : 80;
+        const rawMaxScore = pickField(row, 'max_score', 'maxScore', 'maximum_score', 'total_score', 'full_score', 'points');
+        const maxScore = rawMaxScore !== undefined ? parseFiniteNum(rawMaxScore) : 100;
+        const rawPassScore = pickField(row, 'passing_score', 'passingScore', 'pass_score', 'min_passing_score', 'min_score');
+        const passingScore =
+          rawPassScore !== undefined
+            ? parseFiniteNum(rawPassScore)
+            : maxScore !== null && maxScore > 0
+            ? Math.min(80, maxScore)
+            : 80;
         const rawWeight = pickField(row, 'weight_percent', 'weightPercent', 'weight_pct', 'weight');
         const weightPercent = rawWeight !== undefined ? parseFiniteNum(rawWeight) : undefined;
         const rawDue = pickField(row, 'due_date_days', 'dueDateDays', 'due_days', 'deadline_days', 'duration_days');
@@ -1399,37 +1622,35 @@ export function parseAndValidateWorkbook(params: {
           });
         }
       } else if (spec.sheetName === 'Training_Matrix_2027') {
-        const rawDate = pickField(row, 'target_date', 'targetDate', 'scheduled_date', 'date', 'due_date', 'session_date', 'planned_date');
-        const targetDate = parseIsoDate(rawDate);
-        const hasMonthCol = hasHeader(normalizedHeaders, 'month', 'month_number', 'month_no');
-        const parsedMonth = parseMonthVal(pickField(row, 'month', 'month_number', 'month_no'));
-        const month = parsedMonth !== null ? parsedMonth : !hasMonthCol && targetDate ? Number(targetDate.slice(5, 7)) : null;
+        const dateAliases = ['target_date', 'targetDate', 'scheduled_date', 'date', 'due_date', 'session_date', 'planned_date', 'training_date', 'completion_date', 'ngay_dao_tao', 'ngay'];
+        const rawDate = pickField(row, ...dateAliases);
+        const parsedDate = parseIsoDate(rawDate);
+        const rawMonth = pickField(row, 'month', 'month_number', 'month_no', 'training_month', 'scheduled_month', 'thang', 'period');
+        const parsedMonth = parseMonthVal(rawMonth);
+        const month = parsedMonth !== null ? parsedMonth : rawMonth === undefined && parsedDate ? Number(parsedDate.slice(5, 7)) : null;
+        const targetDate = parsedDate || (rawDate === undefined && month !== null && month >= 1 && month <= 12 ? `2027-${String(month).padStart(2, '0')}-15` : null);
 
-        const targetRole = strVal(pickField(row, 'target_role', 'targetRole', 'role', 'audience', 'target_audience', 'participants'));
+        const targetRole = strVal(pickField(row, 'target_role', 'targetRole', 'role', 'audience', 'target_audience', 'participants', 'position', 'job_role', 'target_position', 'chuc_danh', 'doi_tuong'));
         const rawCourseRef = strVal(pickField(row, 'course_id', 'courseId', 'course_code', 'course'));
         const courseId = resolveFk('courses', rawCourseRef);
 
-        const hasDomainCol = hasHeader(normalizedHeaders, 'domain_id', 'domainId', 'domain_code', 'domain');
         const rawDomainRef = strVal(pickField(row, 'domain_id', 'domainId', 'domain_code', 'domain'));
         const domainId = rawDomainRef
           ? resolveFk('competencyDomains', rawDomainRef)
-          : !hasDomainCol && courseId
+          : courseId
           ? resolvedDocsById.courses[courseId]?.domainId || ''
           : '';
 
-        const hasCompCol = hasHeader(normalizedHeaders, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency');
         const rawCompRef = strVal(pickField(row, 'competency_id', 'competencyId', 'comp_id', 'competency_code', 'competency'));
         const competencyId = rawCompRef
           ? resolveFk('competencies', rawCompRef)
-          : !hasCompCol && courseId
+          : courseId
           ? resolvedDocsById.courses[courseId]?.competencyId || ''
           : '';
 
         const deliveryFormat = strVal(pickField(row, 'delivery_format', 'deliveryFormat', 'delivery_mode', 'format', 'mode'));
-        const hasMandatoryCol = hasHeader(normalizedHeaders, 'mandatory', 'is_mandatory', 'required', 'is_required', 'compulsory');
-        const mandatory = hasMandatoryCol
-          ? parseBooleanVal(pickField(row, 'mandatory', 'is_mandatory', 'required', 'is_required', 'compulsory'))
-          : true;
+        const rawMandatory = pickField(row, 'mandatory', 'is_mandatory', 'required', 'is_required', 'compulsory', 'bat_buoc');
+        const mandatory = rawMandatory !== undefined ? parseBooleanVal(rawMandatory) : true;
         const rawCohort = pickField(row, 'cohort_size', 'cohortSize', 'target_participants', 'headcount', 'participants_count');
         const cohortSize = rawCohort !== undefined ? parseFiniteNum(rawCohort) : undefined;
         const rawWeight = pickField(row, 'assessment_weight', 'assessmentWeight', 'weight_percent', 'weight');
@@ -1499,9 +1720,9 @@ export function parseAndValidateWorkbook(params: {
           });
         }
       } else if (spec.sheetName === 'Career_Paths') {
-        const hasCodeCol = hasHeader(normalizedHeaders, 'code', 'path_code', 'career_path_code');
-        const code = hasCodeCol ? strVal(pickField(row, 'code', 'path_code', 'career_path_code')) : id.slice(0, 64);
-        const nameEn = strVal(
+        const rawPathCode = strVal(pickField(row, 'code', 'path_code', 'career_path_code'));
+        const code = rawPathCode || id.slice(0, 64);
+        const rawNameEn = strVal(
           pickField(
             row,
             'name_en',
@@ -1512,19 +1733,20 @@ export function parseAndValidateWorkbook(params: {
           )
         );
         const rawNameVi = strVal(
-          pickField(row, 'name_vi', 'nameVi', 'path_name_vi', 'title_vi', 'ten_lo_trinh', 'ten_vi')
+          pickField(row, 'name_vi', 'name_vn', 'nameVi', 'path_name_vi', 'path_name_vn', 'title_vi', 'title_vn', 'ten_lo_trinh', 'ten_vi', 'ten_vn')
         );
-        const nameVi = rawNameVi || (!hasDedicatedViNameHeader ? nameEn : '');
-        const fromRole = strVal(pickField(row, 'from_role', 'fromRole', 'current_role', 'starting_role', 'source_role'));
-        const toRole = strVal(pickField(row, 'to_role', 'toRole', 'target_role', 'destination_role', 'next_role'));
+        const nameEn = rawNameEn || rawNameVi;
+        const nameVi = rawNameVi || rawNameEn;
+        const fromRole = strVal(pickField(row, 'from_role', 'fromRole', 'current_role', 'starting_role', 'source_role', 'start_role', 'entry_role', 'tu_vi_tri'));
+        const toRole = strVal(pickField(row, 'to_role', 'toRole', 'target_role', 'destination_role', 'next_role', 'end_role', 'den_vi_tri'));
         const targetLevel = parseProficiencyLevel(
-          pickField(row, 'target_level', 'targetLevel', 'required_level', 'proficiency_level', 'level')
+          pickField(row, 'target_level', 'targetLevel', 'required_level', 'proficiency_level', 'level', 'cap_do')
         );
         const durationMonths = parseFiniteNum(
-          pickField(row, 'duration_months', 'durationMonths', 'duration', 'months', 'duration_mths', 'timeline_months')
+          pickField(row, 'duration_months', 'durationMonths', 'duration', 'months', 'duration_mths', 'timeline_months', 'est_months', 'estimated_months', 'thoi_gian_thang')
         );
         const requiredCourseIds = parseIdList(
-          pickField(row, 'required_course_ids', 'requiredCourseIds', 'required_courses', 'course_ids', 'courses')
+          pickField(row, 'required_course_ids', 'requiredCourseIds', 'required_courses', 'course_ids', 'courses', 'mandatory_courses', 'course_codes')
         ).map((cid) => resolveFk('courses', cid));
         const requiredCompetencyIds = parseIdList(
           pickField(
@@ -1533,7 +1755,9 @@ export function parseAndValidateWorkbook(params: {
             'requiredCompetencyIds',
             'required_competencies',
             'competency_ids',
-            'competencies'
+            'competencies',
+            'key_competencies',
+            'competency_codes'
           )
         ).map((cid) => resolveFk('competencies', cid));
         const requiredPracticalIds = parseIdList(
@@ -1547,9 +1771,9 @@ export function parseAndValidateWorkbook(params: {
             'required_assignments'
           )
         ).map((pid) => resolveFk('practicalAssignments', pid));
-        const minAssessmentScore = parseFiniteNum(
-          pickField(row, 'min_assessment_score', 'minAssessmentScore', 'min_score', 'passing_score', 'required_score', 'min_pass_score')
-        );
+        const minScoreAliases = ['min_assessment_score', 'minAssessmentScore', 'min_score', 'passing_score', 'required_score', 'min_pass_score', 'readiness_score', 'min_readiness_score', 'diem_toi_thieu'];
+        const rawMinScore = pickField(row, ...minScoreAliases);
+        const minAssessmentScore = rawMinScore !== undefined ? parseFiniteNum(rawMinScore) : 80;
 
         if (!code) addRowError(excelRow, 'code', id, 'Required field "code" is empty.');
         if (!nameEn) addRowError(excelRow, 'name_en', id, 'Required field "name_en" is empty.');
@@ -1628,13 +1852,25 @@ export function parseAndValidateWorkbook(params: {
         }
       }
 
-      rowMetadata.push({ excelRow, doc: candidateDoc, recordId: id || `row_${excelRow}` });
+      rowMetadata.push({ excelRow, doc: candidateDoc, recordId: id || `row_${excelRow}`, raw: row } as any);
     });
 
-    // Sheet-level & Group-level Weight Sums (= 100%, with Excel decimal 0.0–1.0 normalization if sum == 1.0)
+    // Sheet-level & Group-level Weight Sums (= 100%, with Excel decimal 0.0–1.0 normalization & omitted-column balancing)
     if (spec.sheetName === 'Competency_Domains' && rowMetadata.length > 0) {
       const domainDocs = rowMetadata.filter((m) => m.doc !== null);
       if (domainDocs.length > 0) {
+        if (domainDocs.every((m) => m.doc!._autoDomainWeight)) {
+          const evenWeight = Number((100 / domainDocs.length).toFixed(2));
+          let assigned = 0;
+          domainDocs.forEach((m, dIdx) => {
+            const w = dIdx === domainDocs.length - 1 ? Number((100 - assigned).toFixed(2)) : evenWeight;
+            assigned += w;
+            m.doc!.weightPercent = w;
+          });
+        }
+        domainDocs.forEach((m) => {
+          delete m.doc!._autoDomainWeight;
+        });
         let sumWeight = domainDocs.reduce((acc, m) => acc + (Number(m.doc!.weightPercent) || 0), 0);
         if (Math.abs(sumWeight - 1) <= 0.01 && domainDocs.every((m) => Number(m.doc!.weightPercent) <= 1)) {
           domainDocs.forEach((m) => {
@@ -1642,7 +1878,7 @@ export function parseAndValidateWorkbook(params: {
           });
           sumWeight = domainDocs.reduce((acc, m) => acc + (Number(m.doc!.weightPercent) || 0), 0);
         }
-        if (Math.abs(sumWeight - 100) > 0.01) {
+        if (Math.abs(sumWeight - 100) > 0.05) {
           domainDocs.forEach((m) => {
             addRowError(
               m.excelRow,
@@ -1693,7 +1929,7 @@ export function parseAndValidateWorkbook(params: {
           });
           groupSum = items.reduce((acc, i) => acc + i.weight, 0);
         }
-        if (Math.abs(groupSum - 100) > 0.01) {
+        if (Math.abs(groupSum - 100) > 0.05) {
           for (const item of items) {
             addRowError(
               item.excelRow,
@@ -1716,7 +1952,7 @@ export function parseAndValidateWorkbook(params: {
           });
           sumPractical = weighted.reduce((acc, m) => acc + (Number(m.doc!.weightPercent) || 0), 0);
         }
-        if (Math.abs(sumPractical - 100) > 0.01) {
+        if (Math.abs(sumPractical - 100) > 0.05) {
           for (const m of weighted) {
             addRowError(
               m.excelRow,
@@ -1730,7 +1966,7 @@ export function parseAndValidateWorkbook(params: {
     }
 
     // Finalize valid records for this sheet (never silently discarding invalid ones)
-    for (const m of rowMetadata) {
+    for (const m of rowMetadata as Array<{ excelRow: number; doc: Record<string, any> | null; recordId: string; raw?: Record<string, any> }>) {
       const hasRowError = invalidRowIndices.has(m.excelRow);
       if (!hasRowError && m.doc) {
         validDocs.push(m.doc);
@@ -1745,14 +1981,16 @@ export function parseAndValidateWorkbook(params: {
             ...m.doc,
             _excelRow: m.excelRow,
             _isDuplicate: existingSet.has(docId),
+            _raw: m.raw,
           });
         }
-      } else if (previewRows.length < 15) {
+      } else if (hasRowError || previewRows.length < 15) {
         previewRows.push({
           id: m.recordId,
           _excelRow: m.excelRow,
           _isDuplicate: existingSet.has(m.recordId),
-          _hasError: true,
+          _hasError: hasRowError,
+          _raw: m.raw,
         });
       }
     }

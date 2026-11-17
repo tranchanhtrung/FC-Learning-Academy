@@ -19,6 +19,9 @@ import {
   FileSpreadsheet,
   TrendingUp,
   Target,
+  Play,
+  MessageSquare,
+  History,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -39,9 +42,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
   } = useApp();
 
   const [talentExpanded, setTalentExpanded] = useState(true);
+  const [simulatorExpanded, setSimulatorExpanded] = useState(true);
 
   const isLearner = currentUser.role === 'learner';
   const isAdminOrManager = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const canAccessSimAdmin = [
+    'super_admin',
+    'lnd_manager',
+    'financial_controller',
+    'general_manager',
+  ].includes(currentUser.role);
+
+  const simulatorSubItems = [
+    { id: 'simDashboard', label: t.nav.simDashboard, icon: LayoutDashboard },
+    { id: 'simLibrary', label: t.nav.simLibrary, icon: BookOpen },
+    { id: 'simWorkspace', label: t.nav.simWorkspace, icon: Play },
+    { id: 'simMeeting', label: t.nav.simMeeting, icon: MessageSquare },
+    { id: 'simHistory', label: t.nav.simHistory, icon: History },
+    { id: 'simPerformance', label: t.nav.simPerformance, icon: Award },
+    ...(isAdminOrManager
+      ? [{ id: 'simImportCenter', label: t.nav.simImportCenter, icon: FileSpreadsheet }]
+      : []),
+    ...(canAccessSimAdmin
+      ? [
+          { id: 'simAdmin', label: t.nav.simAdmin, icon: Settings },
+          { id: 'simVersionHistory', label: t.nav.simVersionHistory, icon: GitBranch },
+        ]
+      : []),
+  ];
 
   const talentSubItems = [
     { id: 'talentAssessment', label: t.nav.talentAssessment, icon: ClipboardCheck },
@@ -222,6 +250,52 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
                     {talentExpanded && (
                       <div className="ml-3 pl-3 border-l border-slate-700/70 space-y-1 pt-1">
                         {talentSubItems.map((sub) => {
+                          const SubIcon = sub.icon;
+                          const subActive = activeTab === sub.id;
+                          return (
+                            <button
+                              key={sub.id}
+                              onClick={() => {
+                                setActiveTab(sub.id);
+                                onNavigate?.();
+                              }}
+                              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                                subActive
+                                  ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                                  : 'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+                              }`}
+                            >
+                              <SubIcon
+                                className={`w-3.5 h-3.5 shrink-0 ${
+                                  subActive ? 'text-slate-950' : 'text-amber-400'
+                                }`}
+                              />
+                              <span className="truncate">{sub.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {item.id === 'aiAssistant' && (
+                  <div className="pt-1 pb-1">
+                    <button
+                      onClick={() => setSimulatorExpanded((p) => !p)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400 hover:text-amber-300 cursor-pointer"
+                    >
+                      <span className="truncate">{t.nav.simulatorMenu}</span>
+                      {simulatorExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                    </button>
+
+                    {simulatorExpanded && (
+                      <div className="ml-3 pl-3 border-l border-amber-500/30 space-y-1 pt-1">
+                        {simulatorSubItems.map((sub) => {
                           const SubIcon = sub.icon;
                           const subActive = activeTab === sub.id;
                           return (

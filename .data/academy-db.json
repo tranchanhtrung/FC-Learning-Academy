@@ -1356,6 +1356,126 @@
   ],
   "auditLogs": [
     {
+      "id": "log_1794663868162_933",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-14 13:44:28",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 259, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794663847187_972",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "t.xlsx",
+      "timestamp": "2026-11-14 13:44:07",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794663835915_848",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-14 13:43:55",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794663813629_365",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "real_world_custom.xlsx",
+      "timestamp": "2026-11-14 13:43:33",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 13, Updated: 3, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794663232865_628",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "GM_Finance_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:33:52",
+      "details": "Dataset: simulator_starter | Strategy: update | Created: 0, Updated: 45, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794663232797_287",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-14 13:33:52",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794661926237_96",
+      "action": "SIMULATOR_SCENARIO_STATUS",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "CAPEX Energy Retrofit Feasibility & Working Capital Defense",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Scenario status updated to Draft"
+    },
+    {
+      "id": "log_1794661926230_47",
+      "action": "SIMULATOR_SCENARIO_STATUS",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "CAPEX Energy Retrofit Feasibility & Working Capital Defense",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Scenario status updated to Published"
+    },
+    {
+      "id": "log_1794661926205_696",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Business_Partner_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Dataset: simulator_starter | Strategy: reject | Created: 0, Updated: 0, Skipped: 0, Failed: 45"
+    },
+    {
+      "id": "log_1794661926150_533",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Business_Partner_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Dataset: simulator_starter | Strategy: skip | Created: 0, Updated: 0, Skipped: 45, Failed: 0"
+    },
+    {
+      "id": "log_1794661926123_712",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Business_Partner_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Dataset: simulator_starter | Strategy: update | Created: 0, Updated: 45, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794661926087_424",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-14 13:12:06",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 0, Updated: 259, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794661885672_56",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Business_Partner_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:11:25",
+      "details": "Dataset: simulator_starter | Strategy: skip | Created: 0, Updated: 0, Skipped: 45, Failed: 0"
+    },
+    {
+      "id": "log_1794661885646_654",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Business_Partner_Simulator_Starter_Dataset.xlsx",
+      "timestamp": "2026-11-14 13:11:25",
+      "details": "Dataset: simulator_starter | Strategy: update | Created: 45, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
+      "id": "log_1794661885598_818",
+      "action": "DATA_IMPORT_DEMO",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC_Learning_Academy_Training_Dataset_2027.xlsx",
+      "timestamp": "2026-11-14 13:11:25",
+      "details": "Dataset: academy_2027 | Strategy: update | Created: 259, Updated: 0, Skipped: 0, Failed: 0"
+    },
+    {
       "id": "log_1794552742872_77",
       "action": "UPDATE_TALENT_CONFIG",
       "actor": "Marcus Sterling (lnd_manager)",

@@ -264,7 +264,7 @@ export const LearnerDashboard: React.FC = () => {
                     <div className="flex items-center gap-3.5">
                       <img
                         src={course.thumbnail}
-                        alt={course.titleVi}
+                        alt={language === 'vi' ? course.titleVi : course.titleEn}
                         className="w-14 h-14 rounded-xl object-cover shrink-0 ring-1 ring-slate-200"
                       />
                       <div>
@@ -353,7 +353,9 @@ export const LearnerDashboard: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-xs text-slate-700 font-medium leading-relaxed">
-                      {item.practicalActivity}
+                      {language === 'vi'
+                        ? item.practicalActivity
+                        : item.practicalActivityEn || item.practicalActivity}
                     </p>
                   </div>
                   <span

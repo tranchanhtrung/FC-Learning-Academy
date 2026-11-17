@@ -79,10 +79,10 @@ export const CompetencyFrameworkView: React.FC = () => {
       `"${c.domainId}"`,
       `"${c.nameVi}"`,
       `"${c.nameEn}"`,
-      `"${c.assessmentCriteria.level1}"`,
-      `"${c.assessmentCriteria.level2}"`,
-      `"${c.assessmentCriteria.level3}"`,
-      `"${c.assessmentCriteria.level4}"`,
+      `"${language === 'vi' ? c.assessmentCriteria.level1 : (c.assessmentCriteriaEn?.level1 || c.assessmentCriteria.level1)}"`,
+      `"${language === 'vi' ? c.assessmentCriteria.level2 : (c.assessmentCriteriaEn?.level2 || c.assessmentCriteria.level2)}"`,
+      `"${language === 'vi' ? c.assessmentCriteria.level3 : (c.assessmentCriteriaEn?.level3 || c.assessmentCriteria.level3)}"`,
+      `"${language === 'vi' ? c.assessmentCriteria.level4 : (c.assessmentCriteriaEn?.level4 || c.assessmentCriteria.level4)}"`,
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
@@ -366,27 +366,43 @@ export const CompetencyFrameworkView: React.FC = () => {
               <div className="space-y-2 text-xs">
                 <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50">
                   <span className="font-bold text-slate-800 block text-[11px] text-blue-700 mb-0.5">
-                    Level 1 – Foundation (Nền tảng):
+                    {language === 'vi' ? 'Level 1 – Foundation (Nền tảng):' : 'Level 1 – Foundation:'}
                   </span>
-                  <p className="text-slate-600">{selectedCompetency.assessmentCriteria.level1}</p>
+                  <p className="text-slate-600">
+                    {language === 'vi'
+                      ? selectedCompetency.assessmentCriteria.level1
+                      : selectedCompetency.assessmentCriteriaEn?.level1 || selectedCompetency.assessmentCriteria.level1}
+                  </p>
                 </div>
                 <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50">
                   <span className="font-bold text-slate-800 block text-[11px] text-emerald-700 mb-0.5">
-                    Level 2 – Operational (Vận hành độc lập):
+                    {language === 'vi' ? 'Level 2 – Operational (Vận hành độc lập):' : 'Level 2 – Operational:'}
                   </span>
-                  <p className="text-slate-600">{selectedCompetency.assessmentCriteria.level2}</p>
+                  <p className="text-slate-600">
+                    {language === 'vi'
+                      ? selectedCompetency.assessmentCriteria.level2
+                      : selectedCompetency.assessmentCriteriaEn?.level2 || selectedCompetency.assessmentCriteria.level2}
+                  </p>
                 </div>
                 <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50">
                   <span className="font-bold text-slate-800 block text-[11px] text-purple-700 mb-0.5">
-                    Level 3 – Advanced (Nâng cao & Giải quyết vấn đề):
+                    {language === 'vi' ? 'Level 3 – Advanced (Nâng cao & Giải quyết vấn đề):' : 'Level 3 – Advanced:'}
                   </span>
-                  <p className="text-slate-600">{selectedCompetency.assessmentCriteria.level3}</p>
+                  <p className="text-slate-600">
+                    {language === 'vi'
+                      ? selectedCompetency.assessmentCriteria.level3
+                      : selectedCompetency.assessmentCriteriaEn?.level3 || selectedCompetency.assessmentCriteria.level3}
+                  </p>
                 </div>
                 <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50">
                   <span className="font-bold text-amber-900 block text-[11px] mb-0.5">
-                    Level 4 – Strategic (Chiến lược & Tham mưu cho GM):
+                    {language === 'vi' ? 'Level 4 – Strategic (Chiến lược & Tham mưu cho GM):' : 'Level 4 – Strategic:'}
                   </span>
-                  <p className="text-slate-700 font-medium">{selectedCompetency.assessmentCriteria.level4}</p>
+                  <p className="text-slate-700 font-medium">
+                    {language === 'vi'
+                      ? selectedCompetency.assessmentCriteria.level4
+                      : selectedCompetency.assessmentCriteriaEn?.level4 || selectedCompetency.assessmentCriteria.level4}
+                  </p>
                 </div>
               </div>
             </div>
@@ -397,7 +413,12 @@ export const CompetencyFrameworkView: React.FC = () => {
                 {language === 'vi' ? 'Bằng chứng thực tế yêu cầu (Evidence Required)' : 'Evidence Requirements'}
               </h4>
               <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                {selectedCompetency.evidenceRequirements.map((ev, i) => (
+                {(language === 'vi'
+                  ? selectedCompetency.evidenceRequirements
+                  : selectedCompetency.evidenceRequirementsEn?.length
+                  ? selectedCompetency.evidenceRequirementsEn
+                  : selectedCompetency.evidenceRequirements
+                ).map((ev, i) => (
                   <li key={i}>{ev}</li>
                 ))}
               </ul>
@@ -487,7 +508,9 @@ export const CompetencyFrameworkView: React.FC = () => {
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Mã năng lực (Code)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Mã năng lực (Code)' : 'Competency Code'}
+                </label>
                 <input
                   type="text"
                   required
@@ -497,14 +520,18 @@ export const CompetencyFrameworkView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Miền năng lực</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Miền năng lực' : 'Competency Domain'}
+                </label>
                 <select
                   value={editForm.domainId || 'dom_1'}
                   onChange={(e) => setEditForm({ ...editForm, domainId: e.target.value })}
                   className="w-full px-3 py-2 border rounded-lg"
                 >
                   {domains.map((d) => (
-                    <option key={d.id} value={d.id}>{d.code} - {d.nameVi}</option>
+                    <option key={d.id} value={d.id}>
+                      {d.code} - {language === 'vi' ? d.nameVi : d.nameEn}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -512,7 +539,9 @@ export const CompetencyFrameworkView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Tên năng lực (Tiếng Việt)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Tên năng lực (Tiếng Việt)' : 'Competency Name (Vietnamese)'}
+                </label>
                 <input
                   type="text"
                   required
@@ -535,7 +564,9 @@ export const CompetencyFrameworkView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Định nghĩa chi tiết (Tiếng Việt)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  {language === 'vi' ? 'Định nghĩa chi tiết (Tiếng Việt)' : 'Detailed Definition (Vietnamese)'}
+                </label>
                 <textarea
                   rows={2}
                   value={editForm.definitionVi || ''}

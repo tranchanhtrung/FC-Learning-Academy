@@ -65,6 +65,40 @@ import {
   type DuplicateStrategy,
   type ValidationIssue,
 } from './server/importEngine.ts';
+import {
+  SIMULATOR_IMPORT_ORDER_SPEC,
+  TRANSACTIONAL_PROTECTED_COLLECTIONS,
+  detectWorkbookDatasetType,
+  parseAndValidateSimulatorWorkbook,
+  createSimulatorStarterTemplateBuffer,
+  type DatasetType,
+} from './server/simulatorImportEngine.ts';
+import {
+  DEFAULT_HOTEL_PROFILES,
+  DEFAULT_SIMULATOR_SCENARIOS,
+  buildChildSeedsForScenario,
+  computeCapexMetrics,
+  computeFinancialAudit,
+  computeRollingForecastScenario,
+  evaluateDeterministicSimulation,
+  generateDatasetSnapshotForScenario,
+} from './src/lib/simulatorEngine.ts';
+import type {
+  HotelSimulationDatasetSnapshot,
+  ScenarioCompetencyMappingDoc,
+  ScenarioImportErrorDoc,
+  ScenarioImportJobDoc,
+  ScenarioVersionDoc,
+  SimulationAssignmentDoc,
+  SimulationAuditLogDoc,
+  SimulationEvaluationCriterionScore,
+  SimulationEvaluationDoc,
+  SimulationFinancialRecordDoc,
+  SimulationOperationalRecordDoc,
+  SimulationScenarioDoc,
+  SimulationScenarioStatus,
+  SimulatorImportStrategy,
+} from './src/types/index.ts';
 
 dotenv.config();
 
@@ -524,7 +558,15 @@ ${knowledgeBase}`;
 // 2. FC Business Partner Simulator - GM Persona & 5-Criterion Rubric Evaluation
 app.post('/api/gemini/simulator', async (req, res) => {
   try {
-    const { action, scenario, userTurn, conversationHistory = [], language = 'vi' } = req.body;
+    const {
+      action,
+      scenario,
+      userTurn,
+      conversationHistory = [],
+      selectedDecisionOptions = [],
+      learnerAnalysis = '',
+      language = 'vi',
+    } = req.body;
     if (!ai) {
       return res.status(503).json({ error: 'Gemini API Key is not configured on the server.' });
     }
@@ -533,13 +575,28 @@ app.post('/api/gemini/simulator', async (req, res) => {
     }
 
     const knowledgeBase = buildCurriculumKnowledgeBase();
+    const structuredContext = `
+Hotel Profile: ${scenario.hotelProfile ? JSON.stringify(scenario.hotelProfile) : 'Luxury 5-Star Hotel'}
+Financial Dataset (USALI): ${scenario.financials ? JSON.stringify(scenario.financials) : JSON.stringify(scenario.metrics || {})}
+Operational KPIs: ${scenario.operational ? JSON.stringify(scenario.operational) : JSON.stringify(scenario.metrics || {})}
+Business Challenges: ${scenario.challenges ? JSON.stringify(scenario.challenges) : 'None listed'}
+Decision Options Evaluated: ${scenario.decisionOptions ? JSON.stringify(scenario.decisionOptions) : 'Standard options'}
+Learner Selected Decisions: ${JSON.stringify(selectedDecisionOptions)}
+Scenario Evaluation Rubric Weights: ${scenario.rubrics ? JSON.stringify(scenario.rubrics) : 'Equal 20% across 5 executive criteria'}
+Official Reference Analysis (For Grader Grounding Only): ${scenario.referenceAnalysis ? JSON.stringify(scenario.referenceAnalysis) : 'Standard USALI benchmarks'}
+`;
 
     if (action === 'evaluate') {
       const evaluationPrompt = `You are a Senior Corporate VP of Finance and Regional General Manager evaluating a Financial Controller candidate's performance in a live GM-FC crisis briefing.
-Ground your evaluation and course recommendations in the approved FC Learning Academy curriculum:
+CRITICAL SAFETY RULE: Ground every score, USALI variance calculation, financial explanation, and course recommendation strictly in the imported scenario financials, operational KPIs, reference analysis, and approved curriculum below. Cite exact revenue, GOP, ADR, RevPAR, Occupancy, or Flow-Through figures from the scenario. Never invent nonexistent scores or claim the learner completed activities without evidence.
+
 ${knowledgeBase}
 
-Scenario: ${JSON.stringify(scenario)}
+Scenario Summary: ${scenario.title} — ${scenario.context}
+${structuredContext}
+Learner Written Financial Analysis Memo:
+"${learnerAnalysis || '(Not separately submitted)'}"
+
 Conversation between GM and FC Learner:
 ${conversationHistory.map((m: any) => `${m.role === 'gm' ? 'GM' : 'FC Learner'}: ${m.text}`).join('\n')}
 Latest FC Response: "${userTurn || ''}"
@@ -548,7 +605,7 @@ Evaluate strictly on these 5 transparent rubric dimensions (1 to 100 each):
 1. financialAccuracy (USALI accuracy, P&L calculations, GOP/Flow-Through math)
 2. analyticalThinking (Root-cause isolation, departmental variance diagnosis)
 3. commercialUnderstanding (Guest experience balance, OTA vs direct channels, market positioning)
-4. strategicRecommendations (Concrete 30/60/90-day corrective actions, owner ROI)
+4. strategicRecommendations (Concrete 30/60/90-day corrective actions, decision option trade-offs, owner ROI)
 5. communicationQuality (Executive presence, concise GM-ready framing)
 
 Write summaryFeedback, strengths, areasForImprovement, and gmDebrief in ${language === 'vi' ? 'Vietnamese' : 'English'}.`;
@@ -605,19 +662,20 @@ Write summaryFeedback, strengths, areasForImprovement, and gmDebrief in ${langua
       if (!userTurn || !String(userTurn).trim()) {
         return res.status(400).json({ error: 'userTurn is required for simulator chat' });
       }
-      const gmPrompt = `You are Richard Vance, a sharp, demanding 5-star Hotel General Manager at a 420-room luxury resort hotel.
+      const gmPrompt = `You are ${scenario.gmPersona || 'Richard Vance'}, a sharp, demanding 5-star Hotel General Manager.
 You are in a one-on-one executive briefing with your Financial Controller.
 Scenario: ${scenario.title}
 Context: ${scenario.context}
-Metrics: Occupancy ${scenario.metrics?.occupancy || '74%'}, ADR ${scenario.metrics?.adr || '$185'}, RevPAR ${scenario.metrics?.revpar || '$137'}, GOP Margin ${scenario.metrics?.gopMargin || '32%'}, Flow-through ${scenario.metrics?.flowThrough || '45%'}.
+${structuredContext}
 
 Conversation so far:
 ${conversationHistory.map((m: any) => `${m.role === 'gm' ? 'GM (You)' : 'FC (Learner)'}: ${m.text}`).join('\n')}
 
 The FC just said: "${userTurn}"
 
-Respond strictly as Richard Vance (GM):
-- Challenge vague statements with concrete operational questions (Rooms payroll HPOR, F&B CoS, OTA commission, GSS).
+Respond strictly in character as the General Manager:
+- Reference actual USALI revenue/GOP/Occupancy/ADR/RevPAR or operational pressure numbers from the scenario above when probing the FC.
+- Challenge vague statements with concrete operational questions (Rooms payroll HPOR, F&B CoS, OTA commission, GSS, Budget GOP variance).
 - Acknowledge sharp USALI/Flow-Through thinking when demonstrated.
 - Keep your response concise (2-3 focused paragraphs) and end with one probing executive question.
 - Language: ${language === 'vi' ? 'Vietnamese (Tiếng Việt) with executive hospitality terminology' : 'English'}.`;
@@ -1579,27 +1637,107 @@ app.post('/api/idps/generate', (req, res) => {
       return res.status(404).json({ error: 'No assessment found for this learner' });
     }
 
-    const activityMap: Record<string, { courses: string[]; activity: string }> = {
-      'FAR-01': { courses: ['course_01'], activity: 'Làm chủ hạch toán các tài khoản USALI và hoàn thành bài thi HFC-101 đạt trên 85%.' },
-      'FAR-02': { courses: ['course_02'], activity: 'Chủ trì toàn bộ quy trình khóa sổ tháng và xuất báo cáo P&L sơ bộ đúng hạn Day 3.' },
-      'FAR-03': { courses: ['course_02'], activity: 'Hoàn thiện tập hồ sơ Balance Sheet Reconciliation không còn tài khoản treo quá 30 ngày.' },
-      'FAR-04': { courses: ['course_01'], activity: 'Xây dựng ma trận bóc tách doanh thu các gói Package phức tạp (Room + F&B + Spa).' },
-      'FAR-05': { courses: ['course_06'], activity: 'Soạn thảo báo cáo Monthly Financial Critique giải trình biến động chi phí trên 5% gửi GM.' },
-      'FCA-01': { courses: ['course_03'], activity: 'Thực hiện kiểm tra đột xuất quỹ tiền mặt và quy trình thu ngân quầy Lễ tân & F&B.' },
-      'FCA-02': { courses: ['course_03'], activity: 'Rà soát 100% các khoản giảm trừ (Rebates/Allowances) và audit trail hủy hóa đơn POS.' },
-      'FCA-03': { courses: ['course_07'], activity: 'Kiểm toán tỷ lệ hao hụt nguyên liệu F&B và phối hợp Bếp trưởng thực hiện Butcher Test.' },
-      'FCA-04': { courses: ['course_03'], activity: 'Cập nhật ma trận rủi ro gian lận và chuẩn bị hồ sơ kiểm toán nội bộ tập đoàn.' },
-      'FCA-05': { courses: ['course_02'], activity: 'Chủ trì cuộc họp Credit Meeting hàng tuần, duy trì chỉ số DSO dưới 28 ngày.' },
-      'FPM-01': { courses: ['course_05'], activity: 'Tham gia tổ công tác xây dựng Ngân sách năm tiếp theo theo phương pháp zero-based.' },
-      'FPM-02': { courses: ['course_05'], activity: 'Xây dựng mô hình 90-day Rolling Forecast với biên độ sai lệch GOP dưới ±3%.' },
-      'FPM-03': { courses: ['course_05'], activity: 'Lập và theo dõi dự báo dòng tiền 13 tuần trực tiếp bảo đảm thanh khoản vận hành.' },
-      'FPM-04': { courses: ['course_04'], activity: 'Xây dựng mô hình chiết khấu dòng tiền DCF (NPV, IRR) thẩm định dự án đầu tư CAPEX.' },
-      'FPM-05': { courses: ['course_06'], activity: 'Thiết lập ma trận linh hoạt chi phí (Cost Flexing) ứng phó khi công suất phòng sụt giảm.' },
-      'BPA-01': { courses: ['course_06'], activity: 'Phân tích Flow-Through & Flex của từng Outlet và tư vấn giải pháp phục hồi biên GOP.' },
-      'BPA-02': { courses: ['course_07'], activity: 'Phân tích báo cáo STR Index và tính toán Net ADR sau khi trừ hoa hồng kênh OTA.' },
-      'BPA-03': { courses: ['course_06'], activity: 'Tính toán chỉ số năng suất lao động HPOR buồng phòng và kiểm soát giờ làm thêm.' },
-      'LPM-01': { courses: ['course_08'], activity: 'Tổ chức các buổi họp nhóm chia sẻ nghiệp vụ và duy trì gắn kết đội ngũ kế toán.' },
-      'SBP-02': { courses: ['course_09'], activity: 'Tham gia tương tác trực tiếp giải quyết kịch bản khủng hoảng với GM trên Simulator.' },
+    const activityMap: Record<string, { courses: string[]; activity: string; activityEn: string }> = {
+      'FAR-01': {
+        courses: ['course_01'],
+        activity: 'Làm chủ hạch toán các tài khoản USALI và hoàn thành bài thi HFC-101 đạt trên 85%.',
+        activityEn: 'Master USALI departmental chart of accounts mapping and pass the HFC-101 exam with >85%.',
+      },
+      'FAR-02': {
+        courses: ['course_02'],
+        activity: 'Chủ trì toàn bộ quy trình khóa sổ tháng và xuất báo cáo P&L sơ bộ đúng hạn Day 3.',
+        activityEn: 'Lead the end-to-end month-end closing cycle and issue preliminary P&L reports by Day 3.',
+      },
+      'FAR-03': {
+        courses: ['course_02'],
+        activity: 'Hoàn thiện tập hồ sơ Balance Sheet Reconciliation không còn tài khoản treo quá 30 ngày.',
+        activityEn: 'Complete the monthly Balance Sheet Reconciliation binder with zero unreconciled items >30 days.',
+      },
+      'FAR-04': {
+        courses: ['course_01'],
+        activity: 'Xây dựng ma trận bóc tách doanh thu các gói Package phức tạp (Room + F&B + Spa).',
+        activityEn: 'Build an IFRS 15 standalone revenue allocation matrix for bundled hotel packages (Room + F&B + Spa).',
+      },
+      'FAR-05': {
+        courses: ['course_06'],
+        activity: 'Soạn thảo báo cáo Monthly Financial Critique giải trình biến động chi phí trên 5% gửi GM.',
+        activityEn: 'Author the Monthly Financial Critique memo explaining all >5% departmental variances for the GM.',
+      },
+      'FCA-01': {
+        courses: ['course_03'],
+        activity: 'Thực hiện kiểm tra đột xuất quỹ tiền mặt và quy trình thu ngân quầy Lễ tân & F&B.',
+        activityEn: 'Conduct surprise house-bank cash counts and Front Office / F&B cashier audit checks.',
+      },
+      'FCA-02': {
+        courses: ['course_03'],
+        activity: 'Rà soát 100% các khoản giảm trừ (Rebates/Allowances) và audit trail hủy hóa đơn POS.',
+        activityEn: 'Audit 100% of rebates, allowances, and POS void/discount audit trails across outlets.',
+      },
+      'FCA-03': {
+        courses: ['course_07'],
+        activity: 'Kiểm toán tỷ lệ hao hụt nguyên liệu F&B và phối hợp Bếp trưởng thực hiện Butcher Test.',
+        activityEn: 'Audit F&B ingredient yield variances and partner with the Executive Chef on a formal Butcher Test.',
+      },
+      'FCA-04': {
+        courses: ['course_03'],
+        activity: 'Cập nhật ma trận rủi ro gian lận và chuẩn bị hồ sơ kiểm toán nội bộ tập đoàn.',
+        activityEn: 'Update the property fraud-risk matrix and prepare internal audit readiness workpapers.',
+      },
+      'FCA-05': {
+        courses: ['course_02'],
+        activity: 'Chủ trì cuộc họp Credit Meeting hàng tuần, duy trì chỉ số DSO dưới 28 ngày.',
+        activityEn: 'Chair weekly Credit Committee meetings and maintain property DSO below 28 days.',
+      },
+      'FPM-01': {
+        courses: ['course_05'],
+        activity: 'Tham gia tổ công tác xây dựng Ngân sách năm tiếp theo theo phương pháp zero-based.',
+        activityEn: 'Co-lead the annual Zero-Based Budgeting taskforce for upcoming hotel operating schedules.',
+      },
+      'FPM-02': {
+        courses: ['course_05'],
+        activity: 'Xây dựng mô hình 90-day Rolling Forecast với biên độ sai lệch GOP dưới ±3%.',
+        activityEn: 'Build a 90-day Rolling Forecast model achieving under ±3% GOP variance accuracy.',
+      },
+      'FPM-03': {
+        courses: ['course_05'],
+        activity: 'Lập và theo dõi dự báo dòng tiền 13 tuần trực tiếp bảo đảm thanh khoản vận hành.',
+        activityEn: 'Prepare and monitor a 13-week rolling cash-flow forecast to safeguard property liquidity.',
+      },
+      'FPM-04': {
+        courses: ['course_04'],
+        activity: 'Xây dựng mô hình chiết khấu dòng tiền DCF (NPV, IRR) thẩm định dự án đầu tư CAPEX.',
+        activityEn: 'Construct a DCF underwriting model (NPV, IRR, Payback) for property CAPEX evaluation.',
+      },
+      'FPM-05': {
+        courses: ['course_06'],
+        activity: 'Thiết lập ma trận linh hoạt chi phí (Cost Flexing) ứng phó khi công suất phòng sụt giảm.',
+        activityEn: 'Establish a Cost Flexing playbook triggered automatically by occupancy drops.',
+      },
+      'BPA-01': {
+        courses: ['course_06'],
+        activity: 'Phân tích Flow-Through & Flex của từng Outlet và tư vấn giải pháp phục hồi biên GOP.',
+        activityEn: 'Analyze outlet-level Flow-Through & Flex metrics and recommend GOP margin recovery actions.',
+      },
+      'BPA-02': {
+        courses: ['course_07'],
+        activity: 'Phân tích báo cáo STR Index và tính toán Net ADR sau khi trừ hoa hồng kênh OTA.',
+        activityEn: 'Analyze STR benchmarking indices and Net ADR yield after OTA distribution commissions.',
+      },
+      'BPA-03': {
+        courses: ['course_06'],
+        activity: 'Tính toán chỉ số năng suất lao động HPOR buồng phòng và kiểm soát giờ làm thêm.',
+        activityEn: 'Track Housekeeping HPOR labor productivity metrics and tighten overtime controls.',
+      },
+      'LPM-01': {
+        courses: ['course_08'],
+        activity: 'Tổ chức các buổi họp nhóm chia sẻ nghiệp vụ và duy trì gắn kết đội ngũ kế toán.',
+        activityEn: 'Facilitate finance team knowledge-sharing huddles and structured cross-training sessions.',
+      },
+      'SBP-02': {
+        courses: ['course_09'],
+        activity: 'Tham gia tương tác trực tiếp giải quyết kịch bản khủng hoảng với GM trên Simulator.',
+        activityEn: 'Complete interactive crisis-resolution executive roleplay scenarios with the GM on the Simulator.',
+      },
     };
 
     const entries = Object.entries(assessment.scores || {});
@@ -1613,6 +1751,7 @@ app.post('/api/idps/generate', (req, res) => {
       const mapping = activityMap[item.code] || {
         courses: comp?.associatedCourseIds?.length ? comp.associatedCourseIds : ['course_01'],
         activity: `Kèm cặp chuyên môn 1-1 và hoàn thành bài tập thực hành liên quan đến năng lực ${comp?.nameVi || item.code}.`,
+        activityEn: `Complete 1-on-1 coaching and practical OJT deliverables aligned with ${comp?.nameEn || item.code}.`,
       };
 
       return {
@@ -1622,8 +1761,10 @@ app.post('/api/idps/generate', (req, res) => {
         targetDate: new Date(Date.now() + (idx + 1) * 35 * 86400000).toISOString().split('T')[0],
         recommendedCourseIds: mapping.courses,
         practicalActivity: mapping.activity,
+        practicalActivityEn: mapping.activityEn,
         status: 'Not Started' as const,
         mentorNotes: `Khoảng trống năng lực hiện tại: ${item.gap} cấp độ. Cần ưu tiên bồi dưỡng.`,
+        mentorNotesEn: `Current competency gap: ${item.gap} level(s). Priority development required.`,
       };
     });
 
@@ -1637,6 +1778,7 @@ app.post('/api/idps/generate', (req, res) => {
       approvedBy: approvedBy || 'David Tran, Cluster FC',
       approvedDate: new Date().toISOString().split('T')[0],
       overallGoal: `Kế hoạch hành động cá nhân thu hẹp ${generatedItems.length} khoảng trống năng lực để đạt chuẩn bổ nhiệm ${targetPosition || 'AFC'}.`,
+      overallGoalEn: `Individual action plan to close ${generatedItems.length} competency gaps for ${targetPosition || 'AFC'} readiness.`,
       items: generatedItems,
     };
 
@@ -1693,6 +1835,267 @@ function decodeBase64Workbook(rawBase64: string): Buffer {
   return Buffer.from(cleaned, 'base64');
 }
 
+function getSimulatorStorePath() {
+  return path.join(DATA_DIR, 'firestore-simulator-demo.json');
+}
+
+interface SimulatorLocalStore {
+  collections: Record<string, Record<string, Record<string, any>>>;
+  sessions: Record<string, any>[];
+  datasets: Record<string, HotelSimulationDatasetSnapshot>;
+  evaluations: SimulationEvaluationDoc[];
+  assignments: SimulationAssignmentDoc[];
+  auditLogs: SimulationAuditLogDoc[];
+  importJobs: ScenarioImportJobDoc[];
+  importErrors: ScenarioImportErrorDoc[];
+  scenarioVersions: ScenarioVersionDoc[];
+  competencyMappings: Record<string, ScenarioCompetencyMappingDoc>;
+  pendingJobPayloads?: Record<string, { fileBase64: string; fileName: string; duplicateStrategy: SimulatorImportStrategy; competencyIdMap?: Record<string, string>; financialTolerance?: number; batchSize?: number; defaultImportedStatus?: SimulationScenarioStatus }>;
+}
+
+function isScenarioLearnerAccessible(s: any): boolean {
+  return s?.status === 'Published' && s?.isActive !== false;
+}
+
+function rebuildDatasetForScenario(store: SimulatorLocalStore, scn: SimulationScenarioDoc): HotelSimulationDatasetSnapshot {
+  const hp = store.collections.hotelSimulationProfiles?.[scn.hotelId] as any;
+  const finRows = Object.values(store.collections.simulationFinancialData || {}).filter(
+    (r: any) => r.scenarioId === scn.id
+  ) as SimulationFinancialRecordDoc[];
+  const opsRows = Object.values(store.collections.simulationOperationalData || {}).filter(
+    (r: any) => r.scenarioId === scn.id
+  ) as SimulationOperationalRecordDoc[];
+  const ds = generateDatasetSnapshotForScenario(scn, hp, undefined, finRows, opsRows);
+  store.datasets[scn.id] = ds;
+  return ds;
+}
+
+function appendScenarioVersionEntry(
+  store: SimulatorLocalStore,
+  scn: SimulationScenarioDoc,
+  actor: User,
+  changeSummary: string,
+  importJobId?: string
+): ScenarioVersionDoc {
+  const sid = scn.id;
+  const finRows = Object.values(store.collections.simulationFinancialData || {}).filter((r: any) => r.scenarioId === sid);
+  const taskRows = Object.values(store.collections.simulationTasks || {}).filter((r: any) => r.scenarioId === sid);
+  const rubRows = Object.values(store.collections.simulationEvaluationRubrics || {}).filter((r: any) => r.scenarioId === sid);
+  const ds = store.datasets[sid];
+  const entry: ScenarioVersionDoc = {
+    id: `scnver_${sid}_v${scn.versionNumber || 1}_${Date.now()}`,
+    scenarioId: sid,
+    scenarioCode: scn.scenarioCode,
+    versionNumber: Number(scn.versionNumber || 1),
+    datasetVersion: scn.datasetVersion || `2026.v${scn.versionNumber || 1}`,
+    status: scn.status,
+    isActive: scn.isActive ?? scn.status === 'Published',
+    changeSummary,
+    importJobId,
+    snapshotSummary: {
+      titleEn: scn.titleEn,
+      titleVi: scn.titleVi,
+      hotelId: scn.hotelId,
+      difficultyLevel: scn.difficultyLevel,
+      competencyIds: scn.competencyIds || [],
+      totalRevenueActual: ds?.periods?.actual?.totalOperatingRevenue,
+      gopActual: ds?.periods?.actual?.gop,
+      gopMarginPctActual: ds?.periods?.actual?.gopMarginPct,
+      tasksCount: taskRows.length,
+      rubricsCount: rubRows.length,
+      financialRowCount: finRows.length,
+    },
+    createdBy: actor.name,
+    createdAt: new Date().toISOString(),
+  };
+  store.scenarioVersions.unshift(entry);
+  if (store.scenarioVersions.length > 500) {
+    store.scenarioVersions = store.scenarioVersions.slice(0, 500);
+  }
+  return entry;
+}
+
+function ensureSimulatorBuiltinSeeds(store: SimulatorLocalStore): SimulatorLocalStore {
+  if (!store.collections.hotelSimulationProfiles) {
+    store.collections.hotelSimulationProfiles = {};
+  }
+  for (const hp of DEFAULT_HOTEL_PROFILES) {
+    if (!store.collections.hotelSimulationProfiles[hp.id]) {
+      store.collections.hotelSimulationProfiles[hp.id] = hp;
+    }
+  }
+
+  if (!store.collections.simulationScenarios) {
+    store.collections.simulationScenarios = {};
+  }
+  const ensureBucket = (name: string) => {
+    if (!store.collections[name]) store.collections[name] = {};
+    return store.collections[name];
+  };
+
+  for (const scn of DEFAULT_SIMULATOR_SCENARIOS) {
+    if (!store.collections.simulationScenarios[scn.id]) {
+      store.collections.simulationScenarios[scn.id] = {
+        ...scn,
+        isActive: scn.status === 'Published',
+        versionNumber: scn.versionNumber || 1,
+      };
+    }
+    const existingScn = store.collections.simulationScenarios[scn.id] as SimulationScenarioDoc;
+    if (existingScn.isActive === undefined) {
+      existingScn.isActive = existingScn.status === 'Published';
+    }
+    if (!existingScn.versionNumber) {
+      existingScn.versionNumber = 1;
+    }
+    const childSeed = buildChildSeedsForScenario(existingScn);
+    const chgMap = ensureBucket('simulationBusinessChallenges');
+    const tskMap = ensureBucket('simulationTasks');
+    const optMap = ensureBucket('simulationDecisionOptions');
+    const rpMap = ensureBucket('simulationRoleplayPrompts');
+    const rubMap = ensureBucket('simulationEvaluationRubrics');
+    const cmpMap = ensureBucket('simulationCompetencyMappings');
+    const refMap = ensureBucket('simulationReferenceAnalysis');
+    const finMap = ensureBucket('simulationFinancialData');
+    const opsMap = ensureBucket('simulationOperationalData');
+
+    const hasScenarioRecords = (m: Record<string, any>) =>
+      Object.values(m).some((r: any) => r.scenarioId === scn.id);
+
+    if (!hasScenarioRecords(chgMap)) childSeed.challenges.forEach((r) => (chgMap[r.id] = r));
+    if (!hasScenarioRecords(tskMap)) childSeed.tasks.forEach((r) => (tskMap[r.id] = r));
+    if (!hasScenarioRecords(optMap)) childSeed.decisionOptions.forEach((r) => (optMap[r.id] = r));
+    if (!hasScenarioRecords(rpMap)) childSeed.roleplayPrompts.forEach((r) => (rpMap[r.id] = r));
+    if (!hasScenarioRecords(rubMap)) childSeed.rubrics.forEach((r) => (rubMap[r.id] = r));
+    if (!hasScenarioRecords(cmpMap)) childSeed.competencyMappings.forEach((r) => (cmpMap[r.id] = r));
+    if (!hasScenarioRecords(refMap)) childSeed.referenceAnalysis.forEach((r) => (refMap[r.id] = r));
+    if (!hasScenarioRecords(finMap)) childSeed.financialData.forEach((r) => (finMap[r.id] = r));
+    if (!hasScenarioRecords(opsMap)) childSeed.operationalData.forEach((r) => (opsMap[r.id] = r));
+  }
+
+  // Ensure every scenario has a deterministic versioned dataset snapshot
+  const allScenarios = Object.values(store.collections.simulationScenarios) as SimulationScenarioDoc[];
+  for (const scn of allScenarios) {
+    if (!store.datasets[scn.id]) {
+      rebuildDatasetForScenario(store, scn);
+    }
+  }
+
+  // Ensure initial version records exist
+  if (store.scenarioVersions.length === 0) {
+    for (const scn of allScenarios) {
+      store.scenarioVersions.push({
+        id: `scnver_${scn.id}_v${scn.versionNumber || 1}_seed`,
+        scenarioId: scn.id,
+        scenarioCode: scn.scenarioCode,
+        versionNumber: scn.versionNumber || 1,
+        datasetVersion: scn.datasetVersion || '2026.v1',
+        status: scn.status,
+        isActive: scn.isActive ?? scn.status === 'Published',
+        changeSummary: 'Initial core simulator release',
+        snapshotSummary: {
+          titleEn: scn.titleEn,
+          titleVi: scn.titleVi,
+          hotelId: scn.hotelId,
+          difficultyLevel: scn.difficultyLevel,
+          competencyIds: scn.competencyIds || [],
+          totalRevenueActual: store.datasets[scn.id]?.periods?.actual?.totalOperatingRevenue,
+          gopActual: store.datasets[scn.id]?.periods?.actual?.gop,
+          gopMarginPctActual: store.datasets[scn.id]?.periods?.actual?.gopMarginPct,
+        },
+        createdBy: 'Academic Committee',
+        createdAt: scn.publishedAt || scn.importedAt || '2026-01-15T00:00:00.000Z',
+      });
+    }
+  }
+
+  // Seed starter assignments if empty
+  if (store.assignments.length === 0) {
+    store.assignments.push(
+      {
+        id: 'sim_asgn_seed_1',
+        scenarioId: 'sim_scn_01',
+        learnerId: 'user_learner1',
+        assignedById: 'user_fc1',
+        assignedByName: 'David Tran (Cluster FC)',
+        dueDate: '2026-06-30',
+        mandatory: true,
+        note: 'Complete Monthly GOP Diagnostic before Q2 Executive Review.',
+        status: 'assigned',
+        assignedAt: '2026-04-01T09:00:00.000Z',
+      },
+      {
+        id: 'sim_asgn_seed_2',
+        scenarioId: 'sim_scn_02',
+        learnerId: 'user_learner2',
+        assignedById: 'user_lnd',
+        assignedByName: 'Sophia Nguyen (L&D Manager)',
+        dueDate: '2026-07-15',
+        mandatory: true,
+        note: 'Model Base/Upside/Downside Q2 rolling forecast prior to FC committee.',
+        status: 'assigned',
+        assignedAt: '2026-04-02T09:00:00.000Z',
+      }
+    );
+  }
+
+  return store;
+}
+
+function loadSimulatorLocalStore(): SimulatorLocalStore {
+  const empty: Record<string, Record<string, Record<string, any>>> = {};
+  for (const s of SIMULATOR_IMPORT_ORDER_SPEC) {
+    empty[s.collectionName] = {};
+  }
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const p = getSimulatorStorePath();
+    if (fs.existsSync(p)) {
+      const parsed = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      const store: SimulatorLocalStore = {
+        collections: { ...empty, ...(parsed.collections || {}) },
+        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+        datasets: parsed.datasets && typeof parsed.datasets === 'object' ? parsed.datasets : {},
+        evaluations: Array.isArray(parsed.evaluations) ? parsed.evaluations : [],
+        assignments: Array.isArray(parsed.assignments) ? parsed.assignments : [],
+        auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
+        importJobs: Array.isArray(parsed.importJobs) ? parsed.importJobs : [],
+        importErrors: Array.isArray(parsed.importErrors) ? parsed.importErrors : [],
+        scenarioVersions: Array.isArray(parsed.scenarioVersions) ? parsed.scenarioVersions : [],
+        competencyMappings:
+          parsed.competencyMappings && typeof parsed.competencyMappings === 'object'
+            ? parsed.competencyMappings
+            : {},
+        pendingJobPayloads:
+          parsed.pendingJobPayloads && typeof parsed.pendingJobPayloads === 'object'
+            ? parsed.pendingJobPayloads
+            : {},
+      };
+      return ensureSimulatorBuiltinSeeds(store);
+    }
+  } catch (err) {
+    console.warn('Could not read simulator local store:', err);
+  }
+  return ensureSimulatorBuiltinSeeds({
+    collections: empty,
+    sessions: [],
+    datasets: {},
+    evaluations: [],
+    assignments: [],
+    auditLogs: [],
+    importJobs: [],
+    importErrors: [],
+    scenarioVersions: [],
+    competencyMappings: {},
+    pendingJobPayloads: {},
+  });
+}
+
+function saveSimulatorLocalStore(store: SimulatorLocalStore): void {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(getSimulatorStorePath(), JSON.stringify(store, null, 2), 'utf-8');
+}
+
 app.get('/api/import/status', async (req, res) => {
   const actor = requireImportAdmin(req, res);
   if (!actor) return;
@@ -1700,16 +2103,22 @@ app.get('/api/import/status', async (req, res) => {
   const firebaseConfig = loadFirebaseConfigJson();
   const adminStatus = await getAuthorizedAdminFirestore();
   const demoStore = loadDemoCurriculumStore();
+  const simStore = loadSimulatorLocalStore();
 
   const demoCounts: Record<string, number> = {};
   for (const spec of IMPORT_ORDER_SPEC) {
     demoCounts[spec.collectionName] = Object.keys(demoStore.collections[spec.collectionName] || {}).length;
   }
 
+  const simulatorCounts: Record<string, number> = {};
+  for (const spec of SIMULATOR_IMPORT_ORDER_SPEC) {
+    simulatorCounts[spec.collectionName] = Object.keys(simStore.collections[spec.collectionName] || {}).length;
+  }
+
   let adminCounts: Record<string, number> | null = null;
   if (adminStatus.available && adminStatus.db) {
     adminCounts = {};
-    for (const spec of IMPORT_ORDER_SPEC) {
+    for (const spec of [...IMPORT_ORDER_SPEC, ...SIMULATOR_IMPORT_ORDER_SPEC]) {
       const snap = await adminStatus.db.collection(spec.collectionName).get();
       adminCounts[spec.collectionName] = snap.size;
     }
@@ -1721,7 +2130,9 @@ app.get('/api/import/status', async (req, res) => {
     adminSdkAvailable: adminStatus.available,
     adminSdkReason: adminStatus.reason,
     importOrderSpec: IMPORT_ORDER_SPEC,
+    simulatorImportOrderSpec: SIMULATOR_IMPORT_ORDER_SPEC,
     demoCounts,
+    simulatorCounts,
     adminCounts,
     recentDemoLogs: demoStore.importLogs.slice(0, 15),
   });
@@ -1730,6 +2141,20 @@ app.get('/api/import/status', async (req, res) => {
 app.get('/api/import/template', (req, res) => {
   const actor = requireImportAdmin(req, res);
   if (!actor) return;
+
+  const dataset = String(req.query.dataset || 'academy');
+  if (dataset === 'simulator') {
+    const buffer = createSimulatorStarterTemplateBuffer();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="FC_Business_Partner_Simulator_Starter_Dataset.xlsx"'
+    );
+    return res.send(buffer);
+  }
 
   const buffer = create2027TemplateBuffer();
   res.setHeader(
@@ -1749,10 +2174,18 @@ app.post('/api/import/parse-validate', async (req, res) => {
 
   try {
     const {
+      datasetType = 'auto',
       fileName = 'FC_Learning_Academy_Training_Dataset_2027.xlsx',
       fileBase64,
       selectedSheets,
       existingIdsByCollection,
+      existingCodeToIdByCollection,
+      existingCompetencyIds,
+      competencyIdMap = {},
+      financialTolerance = 0.02,
+      defaultImportedStatus = 'Validated',
+      columnMappingsBySheet,
+      editedRowsBySheet,
       targetMode = 'auto',
     } = req.body || {};
 
@@ -1761,8 +2194,70 @@ app.post('/api/import/parse-validate', async (req, res) => {
     }
 
     const buffer = decodeBase64Workbook(fileBase64);
-    const sheetDetection = detectWorkbookSheets(buffer);
+    const detectedMeta = detectWorkbookDatasetType(buffer);
+    const resolvedDatasetType: DatasetType =
+      datasetType === 'simulator_starter' || datasetType === 'academy_2027'
+        ? datasetType
+        : detectedMeta.datasetType;
 
+    if (resolvedDatasetType === 'simulator_starter') {
+      const simStore = loadSimulatorLocalStore();
+      const demoCurr = loadDemoCurriculumStore();
+      const resolvedExisting: Record<string, string[]> = existingIdsByCollection || {};
+      if (!existingIdsByCollection) {
+        for (const spec of SIMULATOR_IMPORT_ORDER_SPEC) {
+          resolvedExisting[spec.collectionName] = Object.keys(simStore.collections[spec.collectionName] || {});
+        }
+      }
+      const extraCompCodes = existingCodeToIdByCollection?.competencies
+        ? Object.keys(existingCodeToIdByCollection.competencies)
+        : [];
+      const importedCompIds = Array.isArray(existingCompetencyIds)
+        ? [...existingCompetencyIds, ...extraCompCodes]
+        : Object.keys(demoCurr.collections.competencies || {});
+
+      // Merge persisted competency mappings with any newly supplied mappings in request
+      const persistedMap: Record<string, string> = {};
+      Object.values(simStore.competencyMappings || {}).forEach((m) => {
+        persistedMap[m.workbookCompetencyId] = m.lmsCompetencyId;
+      });
+      const mergedCompetencyMap: Record<string, string> = {
+        ...persistedMap,
+        ...(competencyIdMap && typeof competencyIdMap === 'object' ? competencyIdMap : {}),
+      };
+
+      const validation = parseAndValidateSimulatorWorkbook({
+        buffer,
+        fileName: String(fileName),
+        selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
+        existingIdsByCollection: resolvedExisting,
+        existingCompetencyIds: importedCompIds,
+        existingCompetenciesList: db.competencies.map((c) => ({
+          id: c.id,
+          code: c.code,
+          nameEn: c.nameEn,
+          nameVi: c.nameVi,
+        })),
+        competencyIdMap: mergedCompetencyMap,
+        financialTolerance: Number(financialTolerance) >= 0 ? Number(financialTolerance) : 0.02,
+        defaultImportedStatus:
+          ['Draft', 'Validated', 'Published'].includes(defaultImportedStatus)
+            ? defaultImportedStatus
+            : 'Validated',
+        columnMappingsBySheet,
+        editedRowsBySheet,
+      });
+
+      return res.json({
+        success: true,
+        datasetType: 'simulator_starter',
+        sheetDetection: detectedMeta,
+        validation,
+        savedCompetencyMappings: mergedCompetencyMap,
+      });
+    }
+
+    const sheetDetection = detectWorkbookSheets(buffer);
     let resolvedExistingIds: Record<string, string[]> = existingIdsByCollection || {};
     if (!existingIdsByCollection) {
       const adminStatus = targetMode === 'demo_local' ? null : await getAuthorizedAdminFirestore();
@@ -1783,10 +2278,14 @@ app.post('/api/import/parse-validate', async (req, res) => {
       fileName: String(fileName),
       selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
       existingIdsByCollection: resolvedExistingIds,
+      existingCodeToIdByCollection,
+      columnMappingsBySheet,
+      editedRowsBySheet,
     });
 
     return res.json({
       success: true,
+      datasetType: 'academy_2027',
       sheetDetection,
       validation,
     });
@@ -1798,6 +2297,521 @@ app.post('/api/import/parse-validate', async (req, res) => {
   }
 });
 
+async function executeSimulatorImportPipeline(params: {
+  actor: User;
+  fileName: string;
+  fileBase64: string;
+  selectedSheets?: string[];
+  duplicateStrategy: SimulatorImportStrategy;
+  mode: string;
+  allowPartialOnErrors: boolean;
+  competencyIdMap?: Record<string, string>;
+  financialTolerance?: number;
+  defaultImportedStatus?: SimulationScenarioStatus;
+  batchSize?: number;
+  columnMappingsBySheet?: Record<string, Record<string, string>>;
+  editedRowsBySheet?: Record<string, Array<{ rowNumber: number; data: Record<string, any> }>>;
+  simulateInterruptAfterChunk?: number;
+  resumeJob?: ScenarioImportJobDoc;
+}) {
+  const {
+    actor,
+    fileName,
+    fileBase64,
+    selectedSheets,
+    duplicateStrategy,
+    mode,
+    allowPartialOnErrors,
+    competencyIdMap = {},
+    financialTolerance = 0.02,
+    defaultImportedStatus = 'Validated',
+    batchSize = 25,
+    columnMappingsBySheet,
+    editedRowsBySheet,
+    simulateInterruptAfterChunk,
+    resumeJob,
+  } = params;
+
+  const startedAt = resumeJob?.startedAt || new Date().toISOString();
+  const buffer = decodeBase64Workbook(fileBase64);
+  const adminStatus = await getAuthorizedAdminFirestore();
+  const useFirebaseAdmin =
+    mode === 'firebase_admin' || (mode === 'auto' && adminStatus.available && !!adminStatus.db);
+
+  if (mode === 'firebase_admin' && (!adminStatus.available || !adminStatus.db)) {
+    return { status: 400, body: { error: `Firebase Admin SDK unavailable: ${adminStatus.reason}`, adminSdkAvailable: false } };
+  }
+  if (mode === 'auto' && !useFirebaseAdmin) {
+    return {
+      status: 422,
+      body: {
+        error: 'Server Firebase Admin credentials are not configured; commit via authenticated Firebase Google Auth client or choose Demo Local Mode.',
+        adminSdkAvailable: false,
+        reason: adminStatus.reason,
+      },
+    };
+  }
+
+  const simStore = loadSimulatorLocalStore();
+  const demoStore = loadDemoCurriculumStore();
+  const existingIdsByCollection: Record<string, string[]> = {};
+
+  if (useFirebaseAdmin && adminStatus.db) {
+    for (const spec of SIMULATOR_IMPORT_ORDER_SPEC) {
+      const snap = await adminStatus.db.collection(spec.collectionName).select().get();
+      existingIdsByCollection[spec.collectionName] = snap.docs.map((d) => d.id);
+    }
+  } else {
+    for (const spec of SIMULATOR_IMPORT_ORDER_SPEC) {
+      existingIdsByCollection[spec.collectionName] = Object.keys(simStore.collections[spec.collectionName] || {});
+    }
+  }
+
+  const persistedMap: Record<string, string> = {};
+  Object.values(simStore.competencyMappings || {}).forEach((m) => {
+    persistedMap[m.workbookCompetencyId] = m.lmsCompetencyId;
+  });
+  const mergedCompetencyMap = { ...persistedMap, ...competencyIdMap };
+
+  const validation = parseAndValidateSimulatorWorkbook({
+    buffer,
+    fileName,
+    selectedSheets,
+    existingIdsByCollection,
+    existingCompetencyIds: Object.keys(demoStore.collections.competencies || {}),
+    existingCompetenciesList: db.competencies.map((c) => ({
+      id: c.id,
+      code: c.code,
+      nameEn: c.nameEn,
+      nameVi: c.nameVi,
+    })),
+    competencyIdMap: mergedCompetencyMap,
+    financialTolerance: Number(financialTolerance) >= 0 ? Number(financialTolerance) : 0.02,
+    defaultImportedStatus,
+    columnMappingsBySheet,
+    editedRowsBySheet,
+  });
+
+  if (validation.errorCount > 0 && !allowPartialOnErrors) {
+    return {
+      status: 400,
+      body: {
+        error: `Workbook contains ${validation.errorCount} validation error(s) across ${validation.invalidRecords} row(s). Resolve errors or map unmatched competencies before importing.`,
+        validation,
+      },
+    };
+  }
+
+  const jobId = resumeJob?.id || `simjob_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const effectiveStrategy = duplicateStrategy === 'insert_new' ? 'skip' : duplicateStrategy;
+  let createdCount = resumeJob?.createdCount || 0;
+  let updatedCount = resumeJob?.updatedCount || 0;
+  let skippedCount = resumeJob?.skippedCount || 0;
+  let failedCount = resumeJob ? resumeJob.failedCount : validation.invalidRecords;
+  const runtimeFailures: ValidationIssue[] = [...validation.errors];
+  const jobErrorDocs: ScenarioImportErrorDoc[] = [];
+  const executionSheetResults: Array<{
+    sheetName: string;
+    collectionName: string;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+  }> = [];
+
+  const affectedScenarioIds = new Set<string>();
+  const skippedScenarioIds = new Set<string>();
+  const chunkLimit = Math.max(5, Math.min(350, Number(batchSize) || 25));
+  let totalChunksExecuted = 0;
+  let interrupted = false;
+  let checkpointSpecIdx = resumeJob?.checkpointSpecIdx || 0;
+  let resumeBatchIdx = resumeJob?.checkpointBatchIdx || 0;
+
+  for (let sIdx = checkpointSpecIdx; sIdx < SIMULATOR_IMPORT_ORDER_SPEC.length; sIdx++) {
+    const spec = SIMULATOR_IMPORT_ORDER_SPEC[sIdx];
+    const records: Record<string, any>[] = (validation.sanitizedByCollection[spec.collectionName] || []).map(
+      (r: Record<string, any>) =>
+        spec.collectionName === 'simulationScenarios'
+          ? {
+              ...r,
+              sourceImportJobId: jobId,
+              importBatchId: jobId,
+            }
+          : { ...r, importBatchId: jobId }
+    );
+    const summaryRow = validation.sheetSummaries.find((s) => s.sheetName === spec.sheetName);
+    if (!summaryRow) continue;
+
+    let sheetCreated = 0;
+    let sheetUpdated = 0;
+    let sheetSkipped = 0;
+    let sheetFailed = summaryRow.invalidRows;
+
+    const existingSet = new Set(existingIdsByCollection[spec.collectionName] || []);
+    const incomingIdsForSheet = new Set(records.map((r) => String(r.id)));
+    const incomingScenIdsForChildSheet = new Set(
+      records.map((r) => String(r.scenarioId || '')).filter(Boolean)
+    );
+    const toWrite: Array<{ record: Record<string, any>; mode: 'create' | 'update' }> = [];
+
+    // Under UPDATE strategy on child collections, clear stale docs from older ID formats for updated scenarios
+    if (effectiveStrategy === 'update' && spec.collectionName !== 'hotelSimulationProfiles' && spec.collectionName !== 'simulationScenarios') {
+      const bucket = simStore.collections[spec.collectionName] || {};
+      for (const [docKey, docVal] of Object.entries(bucket)) {
+        const scId = String((docVal as any)?.scenarioId || '');
+        if (scId && incomingScenIdsForChildSheet.has(scId) && !incomingIdsForSheet.has(docKey)) {
+          delete bucket[docKey];
+        }
+      }
+    }
+
+    for (const rec of records) {
+      const recId = String(rec.id);
+      if (rec.scenarioId) affectedScenarioIds.add(String(rec.scenarioId));
+      if (spec.collectionName === 'simulationScenarios') affectedScenarioIds.add(recId);
+
+      // If parent scenario was skipped under 'skip', skip its incoming child rows when scenario already has data
+      if (
+        effectiveStrategy === 'skip' &&
+        spec.collectionName !== 'hotelSimulationProfiles' &&
+        spec.collectionName !== 'simulationScenarios' &&
+        rec.scenarioId &&
+        skippedScenarioIds.has(String(rec.scenarioId))
+      ) {
+        sheetSkipped++;
+        skippedCount++;
+        continue;
+      }
+
+      if (existingSet.has(recId)) {
+        if (effectiveStrategy === 'skip') {
+          if (spec.collectionName === 'simulationScenarios') {
+            skippedScenarioIds.add(recId);
+          }
+          sheetSkipped++;
+          skippedCount++;
+        } else if (effectiveStrategy === 'reject') {
+          sheetFailed++;
+          failedCount++;
+          const issue: ValidationIssue = {
+            sheet: spec.sheetName,
+            collection: spec.collectionName,
+            row: 0,
+            field: 'id',
+            recordId: recId,
+            severity: 'error',
+            reason: `Duplicate ID "${recId}" already exists (rejected by policy).`,
+          };
+          runtimeFailures.push(issue);
+        } else {
+          // 'update': preserve transactional fields cleanly on Scenario_Master updates
+          if (spec.collectionName === 'simulationScenarios' && simStore.collections.simulationScenarios[recId]) {
+            const prev = simStore.collections.simulationScenarios[recId];
+            rec.versionNumber = Number(prev.versionNumber || 1) + 1;
+            rec.publishedBy = prev.publishedBy;
+            rec.publishedAt = prev.publishedAt;
+            rec.status = prev.status === 'Published' ? 'Published' : rec.status;
+            rec.isActive = prev.status === 'Published' ? prev.isActive ?? true : false;
+          }
+          toWrite.push({ record: rec, mode: 'update' });
+        }
+      } else {
+        toWrite.push({ record: rec, mode: 'create' });
+      }
+    }
+
+    const startChunk = sIdx === checkpointSpecIdx ? resumeBatchIdx : 0;
+    for (let i = startChunk * chunkLimit, batchNo = startChunk; i < toWrite.length; i += chunkLimit, batchNo++) {
+      if (simulateInterruptAfterChunk !== undefined && totalChunksExecuted >= simulateInterruptAfterChunk) {
+        interrupted = true;
+        checkpointSpecIdx = sIdx;
+        resumeBatchIdx = batchNo;
+        break;
+      }
+
+      const chunk = toWrite.slice(i, i + chunkLimit);
+      if (useFirebaseAdmin && adminStatus.db) {
+        const batch = adminStatus.db.batch();
+        for (const item of chunk) {
+          const ref = adminStatus.db.collection(spec.collectionName).doc(String(item.record.id));
+          batch.set(ref, item.record);
+        }
+        try {
+          await batch.commit();
+          for (const item of chunk) {
+            if (item.mode === 'update') {
+              sheetUpdated++;
+              updatedCount++;
+            } else {
+              sheetCreated++;
+              createdCount++;
+            }
+          }
+        } catch {
+          for (const item of chunk) {
+            try {
+              await adminStatus.db.collection(spec.collectionName).doc(String(item.record.id)).set(item.record);
+              if (item.mode === 'update') {
+                sheetUpdated++;
+                updatedCount++;
+              } else {
+                sheetCreated++;
+                createdCount++;
+              }
+            } catch (rowErr: any) {
+              sheetFailed++;
+              failedCount++;
+              runtimeFailures.push({
+                sheet: spec.sheetName,
+                collection: spec.collectionName,
+                row: 0,
+                field: 'write',
+                recordId: String(item.record.id),
+                severity: 'error',
+                reason: rowErr?.message || 'Firestore write failed.',
+              });
+            }
+          }
+        }
+      }
+
+      // Always mirror into local store as fast cache & fallback
+      if (!simStore.collections[spec.collectionName]) {
+        simStore.collections[spec.collectionName] = {};
+      }
+      for (const item of chunk) {
+        simStore.collections[spec.collectionName][String(item.record.id)] = item.record;
+        if (!useFirebaseAdmin) {
+          if (item.mode === 'update') {
+            sheetUpdated++;
+            updatedCount++;
+          } else {
+            sheetCreated++;
+            createdCount++;
+          }
+        }
+      }
+
+      totalChunksExecuted++;
+    }
+
+    executionSheetResults.push({
+      sheetName: spec.sheetName,
+      collectionName: spec.collectionName,
+      created: sheetCreated,
+      updated: sheetUpdated,
+      skipped: sheetSkipped,
+      failed: sheetFailed,
+    });
+
+    if (interrupted) break;
+  }
+
+  // Hydrate datasets & version history for imported scenarios
+  for (const sid of affectedScenarioIds) {
+    const scn = simStore.collections.simulationScenarios?.[sid] as SimulationScenarioDoc | undefined;
+    if (scn) {
+      rebuildDatasetForScenario(simStore, scn);
+      if (!interrupted) {
+        appendScenarioVersionEntry(
+          simStore,
+          scn,
+          actor,
+          `Excel import (${duplicateStrategy}) from ${fileName}`,
+          jobId
+        );
+      }
+    }
+  }
+
+  // Build ScenarioImportErrorDoc list
+  runtimeFailures.forEach((err, idx) => {
+    jobErrorDocs.push({
+      id: `${jobId}_err_${idx + 1}`,
+      jobId,
+      sheetName: err.sheet,
+      collectionName: err.collection,
+      rowNumber: err.row,
+      field: err.field,
+      recordId: err.recordId,
+      scenarioId: err.scenarioId,
+      severity: err.severity === 'warning' ? 'warning' : 'error',
+      message: err.reason,
+      createdAt: new Date().toISOString(),
+    });
+  });
+
+  const completedAt = new Date().toISOString();
+  const jobDoc: ScenarioImportJobDoc = {
+    id: jobId,
+    fileName,
+    strategy: duplicateStrategy,
+    status: interrupted
+      ? 'interrupted'
+      : failedCount > 0
+      ? createdCount + updatedCount > 0
+        ? 'partial_failure'
+        : 'failed'
+      : 'completed',
+    totalRows: validation.totalRowsDetected,
+    validRows: validation.validRecords,
+    errorCount: runtimeFailures.length,
+    warningCount: validation.warningCount,
+    createdCount,
+    updatedCount,
+    skippedCount,
+    failedCount,
+    scenarioIdsAffected: Array.from(affectedScenarioIds),
+    checkpointSpecIdx: interrupted ? checkpointSpecIdx : SIMULATOR_IMPORT_ORDER_SPEC.length,
+    checkpointBatchIdx: interrupted ? resumeBatchIdx : 0,
+    startedAt,
+    completedAt: interrupted ? undefined : completedAt,
+    updatedAt: completedAt,
+    performedById: actor.id,
+    performedByName: actor.name,
+    performedByEmail: actor.email,
+    mode: useFirebaseAdmin ? 'firebase_admin' : 'demo_local',
+  };
+
+  const existingJobIdx = simStore.importJobs.findIndex((j) => j.id === jobId);
+  if (existingJobIdx >= 0) {
+    simStore.importJobs[existingJobIdx] = jobDoc;
+  } else {
+    simStore.importJobs.unshift(jobDoc);
+  }
+  simStore.importJobs = simStore.importJobs.slice(0, 50);
+
+  // Store error records
+  simStore.importErrors = [
+    ...jobErrorDocs,
+    ...simStore.importErrors.filter((e) => e.jobId !== jobId),
+  ].slice(0, 500);
+
+  // Store resumable payload if interrupted or partial failure
+  if (!simStore.pendingJobPayloads) simStore.pendingJobPayloads = {};
+  if (interrupted) {
+    simStore.pendingJobPayloads[jobId] = {
+      fileBase64,
+      fileName,
+      duplicateStrategy,
+      competencyIdMap: mergedCompetencyMap,
+      financialTolerance,
+      batchSize,
+      defaultImportedStatus,
+    };
+  } else {
+    delete simStore.pendingJobPayloads[jobId];
+  }
+
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: interrupted ? 'IMPORT_INTERRUPTED' : 'IMPORT_SCENARIOS',
+    details: `${fileName} (${duplicateStrategy}) -> Created ${createdCount}, Updated ${updatedCount}, Skipped ${skippedCount}, Errors ${runtimeFailures.length}${interrupted ? ' [INTERRUPTED AT CHECKPOINT]' : ''}`,
+    timestamp: completedAt,
+  });
+
+  saveSimulatorLocalStore(simStore);
+
+  if (useFirebaseAdmin && adminStatus.db) {
+    await adminStatus.db.collection('scenarioImportJobs').doc(jobId).set(jobDoc);
+    for (const errDoc of jobErrorDocs.slice(0, 100)) {
+      await adminStatus.db.collection('scenarioImportErrors').doc(errDoc.id).set(errDoc);
+    }
+  }
+
+  const targetMap = simStore.collections;
+  const scenarios = targetMap.simulationScenarios || {};
+  const profiles = targetMap.hotelSimulationProfiles || {};
+  let brokenFks = 0;
+  Object.values(scenarios).forEach((s: any) => {
+    if (!profiles[s.hotelId]) brokenFks++;
+  });
+  const verification = {
+    verificationPassed: Object.keys(scenarios).length > 0 && brokenFks === 0 && !interrupted,
+    checkedAt: completedAt,
+    source: useFirebaseAdmin ? 'firebase_admin' : 'demo_local',
+    counts: SIMULATOR_IMPORT_ORDER_SPEC.map((spec) => ({
+      collection: spec.collectionName,
+      sheetName: spec.sheetName,
+      actual: Object.keys(targetMap[spec.collectionName] || {}).length,
+      expected: spec.expectedCount,
+      matchesExpected: Object.keys(targetMap[spec.collectionName] || {}).length > 0,
+    })),
+    relationshipChecks: [
+      {
+        check: 'Scenarios → Hotel Profiles & Child Tables',
+        passed: brokenFks === 0,
+        brokenReferences: brokenFks,
+        details:
+          brokenFks === 0
+            ? 'All Simulator Scenario & USALI Detail references verified.'
+            : `${brokenFks} broken scenario references.`,
+      },
+    ],
+  };
+
+  const logEntry = {
+    id: `imp_${Date.now()}`,
+    datasetType: 'simulator_starter',
+    fileName,
+    performedByUid: actor.id,
+    performedByEmail: actor.email,
+    performedByName: actor.name,
+    performedByRole: actor.role,
+    duplicateStrategy,
+    selectedSheets: validation.selectedSheets,
+    status: interrupted ? 'partial_failure' : useFirebaseAdmin ? (failedCount > 0 ? 'partial_failure' : 'completed') : 'demo_mode',
+    totalRowsDetected: validation.totalRowsDetected,
+    validRecords: validation.validRecords,
+    invalidRecords: validation.invalidRecords,
+    createdCount,
+    skippedCount,
+    updatedCount,
+    failedCount,
+    errorCount: runtimeFailures.length,
+    warningCount: validation.warningCount,
+    verificationPassed: verification.verificationPassed,
+    startedAt,
+    completedAt,
+    sheetSummaries: executionSheetResults,
+  };
+
+  if (useFirebaseAdmin && adminStatus.db) {
+    await adminStatus.db.collection('importLogs').doc(logEntry.id).set(logEntry);
+  } else {
+    const currStore = loadDemoCurriculumStore();
+    currStore.importLogs.unshift(logEntry);
+    if (currStore.importLogs.length > 50) currStore.importLogs = currStore.importLogs.slice(0, 50);
+    saveDemoCurriculumStore(currStore);
+  }
+
+  recordAudit(
+    useFirebaseAdmin ? 'DATA_IMPORT_FIRESTORE' : 'DATA_IMPORT_DEMO',
+    `${actor.name} (${actor.role})`,
+    fileName,
+    `Dataset: simulator_starter | Strategy: ${duplicateStrategy} | Created: ${createdCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`
+  );
+  persistDB(db);
+
+  return {
+    status: 200,
+    body: {
+      success: !interrupted,
+      interrupted,
+      job: jobDoc,
+      datasetType: 'simulator_starter',
+      mode: useFirebaseAdmin ? 'firebase_admin' : 'demo_local',
+      log: logEntry,
+      validation,
+      runtimeFailures,
+      verification,
+    },
+  };
+}
+
 app.post('/api/import/execute', async (req, res) => {
   const actor = requireImportAdmin(req, res);
   if (!actor) return;
@@ -1806,22 +2820,68 @@ app.post('/api/import/execute', async (req, res) => {
 
   try {
     const {
+      datasetType = 'auto',
       fileName = 'FC_Learning_Academy_Training_Dataset_2027.xlsx',
       fileBase64,
       selectedSheets,
       duplicateStrategy = 'skip',
       mode = 'auto',
       allowPartialOnErrors = false,
+      competencyIdMap = {},
+      financialTolerance = 0.02,
+      defaultImportedStatus = 'Validated',
+      batchSize = 25,
+      simulateInterruptAfterChunk,
+      columnMappingsBySheet,
+      editedRowsBySheet,
     } = req.body || {};
 
     if (!fileBase64 || typeof fileBase64 !== 'string') {
       return res.status(400).json({ error: 'Excel file content (fileBase64) is required.' });
     }
-    if (!['skip', 'update', 'reject'].includes(duplicateStrategy)) {
-      return res.status(400).json({ error: 'duplicateStrategy must be skip, update, or reject.' });
+    if (!['skip', 'update', 'insert_new', 'reject'].includes(duplicateStrategy)) {
+      return res.status(400).json({ error: 'duplicateStrategy must be skip, insert_new, update, or reject.' });
     }
 
     const buffer = decodeBase64Workbook(fileBase64);
+    const detectedMeta = detectWorkbookDatasetType(buffer);
+    const resolvedDatasetType: DatasetType =
+      datasetType === 'simulator_starter' || datasetType === 'academy_2027'
+        ? datasetType
+        : detectedMeta.datasetType;
+
+    if (resolvedDatasetType === 'simulator_starter') {
+      const result = await executeSimulatorImportPipeline({
+        actor,
+        fileName: String(fileName),
+        fileBase64,
+        selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
+        duplicateStrategy: duplicateStrategy as SimulatorImportStrategy,
+        mode: String(mode),
+        allowPartialOnErrors: Boolean(allowPartialOnErrors),
+        competencyIdMap,
+        financialTolerance: Number(financialTolerance) >= 0 ? Number(financialTolerance) : 0.02,
+        defaultImportedStatus,
+        batchSize,
+        simulateInterruptAfterChunk,
+        columnMappingsBySheet,
+        editedRowsBySheet,
+      });
+      return res.status(result.status).json(result.body);
+    }
+
+    const activeSpecs = IMPORT_ORDER_SPEC;
+    const normalizedStrategy: DuplicateStrategy =
+      duplicateStrategy === 'insert_new' ? 'skip' : (duplicateStrategy as DuplicateStrategy);
+
+    for (const s of activeSpecs) {
+      if (TRANSACTIONAL_PROTECTED_COLLECTIONS.has(s.collectionName)) {
+        return res.status(403).json({
+          error: `Transactional collection "${s.collectionName}" is strictly protected and cannot be overwritten by imports.`,
+        });
+      }
+    }
+
     const adminStatus = await getAuthorizedAdminFirestore();
     const useFirebaseAdmin =
       mode === 'firebase_admin' || (mode === 'auto' && adminStatus.available && !!adminStatus.db);
@@ -1842,12 +2902,11 @@ app.post('/api/import/execute', async (req, res) => {
       });
     }
 
-    // Gather existing IDs for duplicate resolution
     const existingIdsByCollection: Record<string, string[]> = {};
     const demoStore = useFirebaseAdmin ? null : loadDemoCurriculumStore();
 
     if (useFirebaseAdmin && adminStatus.db) {
-      for (const spec of IMPORT_ORDER_SPEC) {
+      for (const spec of activeSpecs) {
         const snap = await adminStatus.db.collection(spec.collectionName).select().get();
         existingIdsByCollection[spec.collectionName] = snap.docs.map((d) => d.id);
       }
@@ -1864,6 +2923,8 @@ app.post('/api/import/execute', async (req, res) => {
       fileName: String(fileName),
       selectedSheets: Array.isArray(selectedSheets) ? selectedSheets : undefined,
       existingIdsByCollection,
+      columnMappingsBySheet,
+      editedRowsBySheet,
     });
 
     if (validation.errorCount > 0 && !allowPartialOnErrors) {
@@ -1887,7 +2948,7 @@ app.post('/api/import/execute', async (req, res) => {
       failed: number;
     }> = [];
 
-    for (const spec of IMPORT_ORDER_SPEC) {
+    for (const spec of activeSpecs) {
       const records = validation.sanitizedByCollection[spec.collectionName] || [];
       const summaryRow = validation.sheetSummaries.find((s) => s.sheetName === spec.sheetName);
       if (!summaryRow) continue;
@@ -1903,10 +2964,10 @@ app.post('/api/import/execute', async (req, res) => {
       for (const rec of records) {
         const recId = String(rec.id);
         if (existingSet.has(recId)) {
-          if (duplicateStrategy === 'skip') {
+          if (normalizedStrategy === 'skip') {
             sheetSkipped++;
             skippedCount++;
-          } else if (duplicateStrategy === 'reject') {
+          } else if (normalizedStrategy === 'reject') {
             sheetFailed++;
             failedCount++;
             runtimeFailures.push({
@@ -1933,7 +2994,7 @@ app.post('/api/import/execute', async (req, res) => {
           const batch = adminStatus.db.batch();
           for (const item of chunk) {
             const ref = adminStatus.db.collection(spec.collectionName).doc(String(item.record.id));
-            batch.set(ref, item.record, { merge: item.mode === 'update' });
+            batch.set(ref, item.record);
           }
           try {
             await batch.commit();
@@ -1947,13 +3008,12 @@ app.post('/api/import/execute', async (req, res) => {
               }
             }
           } catch {
-            // Isolate individual failures within chunk
             for (const item of chunk) {
               try {
                 await adminStatus.db
                   .collection(spec.collectionName)
                   .doc(String(item.record.id))
-                  .set(item.record, { merge: item.mode === 'update' });
+                  .set(item.record);
                 if (item.mode === 'update') {
                   sheetUpdated++;
                   updatedCount++;
@@ -2003,8 +3063,7 @@ app.post('/api/import/execute', async (req, res) => {
       });
     }
 
-    // Post-import verification
-    let verification;
+    let verification: any = null;
     if (useFirebaseAdmin && adminStatus.db) {
       const liveMap: Record<string, Record<string, Record<string, any>>> = {};
       for (const spec of IMPORT_ORDER_SPEC) {
@@ -2022,12 +3081,13 @@ app.post('/api/import/execute', async (req, res) => {
     const completedAt = new Date().toISOString();
     const logEntry = {
       id: `imp_${Date.now()}`,
+      datasetType: resolvedDatasetType,
       fileName: String(fileName),
       performedByUid: actor.id,
       performedByEmail: actor.email,
       performedByName: actor.name,
       performedByRole: actor.role,
-      duplicateStrategy: duplicateStrategy as DuplicateStrategy,
+      duplicateStrategy: normalizedStrategy,
       selectedSheets: validation.selectedSheets,
       status: useFirebaseAdmin
         ? failedCount > 0
@@ -2053,24 +3113,26 @@ app.post('/api/import/execute', async (req, res) => {
 
     if (useFirebaseAdmin && adminStatus.db) {
       await adminStatus.db.collection('importLogs').doc(logEntry.id).set(logEntry);
-    } else if (demoStore) {
-      demoStore.importLogs.unshift(logEntry);
-      if (demoStore.importLogs.length > 50) {
-        demoStore.importLogs = demoStore.importLogs.slice(0, 50);
+    } else {
+      const currStore = demoStore || loadDemoCurriculumStore();
+      currStore.importLogs.unshift(logEntry);
+      if (currStore.importLogs.length > 50) {
+        currStore.importLogs = currStore.importLogs.slice(0, 50);
       }
-      saveDemoCurriculumStore(demoStore);
+      saveDemoCurriculumStore(currStore);
     }
 
     recordAudit(
       useFirebaseAdmin ? 'DATA_IMPORT_FIRESTORE' : 'DATA_IMPORT_DEMO',
       `${actor.name} (${actor.role})`,
       String(fileName),
-      `Strategy: ${duplicateStrategy} | Created: ${createdCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`
+      `Dataset: ${resolvedDatasetType} | Strategy: ${normalizedStrategy} | Created: ${createdCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`
     );
     persistDB(db);
 
     return res.json({
       success: true,
+      datasetType: resolvedDatasetType,
       mode: useFirebaseAdmin ? 'firebase_admin' : 'demo_local',
       log: logEntry,
       validation,
@@ -2088,7 +3150,46 @@ app.post('/api/import/verify', async (req, res) => {
   if (!actor) return;
 
   try {
-    const { source = 'demo_local', collectionsSnapshot } = req.body || {};
+    const { source = 'demo_local', collectionsSnapshot, datasetType = 'academy_2027' } = req.body || {};
+
+    if (datasetType === 'simulator_starter') {
+      const simStore = loadSimulatorLocalStore();
+      const targetMap =
+        source === 'firebase_client' && collectionsSnapshot ? collectionsSnapshot : simStore.collections;
+      const scenarios = targetMap.simulationScenarios || {};
+      const profiles = targetMap.hotelSimulationProfiles || {};
+      let broken = 0;
+      Object.values(scenarios).forEach((s: any) => {
+        if (!profiles[s.hotelId]) broken++;
+      });
+      return res.json({
+        verification: {
+          verificationPassed: Object.keys(scenarios).length > 0 && broken === 0,
+          checkedAt: new Date().toISOString(),
+          source,
+          counts: SIMULATOR_IMPORT_ORDER_SPEC.map((spec) => ({
+            collection: spec.collectionName,
+            sheetName: spec.sheetName,
+            actual: Object.keys(targetMap[spec.collectionName] || {}).length,
+            expected: spec.expectedCount,
+            matchesExpected: Object.keys(targetMap[spec.collectionName] || {}).length > 0,
+          })),
+          relationshipChecks: [
+            {
+              check: 'Simulator Foreign Keys & USALI Integrity',
+              passed: Object.keys(scenarios).length > 0 && broken === 0,
+              brokenReferences: broken,
+              details:
+                Object.keys(scenarios).length === 0
+                  ? 'No simulator scenarios imported yet.'
+                  : broken === 0
+                  ? 'All simulator scenario parent/child references verified.'
+                  : `${broken} scenarios reference missing hotel profiles.`,
+            },
+          ],
+        },
+      });
+    }
 
     if (source === 'firebase_client' && collectionsSnapshot && typeof collectionsSnapshot === 'object') {
       const result = verifyNormalizedDataset(collectionsSnapshot, 'firebase_client');
@@ -2115,6 +3216,1257 @@ app.post('/api/import/verify', async (req, res) => {
     return res.json({ verification: verifyNormalizedDataset(demoStore.collections, 'demo_local') });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'Verification failed.' });
+  }
+});
+
+// ============================================================================
+// FC BUSINESS PARTNER SIMULATOR APIs (Published-Only RBAC & Session Tracking)
+// ============================================================================
+
+app.get('/api/simulator/competency-mappings', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+  const simStore = loadSimulatorLocalStore();
+  return res.json({
+    mappings: Object.values(simStore.competencyMappings || {}),
+    competencies: db.competencies.map((c) => ({
+      id: c.id,
+      code: c.code,
+      domainId: c.domainId,
+      nameEn: c.nameEn,
+      nameVi: c.nameVi,
+    })),
+  });
+});
+
+app.post('/api/simulator/competency-mappings', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { mappings = [] } = req.body || {};
+  if (!Array.isArray(mappings)) {
+    return res.status(400).json({ error: 'mappings array is required.' });
+  }
+
+  const simStore = loadSimulatorLocalStore();
+  const validCompLookup = new Map<string, Competency>();
+  for (const c of db.competencies) {
+    validCompLookup.set(c.id, c);
+    validCompLookup.set(c.code.toUpperCase(), c);
+  }
+
+  const now = new Date().toISOString();
+  const saved: ScenarioCompetencyMappingDoc[] = [];
+
+  for (const m of mappings) {
+    const wbId = String(m?.workbookCompetencyId || '').trim();
+    const lmsTarget = String(m?.lmsCompetencyId || '').trim();
+    if (!wbId || !lmsTarget) continue;
+
+    const matchedComp = validCompLookup.get(lmsTarget) || validCompLookup.get(lmsTarget.toUpperCase());
+    if (!matchedComp) {
+      return res.status(400).json({
+        error: `Target LMS Competency "${lmsTarget}" does not exist in Competency Framework. Auto-creating competencies is disabled.`,
+      });
+    }
+
+    const docItem: ScenarioCompetencyMappingDoc = {
+      id: `scmp_${wbId.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+      workbookCompetencyId: wbId,
+      lmsCompetencyId: matchedComp.id,
+      lmsCompetencyCode: matchedComp.code,
+      lmsCompetencyName: matchedComp.nameEn,
+      verifiedBy: actor.name,
+      verifiedAt: now,
+      notes: String(m.notes || ''),
+    };
+    simStore.competencyMappings[docItem.id] = docItem;
+    saved.push(docItem);
+  }
+
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'SIMULATOR_COMPETENCY_MAPPING',
+    details: `Saved ${saved.length} verified workbook-to-LMS competency mappings.`,
+    timestamp: now,
+  });
+  saveSimulatorLocalStore(simStore);
+
+  const mapObject: Record<string, string> = {};
+  Object.values(simStore.competencyMappings).forEach((m) => {
+    mapObject[m.workbookCompetencyId] = m.lmsCompetencyId;
+  });
+
+  return res.json({ success: true, saved, mappings: Object.values(simStore.competencyMappings), mapObject });
+});
+
+app.get('/api/simulator/import-jobs', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+  const simStore = loadSimulatorLocalStore();
+  return res.json({
+    jobs: simStore.importJobs || [],
+    errors: (simStore.importErrors || []).slice(0, 150),
+  });
+});
+
+app.get('/api/simulator/import-jobs/:jobId/errors', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+  const { jobId } = req.params;
+  const simStore = loadSimulatorLocalStore();
+  return res.json({
+    job: (simStore.importJobs || []).find((j) => j.id === jobId) || null,
+    errors: (simStore.importErrors || []).filter((e) => e.jobId === jobId),
+  });
+});
+
+app.post('/api/simulator/import-jobs/:jobId/resume', async (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { jobId } = req.params;
+  const simStore = loadSimulatorLocalStore();
+  const job = (simStore.importJobs || []).find((j) => j.id === jobId);
+  if (!job) {
+    return res.status(404).json({ error: `Import job "${jobId}" not found.` });
+  }
+  const storedPayload = simStore.pendingJobPayloads?.[jobId];
+  const fileBase64 = req.body?.fileBase64 || storedPayload?.fileBase64;
+  if (!fileBase64) {
+    return res.status(400).json({
+      error: 'Original workbook payload is required to resume this import job.',
+    });
+  }
+
+  const result = await executeSimulatorImportPipeline({
+    actor,
+    fileName: storedPayload?.fileName || job.fileName,
+    fileBase64,
+    duplicateStrategy: req.body?.duplicateStrategy || storedPayload?.duplicateStrategy || job.strategy || 'skip',
+    mode: req.body?.mode || job.mode || 'demo_local',
+    allowPartialOnErrors: true,
+    competencyIdMap: req.body?.competencyIdMap || storedPayload?.competencyIdMap,
+    financialTolerance: req.body?.financialTolerance ?? storedPayload?.financialTolerance ?? 0.02,
+    batchSize: req.body?.batchSize ?? storedPayload?.batchSize ?? 25,
+    defaultImportedStatus: storedPayload?.defaultImportedStatus || 'Validated',
+    resumeJob: job,
+  });
+
+  return res.status(result.status).json(result.body);
+});
+
+app.get('/api/simulator/versions', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  if (!isSupervisorOrAdmin) {
+    return res.status(403).json({ error: 'Supervisor or Admin role required to view Scenario Version History.' });
+  }
+  const simStore = loadSimulatorLocalStore();
+  return res.json({ versions: simStore.scenarioVersions || [] });
+});
+
+app.get('/api/simulator/versions/:scenarioId', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  if (!isSupervisorOrAdmin) {
+    return res.status(403).json({ error: 'Supervisor or Admin role required to view Scenario Version History.' });
+  }
+  const simStore = loadSimulatorLocalStore();
+  return res.json({
+    versions: (simStore.scenarioVersions || []).filter((v) => v.scenarioId === req.params.scenarioId),
+  });
+});
+
+app.get('/api/simulator/scenarios', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const simStore = loadSimulatorLocalStore();
+
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize) || 12));
+  const statusFilter = req.query.status ? String(req.query.status) : 'ALL';
+  const categoryFilter = req.query.category ? String(req.query.category) : 'ALL';
+  const difficultyFilter = req.query.difficulty ? String(req.query.difficulty) : 'ALL';
+  const hotelFilter = req.query.hotelId ? String(req.query.hotelId) : 'ALL';
+  const search = req.query.search ? String(req.query.search).trim().toLowerCase() : '';
+
+  const allScenarios = Object.values(simStore.collections.simulationScenarios || {}) as SimulationScenarioDoc[];
+  const filtered = allScenarios.filter((s) => {
+    if (!isSupervisorOrAdmin && !isScenarioLearnerAccessible(s)) return false;
+    if (statusFilter !== 'ALL' && s.status !== statusFilter) return false;
+    if (categoryFilter !== 'ALL' && s.category !== categoryFilter) return false;
+    if (hotelFilter !== 'ALL' && s.hotelId !== hotelFilter) return false;
+    const diff =
+      s.difficultyLabel ||
+      (s.difficultyLevel === 1 ? 'Beginner' : s.difficultyLevel === 2 ? 'Intermediate' : s.difficultyLevel === 3 ? 'Advanced' : 'Expert');
+    if (difficultyFilter !== 'ALL' && diff !== difficultyFilter) return false;
+    if (search) {
+      const hay = `${s.scenarioCode} ${s.id} ${s.titleEn} ${s.titleVi} ${s.summaryEn} ${s.summaryVi} ${(s.competencyIds || []).join(' ')}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const items = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  return res.json({
+    items,
+    total,
+    page: safePage,
+    pageSize,
+    totalPages,
+  });
+});
+
+app.get('/api/simulator/scenarios/:id/details', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const simStore = loadSimulatorLocalStore();
+  const sid = req.params.id;
+  const scenario = simStore.collections.simulationScenarios?.[sid] as SimulationScenarioDoc | undefined;
+  if (!scenario) {
+    return res.status(404).json({ error: `Scenario "${sid}" not found.` });
+  }
+
+  const hasCompletedSession =
+    actor &&
+    simStore.sessions.some(
+      (s: any) =>
+        s.scenarioId === sid &&
+        (s.employeeId === actor.id || s.employeeUid === actor.id) &&
+        s.status === 'completed'
+    );
+
+  if (!isSupervisorOrAdmin && !isScenarioLearnerAccessible(scenario) && !hasCompletedSession) {
+    return res.status(403).json({
+      error: 'Access Denied: Only Published active scenarios can be viewed by learners.',
+    });
+  }
+
+  const byScn = (colName: string) =>
+    Object.values(simStore.collections[colName] || {}).filter((r: any) => r.scenarioId === sid);
+
+  return res.json({
+    scenario,
+    hotelProfile: simStore.collections.hotelSimulationProfiles?.[scenario.hotelId] || null,
+    financialData: byScn('simulationFinancialData'),
+    operationalData: byScn('simulationOperationalData'),
+    businessChallenges: byScn('simulationBusinessChallenges'),
+    tasks: byScn('simulationTasks'),
+    decisionOptions: byScn('simulationDecisionOptions'),
+    roleplayPrompts: byScn('simulationRoleplayPrompts'),
+    evaluationRubrics: byScn('simulationEvaluationRubrics'),
+    competencyMappings: byScn('simulationCompetencyMappings'),
+    referenceAnalysis: isSupervisorOrAdmin || hasCompletedSession ? byScn('simulationReferenceAnalysis') : [],
+    datasetSnapshot: simStore.datasets?.[sid] || rebuildDatasetForScenario(simStore, scenario),
+    versions: (simStore.scenarioVersions || []).filter((v) => v.scenarioId === sid),
+  });
+});
+
+app.get('/api/simulator/data', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const simStore = loadSimulatorLocalStore();
+
+  const allScenarios = Object.values(simStore.collections.simulationScenarios || {});
+  const visibleScenarios = isSupervisorOrAdmin
+    ? allScenarios
+    : allScenarios.filter((s: any) => isScenarioLearnerAccessible(s));
+  const visibleScenarioIds = new Set(visibleScenarios.map((s: any) => s.id));
+
+  const visibleSessions = actor
+    ? isSupervisorOrAdmin
+      ? simStore.sessions
+      : simStore.sessions.filter((s: any) => s.employeeId === actor.id || s.employeeUid === actor.id)
+    : [];
+
+  // Reference answers revealed to learners ONLY for scenarios they already completed
+  const completedScenarioIds = new Set(
+    visibleSessions.filter((s: any) => s.status === 'completed').map((s: any) => s.scenarioId)
+  );
+  // Keep child records available for completed historical sessions too even if later archived
+  const filterByVisibleOrCompleted = (colName: string) =>
+    Object.values(simStore.collections[colName] || {}).filter(
+      (rec: any) =>
+        isSupervisorOrAdmin ||
+        visibleScenarioIds.has(rec.scenarioId) ||
+        completedScenarioIds.has(rec.scenarioId)
+    );
+
+  const visibleReferenceAnalysis = isSupervisorOrAdmin
+    ? filterByVisibleOrCompleted('simulationReferenceAnalysis')
+    : filterByVisibleOrCompleted('simulationReferenceAnalysis').filter((r: any) =>
+        completedScenarioIds.has(r.scenarioId)
+      );
+
+  return res.json({
+    hotelSimulationProfiles: Object.values(simStore.collections.hotelSimulationProfiles || {}),
+    simulationScenarios: visibleScenarios,
+    simulationFinancialData: filterByVisibleOrCompleted('simulationFinancialData'),
+    simulationOperationalData: filterByVisibleOrCompleted('simulationOperationalData'),
+    simulationBusinessChallenges: filterByVisibleOrCompleted('simulationBusinessChallenges'),
+    simulationTasks: filterByVisibleOrCompleted('simulationTasks'),
+    simulationReferenceAnalysis: visibleReferenceAnalysis,
+    simulationDecisionOptions: filterByVisibleOrCompleted('simulationDecisionOptions'),
+    simulationRoleplayPrompts: filterByVisibleOrCompleted('simulationRoleplayPrompts'),
+    simulationEvaluationRubrics: filterByVisibleOrCompleted('simulationEvaluationRubrics'),
+    simulationCompetencyMappings: filterByVisibleOrCompleted('simulationCompetencyMappings'),
+    simulationSessions: visibleSessions,
+  });
+});
+
+app.get('/api/simulator/workspace', (req, res) => {
+  const actor = getRequestActor(req);
+  const isSupervisorOrAdmin =
+    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const isAdminOrLnd = actor && ['super_admin', 'lnd_manager'].includes(actor.role);
+  const simStore = loadSimulatorLocalStore();
+
+  const allScenarios = Object.values(simStore.collections.simulationScenarios || {}) as SimulationScenarioDoc[];
+  const visibleScenarios = isSupervisorOrAdmin
+    ? allScenarios
+    : allScenarios.filter((s) => isScenarioLearnerAccessible(s));
+  const visibleIds = new Set(visibleScenarios.map((s) => s.id));
+
+  const visibleSessions = actor
+    ? isSupervisorOrAdmin
+      ? simStore.sessions
+      : simStore.sessions.filter((s: any) => s.employeeId === actor.id || s.employeeUid === actor.id)
+    : [];
+
+  const completedSessionScenarioIds = new Set(
+    visibleSessions.filter((s: any) => s.status === 'completed').map((s: any) => s.scenarioId)
+  );
+  const completedSessionIds = new Set(visibleSessions.map((s: any) => s.id));
+  const visibleEvaluations = actor
+    ? isSupervisorOrAdmin
+      ? simStore.evaluations
+      : simStore.evaluations.filter((e) => e.learnerId === actor.id || completedSessionIds.has(e.sessionId))
+    : [];
+
+  const visibleAssignments = actor
+    ? isSupervisorOrAdmin
+      ? simStore.assignments
+      : simStore.assignments.filter((a) => a.learnerId === actor.id)
+    : [];
+
+  const visibleDatasets: Record<string, HotelSimulationDatasetSnapshot> = {};
+  Object.entries(simStore.datasets || {}).forEach(([sid, ds]) => {
+    if (isSupervisorOrAdmin || visibleIds.has(sid) || completedSessionScenarioIds.has(sid)) {
+      visibleDatasets[sid] = ds;
+    }
+  });
+
+  const visibleAuditLogs = isSupervisorOrAdmin
+    ? simStore.auditLogs
+    : actor
+    ? simStore.auditLogs.filter((l) => l.actorId === actor.id)
+    : [];
+
+  return res.json({
+    datasets: visibleDatasets,
+    evaluations: visibleEvaluations,
+    assignments: visibleAssignments,
+    auditLogs: isAdminOrLnd || isSupervisorOrAdmin ? visibleAuditLogs : [],
+  });
+});
+
+app.post('/api/simulator/hotel-profiles', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { id, hotelCode, hotelName, brandTier, city, totalKeys = 200, currency = 'USD', fcPositionLevel = 3 } = req.body || {};
+  if (!hotelName || !hotelCode) {
+    return res.status(400).json({ error: 'hotelCode and hotelName are required.' });
+  }
+  const simStore = loadSimulatorLocalStore();
+  const profileId = id || `hotel_${Date.now()}`;
+  const keysNum = Math.max(10, Number(totalKeys) || 200);
+  const profile = {
+    id: profileId,
+    hotelCode: String(hotelCode).trim(),
+    hotelName: String(hotelName).trim(),
+    brandTier: String(brandTier || 'Upscale Full-Service').trim(),
+    city: String(city || 'Ho Chi Minh City').trim(),
+    totalKeys: keysNum,
+    roomsAvailable: keysNum * 30,
+    fcPositionLevel: String(fcPositionLevel || 'Assistant FC (Level 3)'),
+    currency: String(currency || 'USD').trim(),
+    importedAt: new Date().toISOString(),
+    importBatchId: 'manual_admin_config',
+  };
+  simStore.collections.hotelSimulationProfiles[profileId] = profile;
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'UPSERT_HOTEL_PROFILE',
+    details: `Saved hotel profile ${profile.hotelName} (${profile.totalKeys} rooms, ${profile.currency})`,
+    timestamp: new Date().toISOString(),
+  });
+  saveSimulatorLocalStore(simStore);
+  return res.status(201).json({ success: true, profile });
+});
+
+app.post('/api/simulator/scenarios', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const body = req.body || {};
+  if (!body.titleEn || !body.titleVi || !body.hotelId) {
+    return res.status(400).json({ error: 'titleEn, titleVi, and hotelId are required.' });
+  }
+
+  const simStore = loadSimulatorLocalStore();
+  const now = new Date().toISOString();
+  const id = body.id || `sim_scn_${Date.now()}`;
+  const scenario: SimulationScenarioDoc = {
+    id,
+    scenarioCode: String(body.scenarioCode || `SIM-${Math.floor(100 + Math.random() * 899)}`),
+    hotelId: String(body.hotelId),
+    titleEn: String(body.titleEn),
+    titleVi: String(body.titleVi),
+    summaryEn: String(body.summaryEn || ''),
+    summaryVi: String(body.summaryVi || ''),
+    category: body.category || 'GOP & Hotel Financial Performance',
+    difficultyLabel: body.difficultyLabel || 'Intermediate',
+    difficultyLevel: (Math.max(1, Math.min(4, Number(body.difficultyLevel) || 2)) as ProficiencyLevel),
+    targetRole: String(body.targetRole || 'Assistant Financial Controller'),
+    recommendedPositionIds: Array.isArray(body.recommendedPositionIds) ? body.recommendedPositionIds : ['Senior Accountant', 'Assistant Financial Controller'],
+    competencyIds: Array.isArray(body.competencyIds) ? body.competencyIds : ['BPA-01', 'SBP-01'],
+    periodLabel: String(body.periodLabel || '2026 Monthly Review'),
+    estimatedDurationMinutes: Number(body.estimatedDurationMinutes) || 35,
+    learningObjectivesEn: Array.isArray(body.learningObjectivesEn) ? body.learningObjectivesEn : ['Analyze USALI variances & recommend GOP actions.'],
+    learningObjectivesVi: Array.isArray(body.learningObjectivesVi) ? body.learningObjectivesVi : ['Phân tích biến động USALI và đề xuất hành động cải thiện GOP.'],
+    scenarioKind: body.scenarioKind || 'standard',
+    defaultPersona: body.defaultPersona || 'General Manager',
+    languageOptions: ['vi', 'en'],
+    datasetVersion: String(body.datasetVersion || '2026.v1'),
+    status: body.status === 'Published' || body.status === 'Archived' ? body.status : 'Draft',
+    isActive: body.status === 'Published',
+    versionNumber: 1,
+    publishedBy: body.status === 'Published' ? actor.name : undefined,
+    publishedAt: body.status === 'Published' ? now : undefined,
+    importedAt: now,
+    importBatchId: 'manual_admin_builder',
+  };
+
+  simStore.collections.simulationScenarios[id] = scenario;
+  const hp = simStore.collections.hotelSimulationProfiles?.[scenario.hotelId] as any;
+  simStore.datasets[id] = generateDatasetSnapshotForScenario(scenario, hp);
+
+  const seed = buildChildSeedsForScenario(scenario);
+  seed.rubrics.forEach((r) => (simStore.collections.simulationEvaluationRubrics[r.id] = r));
+  seed.decisionOptions.forEach((r) => (simStore.collections.simulationDecisionOptions[r.id] = r));
+  seed.challenges.forEach((r) => (simStore.collections.simulationBusinessChallenges[r.id] = r));
+  seed.tasks.forEach((r) => (simStore.collections.simulationTasks[r.id] = r));
+  seed.roleplayPrompts.forEach((r) => (simStore.collections.simulationRoleplayPrompts[r.id] = r));
+  seed.competencyMappings.forEach((r) => (simStore.collections.simulationCompetencyMappings[r.id] = r));
+  seed.referenceAnalysis.forEach((r) => (simStore.collections.simulationReferenceAnalysis[r.id] = r));
+
+  appendScenarioVersionEntry(simStore, scenario, actor, `Manual scenario creation (${scenario.status})`);
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    scenarioId: id,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'CREATE_SCENARIO',
+    details: `Created simulator scenario ${scenario.scenarioCode}: ${scenario.titleEn} (${scenario.status})`,
+    timestamp: now,
+  });
+  saveSimulatorLocalStore(simStore);
+  return res.status(201).json({ success: true, scenario, dataset: simStore.datasets[id] });
+});
+
+app.put('/api/simulator/scenarios/:id', (req, res) => {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+  const { id } = req.params;
+  const simStore = loadSimulatorLocalStore();
+  const existing = simStore.collections.simulationScenarios?.[id];
+  if (!existing) return res.status(404).json({ error: `Scenario "${id}" not found.` });
+
+  const now = new Date().toISOString();
+  const nextVer = Number(existing.versionNumber || 1) + 1;
+  const updated = {
+    ...existing,
+    ...req.body,
+    id,
+    versionNumber: nextVer,
+    updatedAt: now,
+  };
+  simStore.collections.simulationScenarios[id] = updated;
+  if (req.body?.datasetOverride) {
+    const hp = simStore.collections.hotelSimulationProfiles?.[updated.hotelId] as any;
+    simStore.datasets[id] = generateDatasetSnapshotForScenario(updated as SimulationScenarioDoc, hp, req.body.datasetOverride);
+  }
+  appendScenarioVersionEntry(simStore, updated as SimulationScenarioDoc, actor, `Manual update (v${nextVer})`);
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    scenarioId: id,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'UPDATE_SCENARIO',
+    details: `Updated scenario ${updated.scenarioCode || id} (version v${nextVer})`,
+    timestamp: now,
+  });
+  saveSimulatorLocalStore(simStore);
+  return res.json({ success: true, scenario: updated, dataset: simStore.datasets[id] });
+});
+
+app.post('/api/simulator/assignments', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+  if (!['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)) {
+    return res.status(403).json({ error: 'Only Admin, L&D Manager, FC, or GM can assign simulator scenarios.' });
+  }
+  const { scenarioId, learnerId, dueDate, mandatory = true, note = '' } = req.body || {};
+  if (!scenarioId || !learnerId || !dueDate) {
+    return res.status(400).json({ error: 'scenarioId, learnerId, and dueDate are required.' });
+  }
+  const simStore = loadSimulatorLocalStore();
+  const targetScenario = simStore.collections.simulationScenarios?.[String(scenarioId)] as SimulationScenarioDoc | undefined;
+  if (!targetScenario) {
+    return res.status(404).json({ error: `Scenario "${scenarioId}" not found.` });
+  }
+  if (!isScenarioLearnerAccessible(targetScenario)) {
+    return res.status(400).json({
+      error: `Cannot assign scenario "${scenarioId}" because its status is ${targetScenario.status}${targetScenario.isActive === false ? ' (Inactive)' : ''}. Only Published active scenarios can be assigned to learners.`,
+    });
+  }
+  const assignment: SimulationAssignmentDoc = {
+    id: `sim_asgn_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    scenarioId: String(scenarioId),
+    learnerId: String(learnerId),
+    assignedById: actor.id,
+    assignedByName: actor.name,
+    dueDate: String(dueDate),
+    mandatory: Boolean(mandatory),
+    note: String(note || ''),
+    status: 'assigned',
+    assignedAt: new Date().toISOString(),
+  };
+  simStore.assignments.unshift(assignment);
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    scenarioId: assignment.scenarioId,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'ASSIGN_SCENARIO',
+    details: `Assigned scenario ${scenarioId} to learner ${learnerId} (due ${dueDate})`,
+    timestamp: new Date().toISOString(),
+  });
+  saveSimulatorLocalStore(simStore);
+  return res.status(201).json({ success: true, assignment });
+});
+
+function handleScenarioStatusTransition(req: express.Request, res: express.Response) {
+  const actor = requireImportAdmin(req, res);
+  if (!actor) return;
+
+  const { id } = req.params;
+  const { status = 'Published', note = '' } = req.body || {};
+  if (!['Draft', 'Validated', 'Published', 'Archived'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status. Must be Draft, Validated, Published, or Archived.' });
+  }
+
+  const simStore = loadSimulatorLocalStore();
+  const existing = simStore.collections.simulationScenarios?.[id] as SimulationScenarioDoc | undefined;
+  if (!existing) {
+    return res.status(404).json({ error: `Scenario "${id}" not found.` });
+  }
+
+  // Gate checks before publishing
+  if (status === 'Published') {
+    const hotelExists = !!simStore.collections.hotelSimulationProfiles?.[existing.hotelId];
+    const optCount = Object.values(simStore.collections.simulationDecisionOptions || {}).filter(
+      (r: any) => r.scenarioId === id
+    ).length;
+    const rubRows = Object.values(simStore.collections.simulationEvaluationRubrics || {}).filter(
+      (r: any) => r.scenarioId === id
+    ) as any[];
+    const rubSum = rubRows.reduce((s, r) => s + Number(r.weightPercent || 0), 0);
+    if (!hotelExists) {
+      return res.status(400).json({ error: `Cannot publish "${id}": linked Hotel Profile "${existing.hotelId}" not found.` });
+    }
+    if (optCount < 2) {
+      return res.status(400).json({ error: `Cannot publish "${id}": requires at least 2 Decision Options (found ${optCount}).` });
+    }
+    if (rubRows.length > 0 && Math.abs(rubSum - 100) > 0.05) {
+      return res.status(400).json({ error: `Cannot publish "${id}": Evaluation Rubric weights must total 100% (found ${rubSum}%).` });
+    }
+  }
+
+  const now = new Date().toISOString();
+  const nextVersionNum = Number(existing.versionNumber || 1) + (status !== existing.status ? 1 : 0);
+  const updated: SimulationScenarioDoc = {
+    ...existing,
+    status: status as SimulationScenarioStatus,
+    isActive: status === 'Published',
+    versionNumber: nextVersionNum,
+    validatedBy: status === 'Validated' || status === 'Published' ? actor.name : existing.validatedBy,
+    validatedAt: status === 'Validated' ? now : existing.validatedAt,
+    publishedBy: status === 'Published' ? actor.name : existing.publishedBy,
+    publishedAt: status === 'Published' ? now : existing.publishedAt,
+    unpublishedBy: status === 'Draft' && existing.status === 'Published' ? actor.name : existing.unpublishedBy,
+    unpublishedAt: status === 'Draft' && existing.status === 'Published' ? now : existing.unpublishedAt,
+    archivedBy: status === 'Archived' ? actor.name : existing.archivedBy,
+    archivedAt: status === 'Archived' ? now : existing.archivedAt,
+    updatedAt: now,
+  };
+
+  simStore.collections.simulationScenarios[id] = updated;
+  const versionEntry = appendScenarioVersionEntry(
+    simStore,
+    updated,
+    actor,
+    note ? `${existing.status} -> ${status}: ${note}` : `Status changed from ${existing.status} to ${status}`
+  );
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    scenarioId: id,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: `SCENARIO_${String(status).toUpperCase()}`,
+    details: `Scenario ${updated.scenarioCode || id} transitioned ${existing.status} -> ${status} (v${nextVersionNum})`,
+    timestamp: now,
+  });
+  saveSimulatorLocalStore(simStore);
+
+  recordAudit(
+    'SIMULATOR_SCENARIO_STATUS',
+    `${actor.name} (${actor.role})`,
+    `${updated.titleEn || id}`,
+    `Scenario status updated to ${status} (v${nextVersionNum})`
+  );
+  persistDB(db);
+  return res.json({ success: true, scenario: updated, version: versionEntry });
+}
+
+app.post('/api/simulator/scenarios/:id/publish', handleScenarioStatusTransition);
+app.post('/api/simulator/scenarios/:id/status', handleScenarioStatusTransition);
+
+app.post('/api/simulator/sessions', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const {
+    id,
+    scenarioId,
+    scenarioTitle,
+    language = 'vi',
+    difficulty,
+    currentStep = 1,
+    analysisNotes = '',
+    analysisWorkspace,
+    decisionWorkspace,
+    executiveReport,
+    roleplayConfig,
+    selectedOptionIds = [],
+    learnerAnalysis = '',
+    conversation = [],
+    evaluation,
+    evidenceUrl,
+    status = 'in_progress',
+  } = req.body || {};
+
+  if (!scenarioId) {
+    return res.status(400).json({ error: 'scenarioId is required.' });
+  }
+
+  const simStore = loadSimulatorLocalStore();
+  const scenario = simStore.collections.simulationScenarios?.[scenarioId] as SimulationScenarioDoc | undefined;
+  if (
+    scenario &&
+    !isScenarioLearnerAccessible(scenario) &&
+    !['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)
+  ) {
+    return res.status(403).json({
+      error: `Access Denied: Learners cannot start or play ${scenario.status}${scenario.isActive === false ? ' / inactive' : ''} scenarios.`,
+    });
+  }
+
+  const now = new Date().toISOString();
+  const existingIdx = id ? simStore.sessions.findIndex((s: any) => s.id === id) : -1;
+  if (existingIdx >= 0) {
+    const existing = simStore.sessions[existingIdx];
+    if (existing.status === 'completed') {
+      return res.status(409).json({
+        error: 'Completed simulation sessions are historical records and cannot be overwritten.',
+      });
+    }
+    if (
+      existing.employeeId !== actor.id &&
+      !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+    ) {
+      return res.status(403).json({ error: 'Cannot update another employee simulation session.' });
+    }
+  }
+
+  const existingRecord = existingIdx >= 0 ? simStore.sessions[existingIdx] : null;
+  const datasetSnapshot =
+    existingRecord?.datasetSnapshot ||
+    simStore.datasets?.[scenarioId] ||
+    (scenario ? generateDatasetSnapshotForScenario(scenario) : undefined);
+
+  const sessionDoc = {
+    id: existingIdx >= 0 ? id : `simsess_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    scenarioId,
+    scenarioTitle: String(scenarioTitle || scenario?.titleEn || scenarioId),
+    hotelSimulationId: scenario?.hotelId,
+    employeeId: existingRecord?.employeeId || actor.id,
+    employeeUid: existingRecord?.employeeUid || actor.id,
+    language: language === 'en' ? 'en' : 'vi',
+    difficulty: difficulty || scenario?.difficultyLabel || 'Intermediate',
+    currentStep: Math.max(1, Math.min(6, Number(currentStep) || existingRecord?.currentStep || 1)),
+    datasetVersion: existingRecord?.datasetVersion || scenario?.datasetVersion || datasetSnapshot?.datasetVersion || '2026.v1',
+    datasetSnapshot,
+    analysisNotes: analysisNotes !== undefined ? String(analysisNotes) : existingRecord?.analysisNotes || '',
+    analysisWorkspace: analysisWorkspace || existingRecord?.analysisWorkspace,
+    decisionWorkspace: decisionWorkspace || existingRecord?.decisionWorkspace,
+    executiveReport: executiveReport || existingRecord?.executiveReport,
+    roleplayConfig: roleplayConfig || existingRecord?.roleplayConfig,
+    selectedOptionIds: Array.isArray(selectedOptionIds) ? selectedOptionIds : existingRecord?.selectedOptionIds || [],
+    learnerAnalysis: String(learnerAnalysis || analysisWorkspace?.significantVariances || existingRecord?.learnerAnalysis || ''),
+    conversation: Array.isArray(conversation) ? conversation.slice(-40) : existingRecord?.conversation || [],
+    evaluation: evaluation || existingRecord?.evaluation,
+    evaluationId: existingRecord?.evaluationId,
+    finalScore: existingRecord?.finalScore,
+    evidenceUrl: evidenceUrl ? String(evidenceUrl) : existingRecord?.evidenceUrl,
+    status: status === 'completed' ? 'completed' : 'in_progress',
+    startedAt: existingRecord ? existingRecord.startedAt : now,
+    submittedAt: status === 'completed' ? now : existingRecord?.submittedAt,
+    completedAt: status === 'completed' ? now : undefined,
+    updatedAt: now,
+  };
+
+  if (existingIdx >= 0) {
+    simStore.sessions[existingIdx] = sessionDoc;
+  } else {
+    simStore.sessions.unshift(sessionDoc);
+  }
+
+  // Update matching assignment progress if exists
+  simStore.assignments = simStore.assignments.map((a) =>
+    a.scenarioId === scenarioId && a.learnerId === sessionDoc.employeeId
+      ? { ...a, status: sessionDoc.status === 'completed' ? 'completed' : 'in_progress' }
+      : a
+  );
+
+  saveSimulatorLocalStore(simStore);
+  return res.status(existingIdx >= 0 ? 200 : 201).json({ success: true, session: sessionDoc });
+});
+
+app.post('/api/simulator/sessions/:id/evaluate', async (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  const { id } = req.params;
+  const {
+    analysisWorkspace,
+    decisionWorkspace,
+    executiveReport,
+    conversation,
+    language = 'vi',
+  } = req.body || {};
+
+  const simStore = loadSimulatorLocalStore();
+  const idx = simStore.sessions.findIndex((s: any) => s.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: `Simulation session "${id}" not found.` });
+  }
+
+  const existing = simStore.sessions[idx];
+  if (existing.status === 'completed') {
+    return res.status(409).json({
+      error: 'Completed simulation sessions cannot be re-submitted or overwritten.',
+    });
+  }
+  if (
+    existing.employeeId !== actor.id &&
+    !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+  ) {
+    return res.status(403).json({ error: 'Cannot evaluate another employee simulation session.' });
+  }
+
+  const scenario = simStore.collections.simulationScenarios?.[existing.scenarioId] as SimulationScenarioDoc | undefined;
+  if (!scenario) {
+    return res.status(404).json({ error: `Scenario "${existing.scenarioId}" not found.` });
+  }
+
+  const datasetSnapshot: HotelSimulationDatasetSnapshot =
+    existing.datasetSnapshot ||
+    simStore.datasets?.[scenario.id] ||
+    generateDatasetSnapshotForScenario(scenario);
+
+  const mergedAnalysis = analysisWorkspace || existing.analysisWorkspace;
+  const mergedDecision = decisionWorkspace || existing.decisionWorkspace;
+  const mergedReport = executiveReport || existing.executiveReport;
+  const mergedConvo = Array.isArray(conversation) ? conversation : existing.conversation || [];
+
+  const decisionOptions = Object.values(simStore.collections.simulationDecisionOptions || {}).filter(
+    (o: any) => o.scenarioId === scenario.id
+  ) as any[];
+  const rubrics = Object.values(simStore.collections.simulationEvaluationRubrics || {}).filter(
+    (r: any) => r.scenarioId === scenario.id
+  ) as any[];
+
+  // 1. Always compute deterministic financial & rubric evaluation in TypeScript first
+  const detResult = evaluateDeterministicSimulation({
+    scenario,
+    datasetSnapshot,
+    analysisWorkspace: mergedAnalysis,
+    decisionWorkspace: mergedDecision,
+    executiveReport: mergedReport,
+    decisionOptions,
+    rubrics,
+    conversation: mergedConvo,
+    courses: COURSES,
+    ojtAssignments: OJT_ASSIGNMENTS,
+    competencies: db.competencies,
+    language: language === 'en' ? 'en' : 'vi',
+  });
+
+  // 2. Optional Gemini executive qualitative debrief enrichment (graceful fallback if unavailable)
+  let aiExecutiveSummary = '';
+  let aiEnrichedStrengths: string[] = [];
+  let aiEnrichedImprovements: string[] = [];
+  let aiErrorNote: string | null = null;
+
+  if (ai) {
+    try {
+      const refAnalysis = Object.values(simStore.collections.simulationReferenceAnalysis || {}).filter(
+        (r: any) => r.scenarioId === scenario.id
+      );
+      const enrichPrompt = `You are a Corporate VP of Hotel Finance reviewing a Financial Controller candidate's simulation submission.
+Provide concise, strictly grounded executive narrative coaching without changing the deterministic numeric scores.
+Scenario: ${scenario.scenarioCode} - ${scenario.titleEn}
+Verified USALI Actual vs Budget GOP: Actual ${datasetSnapshot.periods.actual.gop} (${datasetSnapshot.periods.actual.gopMarginPct}%) vs Budget ${datasetSnapshot.periods.budget.gop} (${datasetSnapshot.periods.budget.gopMarginPct}%).
+Official Reference Key: ${JSON.stringify(refAnalysis)}
+Deterministic Criterion Scores: ${JSON.stringify(detResult.scoringCriteria.map((c) => ({ code: c.criterionCode, score: c.score })))}
+Learner Variances Notes: ${mergedAnalysis?.significantVariances || 'N/A'}
+Learner Decision Rationale: ${mergedDecision?.recommendedAction || 'N/A'} | ${mergedDecision?.rationale || ''}
+Learner Executive Summary: ${mergedReport?.executiveSummary || 'N/A'}
+Calculation Errors Caught Deterministically: ${JSON.stringify(detResult.calculationErrors)}
+Language: ${language === 'vi' ? 'Vietnamese (Tiếng Việt) with key USALI terms' : 'English'}.`;
+
+      const aiRes = await generateContentWithRetry({
+        model: GEMINI_MODEL,
+        contents: enrichPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              executiveFeedbackSummary: { type: Type.STRING },
+              topStrengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+              topImprovements: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ['executiveFeedbackSummary', 'topStrengths', 'topImprovements'],
+          },
+        },
+      });
+      const parsed = parseJsonResponse(aiRes.text);
+      aiExecutiveSummary = String(parsed.executiveFeedbackSummary || '');
+      aiEnrichedStrengths = Array.isArray(parsed.topStrengths) ? parsed.topStrengths : [];
+      aiEnrichedImprovements = Array.isArray(parsed.topImprovements) ? parsed.topImprovements : [];
+    } catch (err: any) {
+      aiErrorNote = err?.message || 'AI narrative enrichment unavailable; deterministic evaluation persisted.';
+    }
+  }
+
+  const now = new Date().toISOString();
+  const evalId = `simeval_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const evalDoc: SimulationEvaluationDoc = {
+    id: evalId,
+    sessionId: existing.id,
+    scenarioId: scenario.id,
+    learnerId: existing.employeeId,
+    learnerUid: existing.employeeUid,
+    scoringCriteria: detResult.scoringCriteria,
+    totalScore: detResult.totalScore,
+    assessorType: 'deterministic_plus_ai',
+    strengths: aiEnrichedStrengths.length > 0 ? aiEnrichedStrengths : detResult.strengths,
+    improvementAreas: aiEnrichedImprovements.length > 0 ? aiEnrichedImprovements : detResult.improvementAreas,
+    missedOpportunities: detResult.missedOpportunities,
+    calculationErrors: detResult.calculationErrors,
+    recommendations: detResult.recommendations,
+    recommendedCompetencies: detResult.recommendedCompetencies,
+    recommendedCourseIds: detResult.recommendedCourseIds,
+    recommendedPracticalIds: detResult.recommendedPracticalIds,
+    suggestedIdpObjectives: detResult.suggestedIdpObjectives,
+    advisoryDisclaimer:
+      language === 'vi'
+        ? 'Kết quả mô phỏng và gợi ý cấp độ năng lực mang tính tham khảo hỗ trợ quyết định; không tự động thay đổi hồ sơ đánh giá chính thức hoặc quyết định thăng chức khi chưa có phê duyệt của Người đánh giá / Quản lý L&D.'
+        : 'Simulation results and suggested competency levels are advisory only; they do not automatically alter official approved competency assessments or promotion decisions without human assessor sign-off.',
+    assessorComments: aiExecutiveSummary || undefined,
+    createdAt: now,
+  };
+
+  simStore.evaluations.unshift(evalDoc);
+
+  const completedSession = {
+    ...existing,
+    analysisWorkspace: mergedAnalysis,
+    decisionWorkspace: mergedDecision,
+    executiveReport: mergedReport,
+    selectedOptionIds: mergedDecision?.selectedOptionIds || existing.selectedOptionIds || [],
+    learnerAnalysis: mergedAnalysis?.significantVariances || existing.learnerAnalysis || '',
+    conversation: mergedConvo,
+    datasetSnapshot,
+    currentStep: 6,
+    evaluationId: evalId,
+    evaluation: evalDoc,
+    finalScore: evalDoc.totalScore,
+    competencyResults: evalDoc.recommendedCompetencies.map((c) => ({
+      competencyCode: c.competencyCode,
+      suggestedLevel: c.suggestedLevel,
+    })),
+    feedbackSummary:
+      aiExecutiveSummary ||
+      (language === 'vi'
+        ? `Hoàn thành mô phỏng với tổng điểm ${evalDoc.totalScore}/100.`
+        : `Simulation completed with total score ${evalDoc.totalScore}/100.`),
+    status: 'completed',
+    submittedAt: now,
+    completedAt: now,
+    updatedAt: now,
+  };
+
+  simStore.sessions[idx] = completedSession;
+  simStore.assignments = simStore.assignments.map((a) =>
+    a.scenarioId === scenario.id && a.learnerId === existing.employeeId ? { ...a, status: 'completed' } : a
+  );
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    sessionId: existing.id,
+    scenarioId: scenario.id,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'EVALUATE_SIMULATION',
+    details: `Evaluated session ${existing.id} (${scenario.scenarioCode}): Score ${evalDoc.totalScore}/100 (${aiErrorNote ? 'Deterministic fallback' : 'Deterministic + Gemini'})`,
+    timestamp: now,
+  });
+
+  saveSimulatorLocalStore(simStore);
+  recordAudit('SIMULATOR_EVALUATION', `${actor.name} (${actor.role})`, scenario.scenarioCode, `Score ${evalDoc.totalScore}/100`);
+  persistDB(db);
+
+  return res.json({
+    success: true,
+    session: completedSession,
+    evaluation: evalDoc,
+    aiFallbackUsed: Boolean(aiErrorNote),
+    aiNotice: aiErrorNote,
+  });
+});
+
+app.post('/api/simulator/evaluations/:id/review', (req, res) => {
+  const actor = requireTalentActor(req, res);
+  if (!actor) return;
+
+  if (!['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)) {
+    return res.status(403).json({
+      error: 'Access Denied: Learners cannot modify evaluation scores or self-approve human assessor reviews.',
+    });
+  }
+
+  const { id } = req.params;
+  const { adjustedTotalScore, criterionAdjustments, adjustmentReason = '', assessorComments = '' } = req.body || {};
+
+  const simStore = loadSimulatorLocalStore();
+  const evalIdx = simStore.evaluations.findIndex((e) => e.id === id);
+  if (evalIdx < 0) {
+    return res.status(404).json({ error: `Simulation evaluation "${id}" not found.` });
+  }
+
+  if (!String(adjustmentReason).trim() && adjustedTotalScore !== undefined) {
+    return res.status(400).json({ error: 'adjustmentReason is required when overriding an evaluation score.' });
+  }
+
+  const existingEval = simStore.evaluations[evalIdx];
+  const now = new Date().toISOString();
+
+  let updatedCriteria = existingEval.scoringCriteria;
+  if (criterionAdjustments && typeof criterionAdjustments === 'object') {
+    updatedCriteria = existingEval.scoringCriteria.map((c) => {
+      const overrideVal = criterionAdjustments[c.criterionCode];
+      if (overrideVal !== undefined && Number.isFinite(Number(overrideVal))) {
+        const clamped = Math.max(0, Math.min(100, Number(overrideVal)));
+        return { ...c, score: clamped };
+      }
+      return c;
+    });
+  }
+
+  const recomputedWeightSum = updatedCriteria.reduce((acc, c) => acc + c.weightPercent, 0) || 100;
+  const recomputedWeighted = Math.round(
+    updatedCriteria.reduce((acc, c) => acc + (c.score * c.weightPercent) / recomputedWeightSum, 0) * 10
+  ) / 10;
+
+  const finalAdjusted =
+    adjustedTotalScore !== undefined
+      ? Math.max(0, Math.min(100, Number(adjustedTotalScore)))
+      : recomputedWeighted;
+
+  const updatedEval: SimulationEvaluationDoc = {
+    ...existingEval,
+    scoringCriteria: updatedCriteria,
+    adjustedTotalScore: finalAdjusted,
+    adjustmentReason: String(adjustmentReason || existingEval.adjustmentReason || 'Human assessor review'),
+    assessorType: 'human_reviewed',
+    reviewerId: actor.id,
+    reviewerName: actor.name,
+    reviewedAt: now,
+    assessorComments: String(assessorComments || existingEval.assessorComments || ''),
+  };
+
+  simStore.evaluations[evalIdx] = updatedEval;
+
+  // Sync adjusted score onto session summary (without overwriting original totalScore inside evaluation)
+  const sIdx = simStore.sessions.findIndex((s: any) => s.id === existingEval.sessionId);
+  if (sIdx >= 0) {
+    simStore.sessions[sIdx] = {
+      ...simStore.sessions[sIdx],
+      evaluation: updatedEval,
+      finalScore: finalAdjusted,
+      updatedAt: now,
+    };
+  }
+
+  simStore.auditLogs.unshift({
+    id: `simaud_${Date.now()}`,
+    sessionId: existingEval.sessionId,
+    scenarioId: existingEval.scenarioId,
+    actorId: actor.id,
+    actorName: actor.name,
+    actorRole: actor.role,
+    action: 'HUMAN_ASSESSOR_OVERRIDE',
+    details: `Assessor adjusted score from ${existingEval.totalScore} to ${finalAdjusted}. Reason: ${updatedEval.adjustmentReason}`,
+    timestamp: now,
+  });
+
+  saveSimulatorLocalStore(simStore);
+  recordAudit('SIMULATOR_HUMAN_REVIEW', `${actor.name} (${actor.role})`, existingEval.sessionId, `${existingEval.totalScore} -> ${finalAdjusted}`);
+  persistDB(db);
+
+  return res.json({ success: true, evaluation: updatedEval });
+});
+
+app.post('/api/gemini/simulator-roleplay', async (req, res) => {
+  try {
+    const actor = requireTalentActor(req, res);
+    if (!actor) return;
+
+    const {
+      scenarioId,
+      persona = 'General Manager',
+      difficulty = 'Intermediate',
+      challengeIntensity = 'Balanced',
+      maxQuestions = 5,
+      language = 'vi',
+      conversationHistory = [],
+      userTurn,
+      analysisNotes = '',
+      decisionSummary = '',
+    } = req.body || {};
+
+    if (!scenarioId || !userTurn || !String(userTurn).trim()) {
+      return res.status(400).json({ error: 'scenarioId and userTurn are required.' });
+    }
+
+    const simStore = loadSimulatorLocalStore();
+    const scenario = simStore.collections.simulationScenarios?.[scenarioId] as SimulationScenarioDoc | undefined;
+    const dataset = simStore.datasets?.[scenarioId] || (scenario ? generateDatasetSnapshotForScenario(scenario) : undefined);
+
+    const turnCount = conversationHistory.filter((m: any) => m.role === 'user').length + 1;
+
+    const buildRoleplayFallback = () => {
+      const gopDiff = dataset ? dataset.periods.actual.gop - dataset.periods.budget.gop : -18000;
+      const fallbackReply =
+        language === 'vi'
+          ? `[${persona}] Tôi đã ghi nhận phân tích của anh/chị ("${String(userTurn).slice(0, 120)}..."). Với chênh lệch GOP hiện tại (${gopDiff.toLocaleString()} ${dataset?.currency || 'USD'}), đâu là 2 hành động định lượng tác động nhanh nhất trong 30 ngày tới mà không làm sụt giảm điểm hài lòng khách?`
+          : `[${persona}] I noted your point ("${String(userTurn).slice(0, 120)}..."). Given our GOP variance of ${gopDiff.toLocaleString()} ${dataset?.currency || 'USD'}, which two quantified levers will recover margin within 30 days without hurting guest satisfaction?`;
+      return { reply: fallbackReply, persona, turnNumber: turnCount, fallbackUsed: true };
+    };
+
+    if (!ai) {
+      return res.json(buildRoleplayFallback());
+    }
+
+    const datasetFacts = dataset
+      ? `Hotel: ${dataset.hotelName} (${dataset.numberOfRooms} keys, ${dataset.currency})
+Actual vs Budget:
+- Occ %: ${dataset.periods.actual.occupancyPct}% vs ${dataset.periods.budget.occupancyPct}%
+- ADR: ${dataset.periods.actual.adr} vs ${dataset.periods.budget.adr}
+- RevPAR: ${dataset.periods.actual.revpar} vs ${dataset.periods.budget.revpar}
+- Total Operating Revenue: ${dataset.periods.actual.totalOperatingRevenue} vs ${dataset.periods.budget.totalOperatingRevenue}
+- Food Cost %: ${dataset.periods.actual.foodCostPct}% vs ${dataset.periods.budget.foodCostPct}%
+- Labor Cost %: ${dataset.periods.actual.laborCostPct}% vs ${dataset.periods.budget.laborCostPct}%
+- GOP: ${dataset.periods.actual.gop} (${dataset.periods.actual.gopMarginPct}%) vs Budget ${dataset.periods.budget.gop} (${dataset.periods.budget.gopMarginPct}%)`
+      : '';
+
+    const systemPrompt = `You are playing the role of "${persona}" at a hospitality property during a live Finance Business Partner meeting.
+CRITICAL RULES:
+- Never leak official reference answers or grading rubrics. Challenge the Financial Controller / Learner to prove their thesis with exact numbers.
+- Difficulty: ${difficulty} | Challenge Intensity: ${challengeIntensity} | Question Turn: ${turnCount} of ${maxQuestions}.
+- Ground questions ONLY in these verified property USALI numbers and the learner's submitted work:
+Scenario: ${scenario?.titleEn || scenarioId} (${scenario?.periodLabel || ''})
+${datasetFacts}
+Learner Analysis Draft: ${analysisNotes || 'None submitted yet'}
+Learner Decision Draft: ${decisionSummary || 'None submitted yet'}
+
+Conversation History:
+${conversationHistory.map((m: any) => `${m.role === 'user' ? 'Learner (FC)' : m.persona || persona}: ${m.text}`).join('\n')}
+
+Latest Learner Statement: "${userTurn}"
+
+Respond strictly in character as ${persona} in ${language === 'vi' ? 'Vietnamese (Tiếng Việt) with executive hospitality terminology' : 'English'}.
+Keep it sharp (2 concise paragraphs) and end with ONE targeted executive challenge question (or closing sign-off summary if turn ${turnCount} >= ${maxQuestions}).`;
+
+    try {
+      const aiRes = await generateContentWithRetry({
+        model: GEMINI_MODEL,
+        contents: systemPrompt,
+      });
+      const reply = aiRes.text;
+      if (!reply) {
+        return res.json(buildRoleplayFallback());
+      }
+      return res.json({ reply, persona, turnNumber: turnCount });
+    } catch {
+      return res.json(buildRoleplayFallback());
+    }
+  } catch (err: any) {
+    return res.status(502).json({ error: err?.message || 'Roleplay request failed.' });
+  }
+});
+
+app.post('/api/gemini/simulator-coach', async (req, res) => {
+  try {
+    const actor = requireTalentActor(req, res);
+    if (!actor) return;
+
+    const {
+      scenarioId,
+      mode = 'guided_learning',
+      language = 'vi',
+      question = '',
+      analysisWorkspace,
+    } = req.body || {};
+
+    if (!scenarioId) return res.status(400).json({ error: 'scenarioId is required.' });
+
+    const simStore = loadSimulatorLocalStore();
+    const scenario = simStore.collections.simulationScenarios?.[scenarioId] as SimulationScenarioDoc | undefined;
+    const dataset = simStore.datasets?.[scenarioId] || (scenario ? generateDatasetSnapshotForScenario(scenario) : undefined);
+    const auditItems = dataset ? computeFinancialAudit(dataset.periods.actual, dataset.periods.budget) : [];
+
+    const buildCoachFallback = () => ({
+      verifiedCalculations: auditItems
+        .slice(0, 4)
+        .map(
+          (a) =>
+            `${language === 'vi' ? a.labelVi : a.labelEn}: Actual ${a.actualValue ?? 'N/A'} vs Budget ${a.budgetValue ?? 'N/A'} (${a.classification})`
+        ),
+      userAssumptions: [
+        analysisWorkspace?.significantVariances
+          ? `${language === 'vi' ? 'Đã ghi nhận giả định chênh lệch:' : 'Submitted variance hypothesis:'} ${String(analysisWorkspace.significantVariances).slice(0, 120)}`
+          : language === 'vi'
+          ? 'Chưa nhập giả định nguyên nhân gốc rễ tại tab Phân Tích.'
+          : 'No variance root-cause hypothesis entered yet in the Analysis tab.',
+      ],
+      missingDataOrRisks: [
+        language === 'vi'
+          ? 'Kiểm tra thêm tác động flow-through, chi phí hoa hồng OTA và hiệu suất giờ công (hours/occupied room).'
+          : 'Verify GOP flow-through, OTA commission drag, and departmental labor productivity per occupied room.',
+      ],
+      coachingRecommendations: [
+        language === 'vi'
+          ? 'Đối chiếu biến động doanh thu từng bộ phận với tỷ lệ chi phí biến đổi tương ứng trước khi trình GM.'
+          : 'Reconcile revenue mix shifts against variable departmental cost ratios before presenting to the GM.',
+      ],
+      humanValidationNote:
+        language === 'vi'
+          ? 'Lưu ý: Mọi đề xuất từ AI Business Coach mang tính tham khảo tư duy; đánh giá chính thức do Người hướng dẫn / FC xác nhận.'
+          : 'Advisory Notice: AI Coach insights support structured reasoning only; official assessment requires human assessor sign-off.',
+    });
+
+    if (!ai) {
+      return res.json({ coach: buildCoachFallback(), mode, fallbackUsed: true });
+    }
+
+    const coachPrompt = `You are the Optional AI Business Coach for FC Business Partner Simulator.
+COACHING MODE: ${mode}
+- guided_learning: Teach the USALI analytical approach and point out what formula/denominator to inspect next (NEVER give away the final answer key or completed recommendation).
+- challenge_mode: Stress-test the learner's assumptions for hidden blind spots and trade-offs.
+- executive_mode: Coach how to frame the insight crisply for a General Manager in 60 seconds.
+- reflection_mode: Help the learner reflect on commercial acumen and internal control habits.
+
+STRICT TRANSPARENCY REQUIREMENT:
+Structure your response cleanly into these labeled sections:
+1. verifiedCalculations (facts strictly from deterministic TypeScript engine below)
+2. userAssumptions (assumptions present or missing in learner's inputs)
+3. missingDataOrRisks (blind spots or controls to verify)
+4. coachingRecommendations (next thinking steps without spoiling the answer key)
+5. humanValidationNote (explicit reminder that human review is required before official sign-off)
+
+Scenario: ${scenario?.titleEn || scenarioId}
+Verified Deterministic USALI Audit: ${JSON.stringify(auditItems.slice(0, 8))}
+Learner Inputs So Far: ${JSON.stringify(analysisWorkspace || {})}
+Learner Question: "${question || 'How should I approach the main financial anomaly here?'}"
+Respond in ${language === 'vi' ? 'Vietnamese (Tiếng Việt)' : 'English'}.`;
+
+    try {
+      const aiRes = await generateContentWithRetry({
+        model: GEMINI_MODEL,
+        contents: coachPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              verifiedCalculations: { type: Type.ARRAY, items: { type: Type.STRING } },
+              userAssumptions: { type: Type.ARRAY, items: { type: Type.STRING } },
+              missingDataOrRisks: { type: Type.ARRAY, items: { type: Type.STRING } },
+              coachingRecommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
+              humanValidationNote: { type: Type.STRING },
+            },
+            required: [
+              'verifiedCalculations',
+              'userAssumptions',
+              'missingDataOrRisks',
+              'coachingRecommendations',
+              'humanValidationNote',
+            ],
+          },
+        },
+      });
+      const parsed = parseJsonResponse(aiRes.text);
+      return res.json({ coach: parsed, mode });
+    } catch {
+      return res.json({ coach: buildCoachFallback(), mode, fallbackUsed: true });
+    }
+  } catch (err: any) {
+    return res.status(502).json({ error: err?.message || 'AI Business Coach failed.' });
   }
 });
 

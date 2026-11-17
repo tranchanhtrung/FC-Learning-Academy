@@ -58,19 +58,27 @@ export const LearningPathsView: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800 text-xs font-bold uppercase tracking-wider mb-2">
             <GitBranch className="w-3.5 h-3.5" />
-            <span>Lộ Trình Phát Triển Sự Nghiệp Tài Chính Khách Sạn Chuẩn Quốc Tế</span>
+            <span>
+              {language === 'vi'
+                ? 'Lộ Trình Phát Triển Sự Nghiệp Tài Chính Khách Sạn Chuẩn Quốc Tế'
+                : 'International Hospitality Finance Career Progression Framework'}
+            </span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {t.nav.learningPaths}
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            Chương trình thăng tiến 4 cấp bậc tuần tự từ Kế Toán Viên &rarr; Kế Toán Trưởng &rarr; Trợ Lý FC &rarr; Giám Đốc Tài Chính &rarr; Đối Tác Chiến Lược Của Tổng Giám Đốc (GM).
+            {language === 'vi'
+              ? 'Chương trình thăng tiến 4 cấp bậc tuần tự từ Kế Toán Viên → Kế Toán Trưởng → Trợ Lý FC → Giám Đốc Tài Chính → Đối Tác Chiến Lược Của Tổng Giám Đốc (GM).'
+              : 'Structured 4-tier career progression from Accountant → Senior Accountant → Assistant FC → Financial Controller → Strategic Business Partner to the General Manager.'}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
-            <span className="text-[10px] font-bold text-amber-800 uppercase block">Tiến Độ Lộ Trình:</span>
+            <span className="text-[10px] font-bold text-amber-800 uppercase block">
+              {language === 'vi' ? 'Tiến Độ Lộ Trình:' : 'Track Progress:'}
+            </span>
             <span className="text-xl font-extrabold text-amber-900 font-mono">{trackProgressPct}%</span>
           </div>
         </div>
@@ -105,7 +113,7 @@ export const LearningPathsView: React.FC = () => {
                   </span>
                   {isUserPath && (
                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500 text-white">
-                      Đang Theo Học
+                      {language === 'vi' ? 'Đang Theo Học' : 'Active Track'}
                     </span>
                   )}
                 </div>
@@ -151,14 +159,17 @@ export const LearningPathsView: React.FC = () => {
               </span>
               <span className="text-xs text-slate-400">•</span>
               <span className="text-xs text-slate-500 font-bold">
-                Hoàn thành: {completedCoursesCount}/{allRequiredCoursesInTrack.length} khóa học
+                {language === 'vi'
+                  ? `Hoàn thành: ${completedCoursesCount}/${allRequiredCoursesInTrack.length} khóa học`
+                  : `Completed: ${completedCoursesCount}/${allRequiredCoursesInTrack.length} courses`}
               </span>
             </div>
             <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
               {language === 'vi' ? activePath.titleVi : activePath.titleEn}
             </h3>
             <p className="text-xs text-slate-600 mt-1">
-              Vị trí bổ nhiệm đích: <strong className="text-slate-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{activePath.targetRole}</strong>
+              {language === 'vi' ? 'Vị trí bổ nhiệm đích:' : 'Target Appointment Role:'}{' '}
+              <strong className="text-slate-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{activePath.targetRole}</strong>
             </p>
           </div>
 
@@ -194,7 +205,7 @@ export const LearningPathsView: React.FC = () => {
                     {stage.stageNumber}. {language === 'vi' ? stage.titleVi : stage.titleEn}
                   </h4>
                   <span className="text-[11px] font-bold text-blue-800 bg-blue-100 px-3 py-1 rounded-full border border-blue-200 w-fit">
-                    Cột mốc {stage.stageNumber}
+                    {language === 'vi' ? `Cột mốc ${stage.stageNumber}` : `Milestone ${stage.stageNumber}`}
                   </span>
                 </div>
 
@@ -202,7 +213,11 @@ export const LearningPathsView: React.FC = () => {
                 <div className="p-3.5 bg-white rounded-xl border border-slate-200 text-xs space-y-1">
                   <span className="font-bold text-slate-800 flex items-center gap-1.5 uppercase text-[10px] tracking-wider">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Tiêu chí sẵn sàng thăng tiến (Promotion Readiness Criteria):</span>
+                    <span>
+                      {language === 'vi'
+                        ? 'Tiêu chí sẵn sàng thăng tiến (Promotion Readiness Criteria):'
+                        : 'Promotion Readiness Criteria:'}
+                    </span>
                   </span>
                   <p className="text-slate-600 leading-relaxed pl-5">
                     {language === 'vi' ? stage.readinessCriteriaVi : stage.readinessCriteriaEn}
@@ -215,7 +230,9 @@ export const LearningPathsView: React.FC = () => {
                   <div className="space-y-2">
                     <span className="font-bold text-slate-700 flex items-center gap-1.5">
                       <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Khóa học bắt buộc hoàn thành:</span>
+                      <span>
+                        {language === 'vi' ? 'Khóa học bắt buộc hoàn thành:' : 'Required Courses:'}
+                      </span>
                     </span>
                     <div className="space-y-2">
                       {stage.requiredCourses.map((cid) => {
@@ -241,7 +258,7 @@ export const LearningPathsView: React.FC = () => {
                               </span>
                             </div>
                             <span className="text-[10px] text-slate-400 font-mono shrink-0 pl-2">
-                              {c.durationHours}h &bull; Vào học &rarr;
+                              {c.durationHours}h &bull; {language === 'vi' ? 'Vào học' : 'Open'} &rarr;
                             </span>
                           </div>
                         );
@@ -253,7 +270,11 @@ export const LearningPathsView: React.FC = () => {
                   <div className="space-y-2">
                     <span className="font-bold text-slate-700 flex items-center gap-1.5">
                       <Briefcase className="w-3.5 h-3.5 text-purple-600" />
-                      <span>Bài tập thực hành tại khách sạn (OJT):</span>
+                      <span>
+                        {language === 'vi'
+                          ? 'Bài tập thực hành tại khách sạn (OJT):'
+                          : 'Required Hotel OJT Projects:'}
+                      </span>
                     </span>
                     <div className="space-y-2">
                       {stage.requiredOjtAssignments.map((aid) => {

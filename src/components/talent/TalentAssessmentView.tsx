@@ -325,7 +325,9 @@ export const TalentAssessmentView: React.FC = () => {
                   onChange={(e) => setAssessorType(e.target.value as AssessorType)}
                   className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg disabled:bg-slate-100"
                 >
-                  <option value="self">Self Assessment (Tự đánh giá)</option>
+                  <option value="self">
+                    {language === 'vi' ? 'Tự đánh giá (Self Assessment)' : 'Self Assessment'}
+                  </option>
                   <option value="supervisor">Supervisor Review</option>
                   <option value="financial_controller">Financial Controller Validation</option>
                   <option value="hr_lnd">HR / L&D Calibration</option>
