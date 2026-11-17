@@ -25,9 +25,10 @@ export const TalentGapAnalysisView: React.FC = () => {
     setSelectedTalentTargetPosition,
     setActiveTab,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
+  const isLearner = !hasPermission('view_all_learners_data');
   const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
 
   const [periodFilter, setPeriodFilter] = useState<string>('all');

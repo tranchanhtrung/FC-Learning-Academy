@@ -7,8 +7,10 @@ import { AdminDashboard } from './AdminDashboard';
 import { UserCheck, Briefcase, Crown, Shield, Eye } from 'lucide-react';
 import { UserRole } from '../../types';
 
+import { getPermittedDashboardPerspectives } from '../../lib/rbac';
+
 export const DashboardContainer: React.FC = () => {
-  const { currentUser, language } = useApp();
+  const { currentUser, language, rolePermissions } = useApp();
 
   const [activeViewRole, setActiveViewRole] = useState<UserRole>(currentUser.role);
 
@@ -43,16 +45,8 @@ export const DashboardContainer: React.FC = () => {
     },
   ];
 
-  // Role-based permitted perspectives
-  const permittedRolesMap: Record<UserRole, UserRole[]> = {
-    learner: ['learner'],
-    financial_controller: ['financial_controller', 'learner'],
-    general_manager: ['general_manager', 'financial_controller'],
-    lnd_manager: ['super_admin', 'financial_controller', 'general_manager', 'learner'],
-    super_admin: ['super_admin', 'general_manager', 'financial_controller', 'learner'],
-  };
-
-  const allowedRoles = permittedRolesMap[currentUser.role] || ['learner'];
+  // Role-based permitted perspectives governed by dynamic RBAC policy
+  const allowedRoles = getPermittedDashboardPerspectives(currentUser.role, rolePermissions);
   const viewOptions = allViewOptions.filter((opt) => allowedRoles.includes(opt.role));
 
   return (

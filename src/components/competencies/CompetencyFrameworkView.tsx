@@ -31,6 +31,7 @@ export const CompetencyFrameworkView: React.FC = () => {
     language,
     t,
     currentUser,
+    hasPermission,
     setSelectedCourseForPlayer,
     showToast,
   } = useApp();
@@ -41,8 +42,7 @@ export const CompetencyFrameworkView: React.FC = () => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editForm, setEditForm] = useState<Partial<Competency>>({});
 
-  const isAdminOrManager =
-    currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const isAdminOrManager = hasPermission('manage_competency_framework');
 
   const domainIcons: Record<string, any> = {
     dom_1: BookOpen,
@@ -487,7 +487,7 @@ export const CompetencyFrameworkView: React.FC = () => {
       )}
 
       {/* Add / Edit Competency Modal (Admin) */}
-      {isEditing && (
+      {isAdminOrManager && isEditing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
           <form
             onSubmit={handleSaveForm}

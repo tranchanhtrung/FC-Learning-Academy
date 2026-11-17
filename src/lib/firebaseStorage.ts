@@ -25,8 +25,12 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
   'text/csv',
+  'text/plain',
+  'text/markdown',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/msword',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint',
   'image/png',
   'image/jpeg',
   'image/webp',
@@ -37,8 +41,12 @@ const ALLOWED_EXTENSIONS = new Set([
   'xlsx',
   'xls',
   'csv',
+  'txt',
+  'md',
   'docx',
   'doc',
+  'pptx',
+  'ppt',
   'png',
   'jpg',
   'jpeg',
@@ -58,7 +66,7 @@ export function validateStorageFile(file: File): { valid: boolean; error?: strin
   if (!ALLOWED_EXTENSIONS.has(ext) && !ALLOWED_MIME_TYPES.has(file.type)) {
     return {
       valid: false,
-      error: `Unsupported file type "${ext || file.type}". Allowed: PDF, XLSX, CSV, DOCX, PNG, JPG, WEBP.`,
+      error: `Unsupported file type "${ext || file.type}". Allowed: PDF, XLSX, CSV, DOCX, PPTX, TXT, MD, PNG, JPG, WEBP.`,
     };
   }
   return { valid: true };
@@ -68,6 +76,7 @@ export async function uploadAuthorizedTrainingFile(params: {
   file: File;
   category: StorageUploadCategory;
   recordId: string;
+  filePrefix?: string;
 }): Promise<StorageUploadResult> {
   const fbUser = auth.currentUser;
   if (!fbUser || !fbUser.emailVerified) {
@@ -81,10 +90,11 @@ export async function uploadAuthorizedTrainingFile(params: {
 
   const safeName = params.file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
   const safeRecordId = params.recordId.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const safePrefix = params.filePrefix ? `${params.filePrefix.replace(/[^a-zA-Z0-9_\-]/g, '_')}_` : '';
   const fullPath =
     params.category === 'course_materials' || params.category === 'learning_documents'
-      ? `${params.category}/${safeRecordId}/${Date.now()}_${safeName}`
-      : `${params.category}/${fbUser.uid}/${safeRecordId}/${Date.now()}_${safeName}`;
+      ? `${params.category}/${safeRecordId}/${safePrefix}${Date.now()}_${safeName}`
+      : `${params.category}/${fbUser.uid}/${safeRecordId}/${safePrefix}${Date.now()}_${safeName}`;
 
   const storageRef = ref(storage, fullPath);
   const snap = await uploadBytes(storageRef, params.file, {

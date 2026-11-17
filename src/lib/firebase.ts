@@ -98,19 +98,40 @@ export {
   resolveAuthenticatedUserProfile,
   grantAdminRegistryEntry,
 } from './firebaseAuth';
+export type { RegisterMetadata } from './firebaseAuth';
 
 export {
+  sanitizeForFirestore,
   getFirestoreCollectionDocs,
+  getScopedCollectionDocs,
   fetchImportLogsFromFirestore,
   writeImportLogToFirestore,
+  writeScenarioImportJobToFirestore,
+  writeScenarioImportErrorToFirestore,
+  fetchScenarioImportErrorsFromFirestore,
+  writeScenarioVersionToFirestore,
+  saveScenarioCompetencyMappingToFirestore,
   commitCollectionToFirestore,
   fetchPublishedSimulationScenarios,
   fetchAllSimulationScenarios,
   fetchAllProductionMasterData,
+  fetchProductionTransactionalData,
   publishSimulationScenarioInFirestore,
   syncRecordToFirestore,
+  deleteRecordFromFirestore,
+  listAdminRegistryEntries,
+  buildFirestoreUserProfilePayload,
+  syncOfficialUserToFirestore,
+  seedOfficialUsersToFirestore,
+  fetchRolePermissionsFromFirestore,
+  saveRolePermissionPolicyToFirestore,
+  seedDefaultRolePermissionsToFirestore,
+  fetchLessonMaterialsFromFirestore,
+  saveLessonMaterialToFirestore,
+  deleteLessonMaterialFromFirestore,
+  testFirestoreReadWrite,
 } from './firestore';
-export type { ChunkWriteOutcome, DuplicateStrategy } from './firestore';
+export type { ChunkWriteOutcome, DuplicateStrategy, ProductionTransactionalData } from './firestore';
 
 export {
   uploadAuthorizedTrainingFile,

@@ -35,7 +35,18 @@ import type {
   IdpReviewLogDoc,
   TalentConfigDoc,
   LmsNotificationItem,
+  PermissionKey,
+  RolePermissionsMap,
+  UserRole,
+  LessonMaterialDoc,
 } from './src/types/index.ts';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  SYSTEM_ROLES,
+  normalizeRolePermissionsMap,
+  roleHasPermission,
+  sanitizeRolePermissionsList,
+} from './src/lib/rbac.ts';
 import {
   DEFAULT_TALENT_CONFIG,
   calculateGapAnalysis,
@@ -328,6 +339,8 @@ interface AcademyDB {
   careerReadinessReviews: CareerReadinessReviewDoc[];
   idpReviewLogs: IdpReviewLogDoc[];
   talentNotifications: LmsNotificationItem[];
+  rolePermissions: RolePermissionsMap;
+  lessonMaterials: LessonMaterialDoc[];
 }
 
 const DATA_DIR = path.join(__dirname, '.data');
@@ -348,6 +361,8 @@ function getSeedDB(): AcademyDB {
     certificates: JSON.parse(JSON.stringify(INITIAL_CERTIFICATES)),
     auditLogs: JSON.parse(JSON.stringify(DEFAULT_AUDIT_LOGS)),
     ...talentSeed,
+    rolePermissions: normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS),
+    lessonMaterials: [],
   };
 }
 
@@ -405,8 +420,18 @@ function loadDB(): AcademyDB {
             Array.isArray(parsed.talentNotifications) && parsed.talentNotifications.length > 0
               ? parsed.talentNotifications
               : talentSeed?.talentNotifications || [],
+          rolePermissions: normalizeRolePermissionsMap(parsed.rolePermissions),
+          lessonMaterials: Array.isArray(parsed.lessonMaterials) ? parsed.lessonMaterials : [],
         };
-        if (!hasTalentSeed) {
+        if (!Array.isArray(parsed.lessonMaterials)) {
+          if (!loaded.rolePermissions.lnd_manager.includes('manage_lesson_materials')) {
+            loaded.rolePermissions.lnd_manager = [
+              ...loaded.rolePermissions.lnd_manager,
+              'manage_lesson_materials',
+            ];
+          }
+        }
+        if (!hasTalentSeed || !parsed.rolePermissions || !Array.isArray(parsed.lessonMaterials)) {
           persistDB(loaded);
         }
         return loaded;
@@ -456,6 +481,22 @@ function getRequestActor(req: express.Request): User | undefined {
     return db.users.find((u) => u.id === actorId);
   }
   return undefined;
+}
+
+function getEffectiveActorRole(req: express.Request): UserRole | undefined {
+  const actor = getRequestActor(req);
+  if (actor) return actor.role;
+  const headerRole = req.headers['x-user-role'] as string | undefined;
+  if (headerRole && SYSTEM_ROLES.includes(headerRole as UserRole)) {
+    return headerRole as UserRole;
+  }
+  return undefined;
+}
+
+function hasActorPermission(req: express.Request, permission: PermissionKey): boolean {
+  const role = getEffectiveActorRole(req);
+  if (!role) return true; // Unscoped test/CLI callers without headers retain seed parity
+  return roleHasPermission(role, permission, db.rolePermissions);
 }
 
 // Health check endpoint
@@ -1127,6 +1168,8 @@ app.get('/api/bootstrap', (req, res) => {
     idps: db.idps,
     certificates: db.certificates,
     auditLogs: db.auditLogs,
+    rolePermissions: db.rolePermissions,
+    lessonMaterials: db.lessonMaterials,
   });
 });
 
@@ -1135,11 +1178,158 @@ app.get('/api/audit-logs', (req, res) => {
   res.json({ auditLogs: db.auditLogs });
 });
 
+// --- PER-LESSON LEARNING MATERIALS ---
+app.get('/api/lesson-materials', (req, res) => {
+  const { courseId, lessonId } = req.query as { courseId?: string; lessonId?: string };
+  let items = db.lessonMaterials;
+  if (courseId) items = items.filter((m) => m.courseId === courseId);
+  if (lessonId) items = items.filter((m) => m.lessonId === lessonId);
+  return res.json({ lessonMaterials: items });
+});
+
+app.post('/api/lesson-materials', (req, res) => {
+  if (!hasActorPermission(req, 'manage_lesson_materials')) {
+    return res.status(403).json({
+      error: 'Insufficient permissions to upload lesson learning materials.',
+    });
+  }
+  const actor = getRequestActor(req);
+  const body = req.body as Partial<LessonMaterialDoc>;
+  if (!body?.courseId || !body?.lessonId || !body?.titleVi || !body?.titleEn) {
+    return res.status(400).json({ error: 'courseId, lessonId, titleVi, and titleEn are required.' });
+  }
+  if (typeof body.inlineBase64 === 'string' && body.inlineBase64.length > 920000) {
+    return res.status(400).json({ error: 'Inline file base64 exceeds Firestore 1MB safety threshold.' });
+  }
+  const now = new Date().toISOString();
+  const docItem: LessonMaterialDoc = {
+    id: body.id && /^[a-zA-Z0-9_\-]+$/.test(body.id)
+      ? body.id
+      : `lmat_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+    courseId: String(body.courseId),
+    courseCode: String(body.courseCode || body.courseId),
+    lessonId: String(body.lessonId),
+    lessonOrder: Math.max(1, Number(body.lessonOrder || 1)),
+    lessonTitleVi: String(body.lessonTitleVi || ''),
+    lessonTitleEn: String(body.lessonTitleEn || ''),
+    titleVi: String(body.titleVi).trim().slice(0, 300),
+    titleEn: String(body.titleEn).trim().slice(0, 300),
+    descriptionVi: body.descriptionVi ? String(body.descriptionVi).trim().slice(0, 2000) : undefined,
+    descriptionEn: body.descriptionEn ? String(body.descriptionEn).trim().slice(0, 2000) : undefined,
+    materialType: (body.materialType as LessonMaterialDoc['materialType']) || 'pdf',
+    storageMode: (body.storageMode as LessonMaterialDoc['storageMode']) || 'firestore_inline',
+    fileName: body.fileName ? String(body.fileName).slice(0, 255) : undefined,
+    mimeType: body.mimeType ? String(body.mimeType).slice(0, 150) : undefined,
+    fileSizeBytes: typeof body.fileSizeBytes === 'number' ? body.fileSizeBytes : undefined,
+    fileSizeLabel: String(body.fileSizeLabel || 'External').slice(0, 40),
+    inlineBase64: body.inlineBase64 ? String(body.inlineBase64) : undefined,
+    downloadUrl: body.downloadUrl ? String(body.downloadUrl).slice(0, 2000) : undefined,
+    storagePath: body.storagePath ? String(body.storagePath).slice(0, 500) : undefined,
+    externalUrl: body.externalUrl ? String(body.externalUrl).slice(0, 2000) : undefined,
+    isRequired: Boolean(body.isRequired),
+    uploadedByUid: String(body.uploadedByUid || actor?.id || 'system'),
+    uploadedByName: String(body.uploadedByName || actor?.name || 'Administrator').slice(0, 150),
+    uploadedByEmail: body.uploadedByEmail ? String(body.uploadedByEmail).slice(0, 200) : actor?.email,
+    uploadedByRole: String(body.uploadedByRole || actor?.role || 'super_admin'),
+    createdAt: body.createdAt || now,
+    updatedAt: now,
+  };
+  const existingIdx = db.lessonMaterials.findIndex((m) => m.id === docItem.id);
+  if (existingIdx >= 0) {
+    db.lessonMaterials[existingIdx] = docItem;
+  } else {
+    db.lessonMaterials.unshift(docItem);
+  }
+  recordAudit(
+    'UPLOAD_LESSON_MATERIAL',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    `${docItem.courseCode} · Lesson ${docItem.lessonOrder}`,
+    `Uploaded "${docItem.titleVi}" (${docItem.storageMode})`
+  );
+  persistDB(db);
+  return res.status(201).json({ success: true, material: docItem });
+});
+
+app.delete('/api/lesson-materials/:id', (req, res) => {
+  if (!hasActorPermission(req, 'manage_lesson_materials')) {
+    return res.status(403).json({
+      error: 'Insufficient permissions to delete lesson learning materials.',
+    });
+  }
+  const actor = getRequestActor(req);
+  const { id } = req.params;
+  const idx = db.lessonMaterials.findIndex((m) => m.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: 'Lesson material not found.' });
+  }
+  const [removed] = db.lessonMaterials.splice(idx, 1);
+  recordAudit(
+    'DELETE_LESSON_MATERIAL',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    `${removed.courseCode} · Lesson ${removed.lessonOrder}`,
+    `Removed "${removed.titleVi}"`
+  );
+  persistDB(db);
+  return res.json({ success: true, removedId: id });
+});
+
+// --- RBAC ROLE PERMISSIONS MATRIX ---
+app.get('/api/rbac/permissions', (req, res) => {
+  return res.json({ rolePermissions: db.rolePermissions });
+});
+
+app.put('/api/rbac/permissions/:role', (req, res) => {
+  const { role } = req.params;
+  if (!SYSTEM_ROLES.includes(role as UserRole)) {
+    return res.status(400).json({ error: `Invalid system role "${role}".` });
+  }
+  if (!hasActorPermission(req, 'configure_role_permissions')) {
+    return res.status(403).json({ error: 'Insufficient permissions to modify RBAC role matrix.' });
+  }
+  const actor = getRequestActor(req);
+  const incomingList = req.body?.permissions;
+  if (!Array.isArray(incomingList)) {
+    return res.status(400).json({ error: 'permissions array is required.' });
+  }
+  const typedRole = role as UserRole;
+  const sanitized = sanitizeRolePermissionsList(typedRole, incomingList);
+  db.rolePermissions[typedRole] = sanitized;
+  recordAudit(
+    'UPDATE_ROLE_PERMISSIONS',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    typedRole,
+    `Updated ${sanitized.length} permissions for role "${typedRole}"`
+  );
+  persistDB(db);
+  return res.json({ success: true, role: typedRole, permissions: sanitized, rolePermissions: db.rolePermissions });
+});
+
+app.post('/api/rbac/reset', (req, res) => {
+  if (!hasActorPermission(req, 'configure_role_permissions')) {
+    return res.status(403).json({ error: 'Insufficient permissions to reset RBAC policy.' });
+  }
+  const actor = getRequestActor(req);
+  const targetRole = req.body?.role as UserRole | undefined;
+  if (targetRole && SYSTEM_ROLES.includes(targetRole)) {
+    db.rolePermissions[targetRole] = [...DEFAULT_ROLE_PERMISSIONS[targetRole]];
+  } else {
+    db.rolePermissions = normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS);
+  }
+  recordAudit(
+    'RESET_ROLE_PERMISSIONS',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    targetRole || 'ALL_ROLES',
+    targetRole ? `Reset role "${targetRole}" permissions to baseline defaults` : 'Reset all 5 role policies to defaults'
+  );
+  persistDB(db);
+  return res.json({ success: true, rolePermissions: db.rolePermissions });
+});
+
 // --- USERS & RBAC ---
 app.post('/api/users', (req, res) => {
   const actor = getRequestActor(req);
-  if (actor && actor.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Only Super Administrator can create user accounts.' });
+  if (!hasActorPermission(req, 'manage_users_rbac')) {
+    return res.status(403).json({ error: 'Current role lacks permission to create user accounts.' });
   }
 
   const { name, email, role, position, department, property, currentLevel, targetLevel } = req.body;
@@ -1190,7 +1380,7 @@ app.put('/api/users/:id', (req, res) => {
     actor.id === id &&
     Object.keys(req.body).every((k) => k === 'careerPathId' || k === 'actorId');
 
-  if (actor && actor.role !== 'super_admin' && !isSelfCareerUpdate) {
+  if (!hasActorPermission(req, 'manage_users_rbac') && !isSelfCareerUpdate) {
     return res.status(403).json({ error: 'Insufficient permissions to modify this user.' });
   }
 
@@ -1227,8 +1417,8 @@ app.put('/api/users/:id', (req, res) => {
 // --- COMPETENCIES ---
 app.post('/api/competencies', (req, res) => {
   const actor = getRequestActor(req);
-  if (actor && actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
-    return res.status(403).json({ error: 'Only Admin or L&D Manager can modify competencies.' });
+  if (!hasActorPermission(req, 'manage_competency_framework')) {
+    return res.status(403).json({ error: 'Current role lacks permission to modify competencies.' });
   }
   const comp: Competency = req.body;
   if (!comp || !comp.id || !comp.code || !comp.nameVi) {
@@ -1247,8 +1437,8 @@ app.post('/api/competencies', (req, res) => {
 
 app.delete('/api/competencies/:id', (req, res) => {
   const actor = getRequestActor(req);
-  if (actor && actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
-    return res.status(403).json({ error: 'Only Admin or L&D Manager can delete competencies.' });
+  if (!hasActorPermission(req, 'manage_competency_framework')) {
+    return res.status(403).json({ error: 'Current role lacks permission to delete competencies.' });
   }
   const { id } = req.params;
   const existing = db.competencies.find((c) => c.id === id);
@@ -1390,8 +1580,8 @@ app.post('/api/ojt/submit', (req, res) => {
 
 app.post('/api/ojt/grade', (req, res) => {
   const actor = getRequestActor(req);
-  if (actor && !['financial_controller', 'super_admin', 'lnd_manager'].includes(actor.role)) {
-    return res.status(403).json({ error: 'Learners cannot grade OJT submissions.' });
+  if (!hasActorPermission(req, 'grade_ojt_submissions')) {
+    return res.status(403).json({ error: 'Current role lacks permission to grade OJT submissions.' });
   }
 
   const { submissionId, score, feedback, status, reviewedBy } = req.body;
@@ -1444,8 +1634,8 @@ app.post('/api/certificates/issue', (req, res) => {
     return res.json({ success: true, certificate: existing });
   }
 
-  // Enforce level eligibility unless explicitly issued by Super Admin / L&D / FC
-  const isAuthorizedIssuer = actor && ['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role);
+  // Enforce level eligibility unless explicitly issued by a role with issue_certificates permission
+  const isAuthorizedIssuer = hasActorPermission(req, 'issue_certificates');
   if (!isAuthorizedIssuer && recipient.currentLevel < numericLevel) {
     return res.status(403).json({
       error: `Learner proficiency Level ${recipient.currentLevel} has not met Level ${numericLevel} certification threshold.`,
@@ -1520,18 +1710,19 @@ app.post('/api/assessments', (req, res) => {
       return res.status(400).json({ error: 'learnerId is required' });
     }
 
-    // RBAC check: learners cannot approve assessments directly
-    if (actor && actor.role === 'learner' && record.status === 'approved') {
-      return res.status(403).json({ error: 'Learners cannot approve their own competency assessments.' });
+    // RBAC check: users without assess_team_members cannot approve assessments directly
+    const canAssessTeam = hasActorPermission(req, 'assess_team_members');
+    if (actor && !canAssessTeam && record.status === 'approved') {
+      return res.status(403).json({ error: 'Your role does not have permission to approve competency assessments.' });
     }
 
     const existingIdx = db.assessments.findIndex((a) => a.id === record.id);
     const existingRecord = existingIdx >= 0 ? db.assessments[existingIdx] : undefined;
 
-    // Preserve supervisor ratings/comments if saved by learner
+    // Preserve supervisor ratings/comments if saved by someone without assess_team_members
     let mergedScores = record.scores || {};
     let mergedSupervisorComments = record.supervisorComments || '';
-    if (actor && actor.role === 'learner' && existingRecord) {
+    if (actor && !canAssessTeam && existingRecord) {
       mergedSupervisorComments = existingRecord.supervisorComments || '';
       mergedScores = Object.fromEntries(
         Object.entries(record.scores || {}).map(([code, val]: [string, any]) => {
@@ -1552,7 +1743,7 @@ app.post('/api/assessments', (req, res) => {
       ...record,
       id: record.id || `asmt_${Date.now()}`,
       supervisorId:
-        actor?.role === 'learner'
+        !canAssessTeam
           ? existingRecord?.supervisorId || record.supervisorId || 'user_fc1'
           : record.supervisorId || actor?.id || 'user_fc1',
       scores: mergedScores,
@@ -1807,7 +1998,15 @@ app.post('/api/idps/generate', (req, res) => {
 // DATA IMPORT CENTER API ENDPOINTS (RBAC: super_admin & lnd_manager ONLY)
 // ============================================================================
 
-function requireImportAdmin(req: express.Request, res: express.Response): User | null {
+function requireImportAdmin(
+  req: express.Request,
+  res: express.Response,
+  requiredPermissions: PermissionKey[] = [
+    'access_data_import_center',
+    'access_sim_import_center',
+    'manage_sim_admin',
+  ]
+): User | null {
   const actorId =
     (req.headers['x-user-id'] as string) ||
     (req.query.userId as string) ||
@@ -1821,13 +2020,17 @@ function requireImportAdmin(req: express.Request, res: express.Response): User |
     res.status(401).json({ error: 'Invalid user session.' });
     return null;
   }
-  if (actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
+  const effectiveRole: UserRole = getEffectiveActorRole(req) ?? actor.role;
+  const allowed = requiredPermissions.some((perm) =>
+    roleHasPermission(effectiveRole, perm, db.rolePermissions)
+  );
+  if (!allowed) {
     res.status(403).json({
-      error: 'Access Denied: Only Super Administrator and authorized L&D Managers can access Data Import Center.',
+      error: `Access Denied: Your role lacks required permission (${requiredPermissions.join(' or ')}).`,
     });
     return null;
   }
-  return actor;
+  return { ...actor, role: effectiveRole };
 }
 
 function decodeBase64Workbook(rawBase64: string): Buffer {
@@ -3304,7 +3507,7 @@ app.post('/api/simulator/competency-mappings', (req, res) => {
 });
 
 app.get('/api/simulator/import-jobs', (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['access_sim_import_center', 'manage_sim_admin']);
   if (!actor) return;
   const simStore = loadSimulatorLocalStore();
   return res.json({
@@ -3314,7 +3517,7 @@ app.get('/api/simulator/import-jobs', (req, res) => {
 });
 
 app.get('/api/simulator/import-jobs/:jobId/errors', (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['access_sim_import_center', 'manage_sim_admin']);
   if (!actor) return;
   const { jobId } = req.params;
   const simStore = loadSimulatorLocalStore();
@@ -3325,7 +3528,7 @@ app.get('/api/simulator/import-jobs/:jobId/errors', (req, res) => {
 });
 
 app.post('/api/simulator/import-jobs/:jobId/resume', async (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['access_sim_import_center']);
   if (!actor) return;
 
   const { jobId } = req.params;
@@ -3360,22 +3563,18 @@ app.post('/api/simulator/import-jobs/:jobId/resume', async (req, res) => {
 });
 
 app.get('/api/simulator/versions', (req, res) => {
-  const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
-  if (!isSupervisorOrAdmin) {
-    return res.status(403).json({ error: 'Supervisor or Admin role required to view Scenario Version History.' });
+  const isAllowed = hasActorPermission(req, 'manage_sim_admin');
+  if (!isAllowed) {
+    return res.status(403).json({ error: 'manage_sim_admin permission required to view Scenario Version History.' });
   }
   const simStore = loadSimulatorLocalStore();
   return res.json({ versions: simStore.scenarioVersions || [] });
 });
 
 app.get('/api/simulator/versions/:scenarioId', (req, res) => {
-  const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
-  if (!isSupervisorOrAdmin) {
-    return res.status(403).json({ error: 'Supervisor or Admin role required to view Scenario Version History.' });
+  const isAllowed = hasActorPermission(req, 'manage_sim_admin');
+  if (!isAllowed) {
+    return res.status(403).json({ error: 'manage_sim_admin permission required to view Scenario Version History.' });
   }
   const simStore = loadSimulatorLocalStore();
   return res.json({
@@ -3384,9 +3583,7 @@ app.get('/api/simulator/versions/:scenarioId', (req, res) => {
 });
 
 app.get('/api/simulator/scenarios', (req, res) => {
-  const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const isSupervisorOrAdmin = hasActorPermission(req, 'preview_draft_scenarios');
   const simStore = loadSimulatorLocalStore();
 
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -3430,8 +3627,7 @@ app.get('/api/simulator/scenarios', (req, res) => {
 
 app.get('/api/simulator/scenarios/:id/details', (req, res) => {
   const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const isSupervisorOrAdmin = hasActorPermission(req, 'preview_draft_scenarios');
   const simStore = loadSimulatorLocalStore();
   const sid = req.params.id;
   const scenario = simStore.collections.simulationScenarios?.[sid] as SimulationScenarioDoc | undefined;
@@ -3476,18 +3672,19 @@ app.get('/api/simulator/scenarios/:id/details', (req, res) => {
 
 app.get('/api/simulator/data', (req, res) => {
   const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
+  const canPreviewDrafts = hasActorPermission(req, 'preview_draft_scenarios');
+  const isSupervisorOrAdmin = canPreviewDrafts || hasActorPermission(req, 'view_all_learners_data');
+  const canViewAllSessions = hasActorPermission(req, 'view_all_learners_data');
   const simStore = loadSimulatorLocalStore();
 
   const allScenarios = Object.values(simStore.collections.simulationScenarios || {});
-  const visibleScenarios = isSupervisorOrAdmin
+  const visibleScenarios = canPreviewDrafts
     ? allScenarios
     : allScenarios.filter((s: any) => isScenarioLearnerAccessible(s));
   const visibleScenarioIds = new Set(visibleScenarios.map((s: any) => s.id));
 
   const visibleSessions = actor
-    ? isSupervisorOrAdmin
+    ? canViewAllSessions
       ? simStore.sessions
       : simStore.sessions.filter((s: any) => s.employeeId === actor.id || s.employeeUid === actor.id)
     : [];
@@ -3529,19 +3726,20 @@ app.get('/api/simulator/data', (req, res) => {
 
 app.get('/api/simulator/workspace', (req, res) => {
   const actor = getRequestActor(req);
-  const isSupervisorOrAdmin =
-    actor && ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role);
-  const isAdminOrLnd = actor && ['super_admin', 'lnd_manager'].includes(actor.role);
+  const canPreviewDrafts = hasActorPermission(req, 'preview_draft_scenarios');
+  const canViewAll = hasActorPermission(req, 'view_all_learners_data');
+  const isSupervisorOrAdmin = canViewAll;
+  const isAdminOrLnd = hasActorPermission(req, 'manage_sim_admin');
   const simStore = loadSimulatorLocalStore();
 
   const allScenarios = Object.values(simStore.collections.simulationScenarios || {}) as SimulationScenarioDoc[];
-  const visibleScenarios = isSupervisorOrAdmin
+  const visibleScenarios = canPreviewDrafts
     ? allScenarios
     : allScenarios.filter((s) => isScenarioLearnerAccessible(s));
   const visibleIds = new Set(visibleScenarios.map((s) => s.id));
 
   const visibleSessions = actor
-    ? isSupervisorOrAdmin
+    ? canViewAll
       ? simStore.sessions
       : simStore.sessions.filter((s: any) => s.employeeId === actor.id || s.employeeUid === actor.id)
     : [];
@@ -3584,7 +3782,7 @@ app.get('/api/simulator/workspace', (req, res) => {
 });
 
 app.post('/api/simulator/hotel-profiles', (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['manage_sim_admin']);
   if (!actor) return;
 
   const { id, hotelCode, hotelName, brandTier, city, totalKeys = 200, currency = 'USD', fcPositionLevel = 3 } = req.body || {};
@@ -3622,7 +3820,7 @@ app.post('/api/simulator/hotel-profiles', (req, res) => {
 });
 
 app.post('/api/simulator/scenarios', (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['manage_sim_admin']);
   if (!actor) return;
 
   const body = req.body || {};
@@ -3693,7 +3891,7 @@ app.post('/api/simulator/scenarios', (req, res) => {
 });
 
 app.put('/api/simulator/scenarios/:id', (req, res) => {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['manage_sim_admin']);
   if (!actor) return;
   const { id } = req.params;
   const simStore = loadSimulatorLocalStore();
@@ -3732,8 +3930,8 @@ app.put('/api/simulator/scenarios/:id', (req, res) => {
 app.post('/api/simulator/assignments', (req, res) => {
   const actor = requireTalentActor(req, res);
   if (!actor) return;
-  if (!['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)) {
-    return res.status(403).json({ error: 'Only Admin, L&D Manager, FC, or GM can assign simulator scenarios.' });
+  if (!hasActorPermission(req, 'manage_sim_admin')) {
+    return res.status(403).json({ error: 'Only roles with manage_sim_admin can assign simulator scenarios.' });
   }
   const { scenarioId, learnerId, dueDate, mandatory = true, note = '' } = req.body || {};
   if (!scenarioId || !learnerId || !dueDate) {
@@ -3777,7 +3975,7 @@ app.post('/api/simulator/assignments', (req, res) => {
 });
 
 function handleScenarioStatusTransition(req: express.Request, res: express.Response) {
-  const actor = requireImportAdmin(req, res);
+  const actor = requireImportAdmin(req, res, ['manage_sim_admin']);
   if (!actor) return;
 
   const { id } = req.params;
@@ -3896,10 +4094,10 @@ app.post('/api/simulator/sessions', (req, res) => {
   if (
     scenario &&
     !isScenarioLearnerAccessible(scenario) &&
-    !['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)
+    !hasActorPermission(req, 'preview_draft_scenarios')
   ) {
     return res.status(403).json({
-      error: `Access Denied: Learners cannot start or play ${scenario.status}${scenario.isActive === false ? ' / inactive' : ''} scenarios.`,
+      error: `Access Denied: Your role cannot start or play ${scenario.status}${scenario.isActive === false ? ' / inactive' : ''} scenarios.`,
     });
   }
 
@@ -3914,7 +4112,7 @@ app.post('/api/simulator/sessions', (req, res) => {
     }
     if (
       existing.employeeId !== actor.id &&
-      !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+      !hasActorPermission(req, 'view_all_learners_data')
     ) {
       return res.status(403).json({ error: 'Cannot update another employee simulation session.' });
     }
@@ -4001,7 +4199,7 @@ app.post('/api/simulator/sessions/:id/evaluate', async (req, res) => {
   }
   if (
     existing.employeeId !== actor.id &&
-    !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+    !hasActorPermission(req, 'assess_team_members')
   ) {
     return res.status(403).json({ error: 'Cannot evaluate another employee simulation session.' });
   }
@@ -4183,9 +4381,9 @@ app.post('/api/simulator/evaluations/:id/review', (req, res) => {
   const actor = requireTalentActor(req, res);
   if (!actor) return;
 
-  if (!['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(actor.role)) {
+  if (!hasActorPermission(req, 'assess_team_members')) {
     return res.status(403).json({
-      error: 'Access Denied: Learners cannot modify evaluation scores or self-approve human assessor reviews.',
+      error: 'Access Denied: Your role lacks assess_team_members permission to modify evaluation scores.',
     });
   }
 
@@ -4547,13 +4745,13 @@ function requireTalentActor(req: express.Request, res: express.Response): User |
 
 function canViewEmployeeTalentData(actor: User, employeeId: string): boolean {
   if (actor.id === employeeId) return true;
-  if (['super_admin', 'lnd_manager', 'general_manager'].includes(actor.role)) return true;
+  if (!roleHasPermission(actor.role, 'view_all_learners_data', db.rolePermissions)) return false;
   if (actor.role === 'financial_controller') {
     const emp = db.users.find((u) => u.id === employeeId);
     if (!emp) return false;
     return emp.supervisorId === actor.id || emp.property === actor.property;
   }
-  return false;
+  return true;
 }
 
 function pushTalentNotification(
@@ -4609,9 +4807,9 @@ app.get('/api/talent/bootstrap', (req, res) => {
 app.put('/api/talent/config', (req, res) => {
   const actor = requireTalentActor(req, res);
   if (!actor) return;
-  if (actor.role !== 'super_admin' && actor.role !== 'lnd_manager') {
+  if (!hasActorPermission(req, 'manage_team_idp')) {
     return res.status(403).json({
-      error: 'Access Denied: Only Super Administrator or L&D Manager can modify competency weights, criticality, or readiness thresholds.',
+      error: 'Access Denied: manage_team_idp permission is required to modify competency weights, criticality, or readiness thresholds.',
     });
   }
 
@@ -4696,7 +4894,7 @@ app.post('/api/talent/assessments', (req, res) => {
         error: 'Approved assessments are immutable historical records and cannot be edited. Create a new version instead.',
       });
     }
-    if (actor.role === 'learner' && existing.employeeId !== actor.id) {
+    if (!hasActorPermission(req, 'assess_team_members') && existing.employeeId !== actor.id) {
       return res.status(403).json({ error: 'Cannot edit another employee assessment.' });
     }
   }
@@ -4793,15 +4991,15 @@ app.post('/api/talent/assessments/:id/transition', (req, res) => {
   }
 
   if (targetStatus === 'approved' || targetStatus === 'rejected') {
-    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+    if (actor.id === existing.employeeId) {
       return res.status(403).json({
-        error: 'Learners/employees cannot approve or reject their own competency assessment.',
+        error: 'Employees cannot approve or reject their own competency assessment.',
       });
     }
-    if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions to approve/reject assessments.' });
+    if (!hasActorPermission(req, 'assess_team_members')) {
+      return res.status(403).json({ error: 'Insufficient permissions (assess_team_members) to approve/reject assessments.' });
     }
-  } else if (actor.role === 'learner' && actor.id !== existing.employeeId) {
+  } else if (!hasActorPermission(req, 'assess_team_members') && actor.id !== existing.employeeId) {
     return res.status(403).json({ error: 'Cannot submit another employee assessment.' });
   }
 
@@ -4889,14 +5087,14 @@ app.post('/api/talent/activities', (req, res) => {
     return res.status(400).json({ error: 'employeeId, competencyCode, and title are required.' });
   }
 
-  if (actor.role === 'learner' && actor.id !== employeeId) {
+  if (!hasActorPermission(req, 'manage_team_idp') && actor.id !== employeeId) {
     return res.status(403).json({ error: 'Cannot create development activities for another employee.' });
   }
   if (
     body.sourceType === 'custom_lnd' &&
-    !['super_admin', 'lnd_manager', 'financial_controller'].includes(actor.role)
+    !hasActorPermission(req, 'manage_team_idp')
   ) {
-    return res.status(403).json({ error: 'Only L&D Manager, Super Admin, or FC can create custom mapped activities.' });
+    return res.status(403).json({ error: 'manage_team_idp permission is required to create custom mapped activities.' });
   }
 
   const comp = db.competencies.find((c) => c.code === competencyCode);
@@ -4956,9 +5154,9 @@ app.patch('/api/talent/activities/:id', (req, res) => {
 
   const { status, validationStatus, evidenceNotes, evidenceFileName, validatorFeedback } = req.body || {};
 
-  // Learners CANNOT validate/approve their own activities
+  // Employees CANNOT validate/approve their own activities
   if (validationStatus && ['approved', 'revision_requested'].includes(validationStatus)) {
-    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+    if (!hasActorPermission(req, 'manage_team_idp') || actor.id === existing.employeeId) {
       return res.status(403).json({
         error: 'Employees cannot validate or approve their own development activity evidence.',
       });
@@ -4983,7 +5181,7 @@ app.patch('/api/talent/activities/:id', (req, res) => {
     existing.category !== 'A_Formal_Learning' &&
     nextValidation !== 'approved'
   ) {
-    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+    if (!hasActorPermission(req, 'manage_team_idp') || actor.id === existing.employeeId) {
       return res.status(400).json({
         error: 'Activity requires supervisor/FC validation before final completion. Submit evidence for validation instead.',
       });
@@ -5213,21 +5411,23 @@ app.post('/api/talent/idps/:id/transition', (req, res) => {
 
   // Strict RBAC: Employees CANNOT approve their own IDP or force L&D/Manager/Closed transitions
   const approvalOrCloseStatuses = ['manager_review', 'lnd_approved', 'active', 'closed'];
+  const canManageIdp = hasActorPermission(req, 'manage_team_idp');
+  const canAssessIdp = hasActorPermission(req, 'assess_team_members');
   if (approvalOrCloseStatuses.includes(targetStatus)) {
-    if (actor.role === 'learner' || actor.id === existing.employeeId) {
+    if (actor.id === existing.employeeId) {
       return res.status(403).json({
         error: 'Access Denied: Employees cannot approve or close their own Individual Development Plan.',
       });
     }
-    if (targetStatus === 'lnd_approved' && !['lnd_manager', 'super_admin'].includes(actor.role)) {
+    if (targetStatus === 'lnd_approved' && !canManageIdp) {
       return res.status(403).json({
-        error: 'Only L&D Manager or Super Administrator can grant L&D Approval.',
+        error: 'manage_team_idp permission is required to grant L&D Approval.',
       });
     }
-    if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
-      return res.status(403).json({ error: 'Insufficient role for IDP approval transition.' });
+    if (!canManageIdp && !canAssessIdp) {
+      return res.status(403).json({ error: 'Insufficient permissions for IDP approval transition.' });
     }
-  } else if (actor.role === 'learner' && actor.id !== existing.employeeId) {
+  } else if (!canManageIdp && actor.id !== existing.employeeId) {
     return res.status(403).json({ error: 'Cannot modify another employee IDP.' });
   }
 
@@ -5240,7 +5440,7 @@ app.post('/api/talent/idps/:id/transition', (req, res) => {
       courses: COURSES,
       activities: db.developmentActivities,
     });
-    if (metrics.completionPct < 100 && actor.role === 'learner') {
+    if (metrics.completionPct < 100 && !canManageIdp) {
       return res.status(400).json({
         error: `Cannot mark IDP completed: strict objective completion is ${metrics.completionPct}% (requires 100%).`,
       });
@@ -5346,7 +5546,7 @@ app.patch('/api/talent/idps/:id/objectives/:objId', (req, res) => {
   if (!canViewEmployeeTalentData(actor, idp.employeeId)) {
     return res.status(403).json({ error: 'Access Denied.' });
   }
-  if (actor.role === 'learner' && actor.id !== idp.employeeId) {
+  if (!hasActorPermission(req, 'manage_team_idp') && actor.id !== idp.employeeId) {
     return res.status(403).json({ error: 'Cannot update another employee IDP.' });
   }
 
@@ -5357,7 +5557,7 @@ app.patch('/api/talent/idps/:id/objectives/:objId', (req, res) => {
   const { status, progressPercent, evidenceNotes, evidenceFileName, supervisorValidationStatus } = req.body || {};
 
   if (supervisorValidationStatus && ['approved', 'revision_requested'].includes(supervisorValidationStatus)) {
-    if (actor.role === 'learner' || actor.id === idp.employeeId) {
+    if ((!hasActorPermission(req, 'manage_team_idp') && !hasActorPermission(req, 'assess_team_members')) || actor.id === idp.employeeId) {
       return res.status(403).json({ error: 'Employees cannot validate their own objective evidence.' });
     }
   }
@@ -5430,9 +5630,9 @@ app.post('/api/talent/reassessments', (req, res) => {
   const actor = requireTalentActor(req, res);
   if (!actor) return;
 
-  if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
+  if (!hasActorPermission(req, 'assess_team_members')) {
     return res.status(403).json({
-      error: 'Only Financial Controller, L&D Manager, GM, or Super Admin can submit validated competency reassessments.',
+      error: 'assess_team_members permission is required to submit validated competency reassessments.',
     });
   }
 
@@ -5617,8 +5817,8 @@ app.post('/api/talent/reassessments', (req, res) => {
 app.post('/api/talent/readiness', (req, res) => {
   const actor = requireTalentActor(req, res);
   if (!actor) return;
-  if (!['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(actor.role)) {
-    return res.status(403).json({ error: 'Only supervisors, L&D, GM, or Admins can submit career readiness reviews.' });
+  if (!hasActorPermission(req, 'manage_team_idp') && !hasActorPermission(req, 'assess_team_members')) {
+    return res.status(403).json({ error: 'manage_team_idp or assess_team_members permission is required to submit career readiness reviews.' });
   }
 
   const { employeeId, targetPosition, reviewNotes = '', requestedStatus } = req.body || {};
@@ -5733,7 +5933,7 @@ app.post('/api/talent/export-report', (req, res) => {
   const { reportType = 'competency_gap_summary', filters = {} } = req.body || {};
   const scopedFilters = {
     ...filters,
-    employeeId: actor.role === 'learner' ? actor.id : filters.employeeId,
+    employeeId: !hasActorPermission(req, 'view_all_learners_data') ? actor.id : filters.employeeId,
   };
 
   const { buffer, filename } = buildTalentReportWorkbook({

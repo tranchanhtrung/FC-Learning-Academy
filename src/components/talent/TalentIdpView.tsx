@@ -73,14 +73,13 @@ export const TalentIdpView: React.FC = () => {
     transitionTalentIdp,
     showToast,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
+  const isLearner = !hasPermission('view_all_learners_data');
   const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
-  const isManagerOrAbove = ['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(
-    currentUser.role
-  );
-  const isLndOrAdmin = ['lnd_manager', 'super_admin'].includes(currentUser.role);
+  const isManagerOrAbove = hasPermission('manage_team_idp') || hasPermission('assess_team_members');
+  const isLndOrAdmin = hasPermission('manage_team_idp');
 
   const employeeIdps = useMemo(
     () =>
@@ -630,33 +629,60 @@ export const TalentIdpView: React.FC = () => {
             </div>
 
             {/* Transition Controls */}
-            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <input
-                type="text"
-                value={reviewComment}
-                onChange={(e) => setReviewComment(e.target.value)}
-                placeholder={
-                  language === 'vi'
-                    ? 'Ghi chú phê duyệt hoặc lý do trả về chỉnh sửa...'
-                    : 'Review comment or revision notes...'
-                }
-                className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
-              />
+            {(() => {
+              const canSubmitOwnDraft = activeIdp.status === 'draft';
+              const isSupervisorActing = isManagerOrAbove && currentUser.id !== activeIdp.employeeId;
+              const canMgrApprove = isSupervisorActing && activeIdp.status === 'submitted';
+              const canLndApprove =
+                isSupervisorActing &&
+                (activeIdp.status === 'manager_review' || activeIdp.status === 'submitted') &&
+                isLndOrAdmin;
+              const canActivate = isSupervisorActing && activeIdp.status === 'lnd_approved';
+              const canReturnRev =
+                isSupervisorActing && ['submitted', 'manager_review'].includes(activeIdp.status);
+              const canCloseCycle =
+                isSupervisorActing && ['completed', 'reassessment'].includes(activeIdp.status);
 
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {activeIdp.status === 'draft' && (
-                  <button
-                    onClick={() => handleTransition('submitted')}
-                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{language === 'vi' ? 'Gửi Quản lý duyệt' : 'Submit IDP'}</span>
-                  </button>
-                )}
+              const hasSupervisorAction =
+                canMgrApprove || canLndApprove || canActivate || canReturnRev || canCloseCycle;
+              const hasAnyAction = canSubmitOwnDraft || hasSupervisorAction;
 
-                {isManagerOrAbove && currentUser.id !== activeIdp.employeeId && (
-                  <>
-                    {activeIdp.status === 'submitted' && (
+              if (!hasAnyAction) return null;
+
+              return (
+                <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {hasSupervisorAction ? (
+                    <input
+                      type="text"
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder={
+                        language === 'vi'
+                          ? 'Ghi chú phê duyệt hoặc lý do trả về chỉnh sửa...'
+                          : 'Review comment or revision notes...'
+                      }
+                      className="flex-1 px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                    />
+                  ) : (
+                    <div className="text-xs text-slate-500">
+                      {language === 'vi'
+                        ? 'Bản nháp đã sẵn sàng — bấm gửi để Quản lý trực tiếp phê duyệt.'
+                        : 'Draft ready — submit for supervisor review and approval.'}
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {canSubmitOwnDraft && (
+                      <button
+                        onClick={() => handleTransition('submitted')}
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>{language === 'vi' ? 'Gửi Quản lý duyệt' : 'Submit IDP'}</span>
+                      </button>
+                    )}
+
+                    {canMgrApprove && (
                       <button
                         onClick={() => handleTransition('manager_review')}
                         className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
@@ -666,7 +692,7 @@ export const TalentIdpView: React.FC = () => {
                       </button>
                     )}
 
-                    {(activeIdp.status === 'manager_review' || activeIdp.status === 'submitted') && isLndOrAdmin && (
+                    {canLndApprove && (
                       <button
                         onClick={() => handleTransition('lnd_approved')}
                         className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
@@ -676,7 +702,7 @@ export const TalentIdpView: React.FC = () => {
                       </button>
                     )}
 
-                    {activeIdp.status === 'lnd_approved' && (
+                    {canActivate && (
                       <button
                         onClick={() => handleTransition('active')}
                         className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
@@ -686,7 +712,7 @@ export const TalentIdpView: React.FC = () => {
                       </button>
                     )}
 
-                    {['submitted', 'manager_review'].includes(activeIdp.status) && (
+                    {canReturnRev && (
                       <button
                         onClick={() => handleTransition('draft')}
                         className="px-3 py-2 bg-white border border-rose-300 text-rose-700 hover:bg-rose-50 text-xs font-semibold rounded-lg flex items-center gap-1.5 cursor-pointer"
@@ -696,7 +722,7 @@ export const TalentIdpView: React.FC = () => {
                       </button>
                     )}
 
-                    {['completed', 'reassessment'].includes(activeIdp.status) && (
+                    {canCloseCycle && (
                       <button
                         onClick={() => handleTransition('closed')}
                         className="px-3.5 py-2 bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
@@ -705,10 +731,10 @@ export const TalentIdpView: React.FC = () => {
                         <span>{language === 'vi' ? 'Đóng chu kỳ IDP' : 'Close IDP Cycle'}</span>
                       </button>
                     )}
-                  </>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Objectives Table & Review Audit Trail */}

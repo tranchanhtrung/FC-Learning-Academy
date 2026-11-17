@@ -39,31 +39,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
     courses,
     competencies,
     ojtAssignments,
+    hasPermission,
+    canAccessRoute,
   } = useApp();
 
   const [talentExpanded, setTalentExpanded] = useState(true);
   const [simulatorExpanded, setSimulatorExpanded] = useState(true);
 
-  const isLearner = currentUser.role === 'learner';
-  const isAdminOrManager = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
-  const canAccessSimAdmin = [
-    'super_admin',
-    'lnd_manager',
-    'financial_controller',
-    'general_manager',
-  ].includes(currentUser.role);
+  const isLearner = !hasPermission('view_all_learners_data');
+  const canAccessTalentSuite = canAccessRoute('talentAssessment');
+  const canAccessSimulatorCore = canAccessRoute('simDashboard');
+  const canAccessDataImport = canAccessRoute('dataImportCenter');
+  const canAccessAdministration = canAccessRoute('administration');
 
   const simulatorSubItems = [
-    { id: 'simDashboard', label: t.nav.simDashboard, icon: LayoutDashboard },
-    { id: 'simLibrary', label: t.nav.simLibrary, icon: BookOpen },
-    { id: 'simWorkspace', label: t.nav.simWorkspace, icon: Play },
-    { id: 'simMeeting', label: t.nav.simMeeting, icon: MessageSquare },
-    { id: 'simHistory', label: t.nav.simHistory, icon: History },
-    { id: 'simPerformance', label: t.nav.simPerformance, icon: Award },
-    ...(isAdminOrManager
+    ...(canAccessSimulatorCore
+      ? [
+          { id: 'simDashboard', label: t.nav.simDashboard, icon: LayoutDashboard },
+          { id: 'simLibrary', label: t.nav.simLibrary, icon: BookOpen },
+          { id: 'simWorkspace', label: t.nav.simWorkspace, icon: Play },
+          { id: 'simMeeting', label: t.nav.simMeeting, icon: MessageSquare },
+          { id: 'simHistory', label: t.nav.simHistory, icon: History },
+          { id: 'simPerformance', label: t.nav.simPerformance, icon: Award },
+        ]
+      : []),
+    ...(canAccessRoute('simImportCenter')
       ? [{ id: 'simImportCenter', label: t.nav.simImportCenter, icon: FileSpreadsheet }]
       : []),
-    ...(canAccessSimAdmin
+    ...(canAccessRoute('simAdmin')
       ? [
           { id: 'simAdmin', label: t.nav.simAdmin, icon: Settings },
           { id: 'simVersionHistory', label: t.nav.simVersionHistory, icon: GitBranch },
@@ -86,42 +89,49 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
       label: t.nav.dashboard,
       icon: LayoutDashboard,
       badge: null,
+      hidden: !canAccessRoute('dashboard'),
     },
     {
       id: 'myLearning',
       label: t.nav.myLearning,
       icon: GraduationCap,
       badge: isLearner ? 'Active' : null,
+      hidden: !canAccessRoute('myLearning'),
     },
     {
       id: 'learningPaths',
       label: t.nav.learningPaths,
       icon: GitBranch,
       badge: `${learningPaths.length} Paths`,
+      hidden: !canAccessRoute('learningPaths'),
     },
     {
       id: 'courses',
       label: t.nav.courses,
       icon: BookOpen,
       badge: `${courses.length} Courses`,
+      hidden: !canAccessRoute('courses'),
     },
     {
       id: 'competencyFramework',
       label: t.nav.competencyFramework,
       icon: Award,
       badge: `${competencies.length} Comps`,
+      hidden: !canAccessRoute('competencyFramework'),
     },
     {
       id: 'assessments',
       label: t.nav.assessments,
       icon: ClipboardCheck,
       badge: 'Gap Matrix',
+      hidden: !canAccessRoute('assessments'),
     },
     {
       id: 'ojtProjects',
       label: t.nav.ojtProjects,
       icon: Briefcase,
       badge: `${ojtAssignments.length} Real Cases`,
+      hidden: !canAccessRoute('ojtProjects'),
     },
     {
       id: 'aiAssistant',
@@ -129,26 +139,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
       icon: Bot,
       badge: 'GM Simulator',
       highlight: true,
+      hidden: !canAccessRoute('aiAssistant'),
     },
     {
       id: 'certifications',
       label: t.nav.certifications,
       icon: Award,
       badge: '5 Levels',
+      hidden: !canAccessRoute('certifications'),
     },
     {
       id: 'reports',
       label: t.nav.reports,
       icon: FileBarChart2,
       badge: null,
-      hidden: isLearner,
+      hidden: !canAccessRoute('reports'),
     },
     {
       id: 'administration',
       label: t.nav.administration,
       icon: Settings,
-      badge: isAdminOrManager ? 'Admin' : null,
-      hidden: !isAdminOrManager,
+      badge: canAccessAdministration ? 'Admin' : null,
+      hidden: !canAccessAdministration,
     },
   ];
 
@@ -231,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
                   )}
                 </button>
 
-                {item.id === 'assessments' && (
+                {item.id === 'assessments' && canAccessTalentSuite && (
                   <div className="pt-1 pb-1">
                     <button
                       onClick={() => setTalentExpanded((p) => !p)}
@@ -279,7 +291,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
                   </div>
                 )}
 
-                {item.id === 'aiAssistant' && (
+                {item.id === 'aiAssistant' && simulatorSubItems.length > 0 && (
                   <div className="pt-1 pb-1">
                     <button
                       onClick={() => setSimulatorExpanded((p) => !p)}
@@ -325,7 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate }) => {
                   </div>
                 )}
 
-                {item.id === 'administration' && isAdminOrManager && (
+                {item.id === 'administration' && canAccessDataImport && (
                   <div className="ml-3 pl-3 border-l border-slate-700/70 space-y-1 pt-1">
                     <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                       <ChevronRight className="w-3 h-3" />

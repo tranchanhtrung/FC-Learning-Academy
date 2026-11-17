@@ -34,15 +34,15 @@ export const SimulationDashboardTab: React.FC = () => {
     simulatorWorkspace,
     launchSimulationWorkspace,
     setActiveTab,
+    hasPermission,
   } = useApp();
 
-  const isSupervisorOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const canPreviewDrafts = hasPermission('preview_draft_scenarios');
+  const isSupervisorOrAdmin = hasPermission('view_all_learners_data');
 
   const visibleScenarios = useMemo(() => {
-    return simulatorData.simulationScenarios.filter((s) => isSupervisorOrAdmin || s.status === 'Published');
-  }, [simulatorData.simulationScenarios, isSupervisorOrAdmin]);
+    return simulatorData.simulationScenarios.filter((s) => canPreviewDrafts || s.status === 'Published');
+  }, [simulatorData.simulationScenarios, canPreviewDrafts]);
 
   const userSessions = useMemo(() => {
     return simulatorData.simulationSessions.filter((s) =>

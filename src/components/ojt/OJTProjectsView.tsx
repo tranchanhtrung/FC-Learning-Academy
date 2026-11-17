@@ -28,12 +28,10 @@ export const OJTProjectsView: React.FC = () => {
     language,
     t,
     showToast,
+    hasPermission,
   } = useApp();
 
-  const isSupervisorOrAdmin =
-    currentUser.role === 'financial_controller' ||
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'lnd_manager';
+  const isSupervisorOrAdmin = hasPermission('grade_ojt_submissions');
 
   const [selectedAssignment, setSelectedAssignment] = useState<OJTAssignment | null>(null);
   const [submissionModalOpen, setSubmissionModalOpen] = useState<boolean>(false);

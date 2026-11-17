@@ -6,6 +6,7 @@ import {
   generateCourseSyllabusMarkdown,
   generateMasterSyllabusMarkdown,
 } from '../../data/courseSyllabi';
+import { LessonMaterialsManager } from './LessonMaterialsManager';
 import {
   Search,
   BookOpen,
@@ -26,9 +27,11 @@ import {
   LayoutGrid,
   ListTree,
   Target,
+  Upload,
+  Paperclip,
 } from 'lucide-react';
 
-type CatalogViewMode = 'cards' | 'syllabus_matrix';
+type CatalogViewMode = 'cards' | 'syllabus_matrix' | 'lesson_materials';
 
 function downloadMarkdownFile(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
@@ -53,9 +56,12 @@ export const CourseCatalogView: React.FC = () => {
     currentUser,
     language,
     t,
+    lessonMaterials,
+    hasPermission,
   } = useApp();
 
   const isVi = language === 'vi';
+  const canManageLessonMaterials = hasPermission('manage_lesson_materials');
   const [viewMode, setViewMode] = useState<CatalogViewMode>('cards');
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
@@ -237,6 +243,23 @@ export const CourseCatalogView: React.FC = () => {
                   : 'Master Syllabus (6 Domains · 18 Courses)'}
               </span>
             </button>
+            {canManageLessonMaterials && (
+              <button
+                onClick={() => setViewMode('lesson_materials')}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                  viewMode === 'lesson_materials'
+                    ? 'bg-[#0A192F] text-amber-300 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>
+                  {isVi
+                    ? `Quản Lý Học Liệu Bài Học (${lessonMaterials.length})`
+                    : `Lesson Materials (${lessonMaterials.length})`}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Search & Difficulty */}
@@ -406,6 +429,15 @@ export const CourseCatalogView: React.FC = () => {
                       {course.materials && course.materials.length > 0 && (
                         <span className="text-emerald-700 font-medium">Excel Lab</span>
                       )}
+                      {(() => {
+                        const uploadedCnt = lessonMaterials.filter((m) => m.courseId === course.id).length;
+                        return uploadedCnt > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-blue-700 font-semibold font-mono tabular-nums">
+                            <Paperclip className="w-3 h-3" />
+                            {uploadedCnt} {isVi ? 'Tài liệu bài học' : 'Files'}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -773,6 +805,15 @@ export const CourseCatalogView: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* VIEW 3: PER-LESSON LEARNING MATERIALS MANAGER (FIRESTORE)         */}
+      {/* ================================================================= */}
+      {viewMode === 'lesson_materials' && canManageLessonMaterials && (
+        <LessonMaterialsManager
+          initialCourseId={filteredCourses[0]?.id || courses[0]?.id}
+        />
       )}
 
       {/* ================================================================= */}

@@ -94,22 +94,22 @@ export const AIAssistantView: React.FC = () => {
     saveSimulationSession,
     firebaseUser,
     dataSourceMode,
+    hasPermission,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'simulator' | 'advisor' | 'gapCoach' | 'lab'>('simulator');
 
-  const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const canPreviewDrafts = hasPermission('preview_draft_scenarios');
+  const canManageSim = hasPermission('manage_sim_admin');
+  const isAdminOrLnd = canPreviewDrafts || canManageSim;
   const isSupervisor =
-    currentUser.role === 'financial_controller' ||
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'lnd_manager' ||
-    currentUser.role === 'general_manager';
+    hasPermission('view_all_learners_data') || hasPermission('assess_team_members');
 
   // ---------------- MODE 1: SIMULATOR STATE ----------------
   const visibleImportedScenarios = useMemo(() => {
     const all = simulatorData?.simulationScenarios || [];
-    return isAdminOrLnd ? all : all.filter((s) => s.status === 'Published');
-  }, [isAdminOrLnd, simulatorData?.simulationScenarios]);
+    return canPreviewDrafts ? all : all.filter((s) => s.status === 'Published');
+  }, [canPreviewDrafts, simulatorData?.simulationScenarios]);
 
   const isUsingDemoFallback = visibleImportedScenarios.length === 0;
 
@@ -275,18 +275,19 @@ export const AIAssistantView: React.FC = () => {
 
   // ---------------- MODE 3: GAP COACH STATE ----------------
   const [coachLearnerId, setCoachLearnerId] = useState<string>(
-    currentUser.role === 'learner' ? currentUser.id : 'user_learner1'
+    !hasPermission('view_all_learners_data') ? currentUser.id : 'user_learner1'
   );
   const [coachFocusQuestion, setCoachFocusQuestion] = useState<string>('');
   const [coachLoading, setCoachLoading] = useState<boolean>(false);
   const [coachError, setCoachError] = useState<string | null>(null);
   const [coachingPlan, setCoachingPlan] = useState<any>(null);
 
+  const canViewCohortCoach = hasPermission('view_all_learners_data');
   useEffect(() => {
-    if (currentUser.role === 'learner') {
+    if (!canViewCohortCoach) {
       setCoachLearnerId(currentUser.id);
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, canViewCohortCoach]);
 
   // ---------------- MODE 4: LAB (CASE STUDY / QUIZ / ANSWER ANALYZER) ----------------
   const [labMode, setLabMode] = useState<'case_study' | 'quiz'>('case_study');
@@ -722,9 +723,13 @@ export const AIAssistantView: React.FC = () => {
                   </span>
                 </div>
               </div>
-              {isAdminOrLnd && (
+              {(hasPermission('access_sim_import_center') || hasPermission('access_data_import_center')) && (
                 <button
-                  onClick={() => setMainNavTab('dataImportCenter')}
+                  onClick={() =>
+                    setMainNavTab(
+                      hasPermission('access_sim_import_center') ? 'simImportCenter' : 'dataImportCenter'
+                    )
+                  }
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold text-xs cursor-pointer"
                 >
                   <Database className="w-3.5 h-3.5" />
@@ -748,7 +753,7 @@ export const AIAssistantView: React.FC = () => {
                     : 'available scenarios (Learners see Published scenarios only).'}
                 </span>
               </div>
-              {activeImportedScenario && isAdminOrLnd && (
+              {activeImportedScenario && canManageSim && (
                 <div className="flex items-center gap-2">
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
@@ -1367,7 +1372,7 @@ export const AIAssistantView: React.FC = () => {
               </div>
 
               {/* Official Reference Analysis Panel (Admins see always; Learners see after Evaluation) */}
-              {activeReferenceAnalysis.length > 0 && (isAdminOrLnd || evaluationResult) && (
+              {activeReferenceAnalysis.length > 0 && (canPreviewDrafts || evaluationResult) && (
                 <div className="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm space-y-2.5 text-xs">
                   <div className="flex items-center gap-2 font-extrabold text-emerald-900">
                     <BookOpen className="w-4 h-4 text-emerald-600" />
@@ -1393,40 +1398,48 @@ export const AIAssistantView: React.FC = () => {
               )}
 
               {/* Recorded Simulation Sessions */}
-              {(simulatorData.simulationSessions || []).length > 0 && (
-                <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 text-xs">
-                  <span className="font-extrabold text-slate-900 block">
-                    {language === 'vi'
-                      ? `Lịch Sử Phiên Mô Phỏng (${simulatorData.simulationSessions.length})`
-                      : `Recorded Simulation Sessions (${simulatorData.simulationSessions.length})`}
-                  </span>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {simulatorData.simulationSessions.slice(0, 8).map((sess) => (
-                      <div
-                        key={sess.id}
-                        className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-900">{sess.scenarioTitle}</div>
-                          <div className="text-[10px] font-mono text-slate-500">
-                            {sess.id} &bull; Decisions: {sess.selectedOptionIds?.length || 0} &bull; {sess.updatedAt}
-                          </div>
-                        </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            sess.status === 'completed'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
+              {(() => {
+                const visibleSessions = (simulatorData.simulationSessions || []).filter((sess) =>
+                  isSupervisor
+                    ? true
+                    : sess.employeeId === currentUser.id || sess.employeeUid === currentUser.id
+                );
+                if (visibleSessions.length === 0) return null;
+                return (
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2 text-xs">
+                    <span className="font-extrabold text-slate-900 block">
+                      {language === 'vi'
+                        ? `Lịch Sử Phiên Mô Phỏng (${visibleSessions.length})`
+                        : `Recorded Simulation Sessions (${visibleSessions.length})`}
+                    </span>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {visibleSessions.slice(0, 8).map((sess) => (
+                        <div
+                          key={sess.id}
+                          className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
                         >
-                          {sess.status}
-                          {sess.evaluation?.scores?.overallScore ? ` (${sess.evaluation.scores.overallScore}%)` : ''}
-                        </span>
-                      </div>
-                    ))}
+                          <div>
+                            <div className="font-bold text-slate-900">{sess.scenarioTitle}</div>
+                            <div className="text-[10px] font-mono text-slate-500">
+                              {sess.id} &bull; Decisions: {sess.selectedOptionIds?.length || 0} &bull; {sess.updatedAt}
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              sess.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {sess.status}
+                            {sess.evaluation?.scores?.overallScore ? ` (${sess.evaluation.scores.overallScore}%)` : ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>

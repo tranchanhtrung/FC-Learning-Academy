@@ -32,6 +32,7 @@ export const LearnerDashboard: React.FC = () => {
     setSelectedCertificateForView,
     language,
     t,
+    canAccessRoute,
   } = useApp();
 
   const myEnrollments = enrollments.filter((e) => e.userId === currentUser.id);
@@ -87,20 +88,24 @@ export const LearnerDashboard: React.FC = () => {
           </p>
 
           <div className="pt-2 flex flex-wrap gap-4 text-xs font-semibold">
-            <button
-              onClick={() => setActiveTab('myLearning')}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition-all shadow-md flex items-center gap-2 font-bold cursor-pointer"
-            >
-              <span>{language === 'vi' ? 'Tiếp tục khóa học' : 'Continue Learning'}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setActiveTab('aiAssistant')}
-              className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl border border-slate-600 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>{language === 'vi' ? 'Luyện tập với GM Simulator' : 'Practice with GM Simulator'}</span>
-            </button>
+            {canAccessRoute('myLearning') && (
+              <button
+                onClick={() => setActiveTab('myLearning')}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition-all shadow-md flex items-center gap-2 font-bold cursor-pointer"
+              >
+                <span>{language === 'vi' ? 'Tiếp tục khóa học' : 'Continue Learning'}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+            {canAccessRoute('aiAssistant') && (
+              <button
+                onClick={() => setActiveTab('aiAssistant')}
+                className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-white rounded-xl border border-slate-600 transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>{language === 'vi' ? 'Luyện tập với GM Simulator' : 'Practice with GM Simulator'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -195,12 +200,14 @@ export const LearnerDashboard: React.FC = () => {
               <h3 className="font-bold text-base text-slate-900">
                 {t.assessment.radarTitle}
               </h3>
-              <button
-                onClick={() => setActiveTab('assessments')}
-                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-              >
-                {t.common.viewDetails} &rarr;
-              </button>
+              {canAccessRoute('assessments') && (
+                <button
+                  onClick={() => setActiveTab('assessments')}
+                  className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                >
+                  {t.common.viewDetails} &rarr;
+                </button>
+              )}
             </div>
             <p className="text-xs text-slate-500 mb-4">
               {language === 'vi'
@@ -243,12 +250,14 @@ export const LearnerDashboard: React.FC = () => {
                     : 'Complete pending modules and review USALI workbook exercises'}
                 </p>
               </div>
-              <button
-                onClick={() => setActiveTab('courses')}
-                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-              >
-                {language === 'vi' ? 'Tất cả khóa học' : 'All Courses'} &rarr;
-              </button>
+              {canAccessRoute('courses') && (
+                <button
+                  onClick={() => setActiveTab('courses')}
+                  className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                >
+                  {language === 'vi' ? 'Tất cả khóa học' : 'All Courses'} &rarr;
+                </button>
+              )}
             </div>
 
             <div className="space-y-3">
@@ -319,12 +328,14 @@ export const LearnerDashboard: React.FC = () => {
                     : 'Targeted development priorities formulated by your Financial Controller'}
                 </p>
               </div>
-              <button
-                onClick={() => setActiveTab('assessments')}
-                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-              >
-                {language === 'vi' ? 'Xem kế hoạch đầy đủ' : 'Full IDP'} &rarr;
-              </button>
+              {canAccessRoute('assessments') && (
+                <button
+                  onClick={() => setActiveTab('assessments')}
+                  className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                >
+                  {language === 'vi' ? 'Xem kế hoạch đầy đủ' : 'Full IDP'} &rarr;
+                </button>
+              )}
             </div>
 
             <div className="space-y-3">

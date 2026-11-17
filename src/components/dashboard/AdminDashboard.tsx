@@ -24,6 +24,7 @@ export const AdminDashboard: React.FC = () => {
     t,
     language,
     setActiveTab,
+    canAccessRoute,
   } = useApp();
 
   const learners = users.filter((u) => u.role === 'learner');
@@ -95,19 +96,23 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('reports')}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{t.common.exportExcel}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('administration')}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
-          >
-            {language === 'vi' ? 'Cấu hình hệ thống' : 'System Settings'}
-          </button>
+          {canAccessRoute('reports') && (
+            <button
+              onClick={() => setActiveTab('reports')}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{t.common.exportExcel}</span>
+            </button>
+          )}
+          {canAccessRoute('administration') && (
+            <button
+              onClick={() => setActiveTab('administration')}
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
+            >
+              {language === 'vi' ? 'Cấu hình hệ thống' : 'System Settings'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -169,12 +174,14 @@ export const AdminDashboard: React.FC = () => {
                   : 'High-potential candidates in the Financial Controller succession bench'}
               </p>
             </div>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-            >
-              {t.common.viewDetails} &rarr;
-            </button>
+            {canAccessRoute('reports') && (
+              <button
+                onClick={() => setActiveTab('reports')}
+                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+              >
+                {t.common.viewDetails} &rarr;
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">

@@ -232,7 +232,7 @@ service cloud.firestore {
         && (!('performedByEmail' in data) || (data.performedByEmail is string && data.performedByEmail.size() <= 200))
         && (!('performedByName' in data) || (data.performedByName is string && data.performedByName.size() <= 200))
         && (!('performedByRole' in data) || (data.performedByRole is string && data.performedByRole.size() <= 64))
-        && data.duplicateStrategy in ['skip', 'update', 'reject']
+        && data.duplicateStrategy in ['skip', 'insert_new', 'update', 'reject']
         && (!('selectedSheets' in data) || (data.selectedSheets is list && data.selectedSheets.size() <= 20))
         && data.status in ['completed', 'partial_failure', 'failed', 'demo_mode']
         && data.totalRowsDetected is number && data.totalRowsDetected >= 0
@@ -358,15 +358,28 @@ service cloud.firestore {
 
     function isValidUserProfile(data) {
       return data.keys().hasAll(['uid', 'employeeId', 'name', 'role', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'employeeId', 'name', 'role', 'position', 'department', 'property', 'supervisorUid', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'employeeId', 'name', 'email', 'role', 'requestedRole',
+          'position', 'department', 'property', 'avatar',
+          'supervisorId', 'supervisorUid', 'currentLevel', 'targetLevel',
+          'careerPathId', 'joinedDate', 'updatedAt'
+        ])
         && isValidId(data.uid)
         && isValidId(data.employeeId)
         && data.name is string && data.name.size() >= 1 && data.name.size() <= 150
+        && (!('email' in data) || (data.email is string && data.email.size() <= 200))
         && data.role in ['super_admin', 'lnd_manager', 'financial_controller', 'learner', 'general_manager']
+        && (!('requestedRole' in data) || data.requestedRole in ['super_admin', 'lnd_manager', 'financial_controller', 'learner', 'general_manager'])
         && (!('position' in data) || (data.position is string && data.position.size() <= 150))
         && (!('department' in data) || (data.department is string && data.department.size() <= 150))
         && (!('property' in data) || (data.property is string && data.property.size() <= 200))
+        && (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 1000))
+        && (!('supervisorId' in data) || isValidId(data.supervisorId))
         && (!('supervisorUid' in data) || isValidId(data.supervisorUid))
+        && (!('currentLevel' in data) || (data.currentLevel is number && data.currentLevel >= 1 && data.currentLevel <= 4))
+        && (!('targetLevel' in data) || (data.targetLevel is number && data.targetLevel >= 1 && data.targetLevel <= 4))
+        && (!('careerPathId' in data) || (data.careerPathId is string && data.careerPathId.size() <= 128))
+        && (!('joinedDate' in data) || (data.joinedDate is string && data.joinedDate.size() <= 64))
         && data.updatedAt is string && data.updatedAt.size() <= 64;
     }
 
@@ -1006,5 +1019,104 @@ service cloud.firestore {
       allow create, update: if isValidId(mappingId) && isAdmin() && incoming().id == mappingId;
       allow delete: if isValidId(mappingId) && isAdmin();
     }
+
+    // 38. rolePermissions (Dynamic RBAC permission matrix per role)
+    function isValidRolePermissionPolicy(data) {
+      return data.keys().hasAll(['id', 'role', 'permissions', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'role', 'permissions', 'descriptionEn', 'descriptionVi',
+          'updatedByUid', 'updatedByName', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id in ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager', 'learner']
+        && data.role == data.id
+        && data.permissions is list && data.permissions.size() <= 64
+        && (data.permissions.size() == 0 || (data.permissions[0] is string && data.permissions[0].size() <= 80))
+        && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 500))
+        && (!('descriptionVi' in data) || (data.descriptionVi is string && data.descriptionVi.size() <= 500))
+        && (!('updatedByUid' in data) || (data.updatedByUid is string && data.updatedByUid.size() <= 128))
+        && (!('updatedByName' in data) || (data.updatedByName is string && data.updatedByName.size() <= 150))
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    match /rolePermissions/{roleId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(roleId)
+        && isAdmin()
+        && isValidRolePermissionPolicy(incoming())
+        && incoming().id == roleId;
+      allow update: if isValidId(roleId)
+        && isAdmin()
+        && isValidRolePermissionPolicy(incoming())
+        && incoming().id == resource.data.id
+        && incoming().role == resource.data.role;
+      allow delete: if false;
+    }
+
+    // 39. lessonMaterials (Per-lesson uploaded learning materials)
+    function isValidLessonMaterial(data) {
+      return data.keys().hasAll([
+          'id', 'courseId', 'courseCode', 'lessonId', 'lessonOrder',
+          'lessonTitleVi', 'lessonTitleEn', 'titleVi', 'titleEn',
+          'materialType', 'storageMode', 'fileSizeLabel', 'isRequired',
+          'uploadedByUid', 'uploadedByName', 'uploadedByRole',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'courseId', 'courseCode', 'lessonId', 'lessonOrder',
+          'lessonTitleVi', 'lessonTitleEn', 'titleVi', 'titleEn',
+          'descriptionVi', 'descriptionEn', 'materialType', 'storageMode',
+          'fileName', 'mimeType', 'fileSizeBytes', 'fileSizeLabel',
+          'inlineBase64', 'downloadUrl', 'storagePath', 'externalUrl',
+          'isRequired', 'uploadedByUid', 'uploadedByName', 'uploadedByEmail',
+          'uploadedByRole', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.courseId)
+        && data.courseCode is string && data.courseCode.size() >= 1 && data.courseCode.size() <= 32
+        && isValidId(data.lessonId)
+        && data.lessonOrder is number && data.lessonOrder >= 1 && data.lessonOrder <= 100
+        && data.lessonTitleVi is string && data.lessonTitleVi.size() <= 300
+        && data.lessonTitleEn is string && data.lessonTitleEn.size() <= 300
+        && data.titleVi is string && data.titleVi.size() >= 1 && data.titleVi.size() <= 300
+        && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 300
+        && (!('descriptionVi' in data) || (data.descriptionVi is string && data.descriptionVi.size() <= 2000))
+        && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 2000))
+        && data.materialType in ['pdf', 'excel', 'slide', 'docx', 'video', 'checklist', 'link', 'other']
+        && data.storageMode in ['firestore_inline', 'firebase_storage', 'external_link']
+        && (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 255))
+        && (!('mimeType' in data) || (data.mimeType is string && data.mimeType.size() <= 150))
+        && (!('fileSizeBytes' in data) || (data.fileSizeBytes is number && data.fileSizeBytes >= 0 && data.fileSizeBytes <= 10485760))
+        && data.fileSizeLabel is string && data.fileSizeLabel.size() <= 40
+        && (!('inlineBase64' in data) || (data.inlineBase64 is string && data.inlineBase64.size() <= 920000))
+        && (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 2000))
+        && (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 500))
+        && (!('externalUrl' in data) || (data.externalUrl is string && data.externalUrl.size() <= 2000))
+        && data.isRequired is bool
+        && isValidId(data.uploadedByUid)
+        && (isAdmin() || data.uploadedByUid == request.auth.uid)
+        && data.uploadedByName is string && data.uploadedByName.size() >= 1 && data.uploadedByName.size() <= 150
+        && (!('uploadedByEmail' in data) || (data.uploadedByEmail is string && data.uploadedByEmail.size() <= 200))
+        && data.uploadedByRole is string && data.uploadedByRole.size() <= 64
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    match /lessonMaterials/{materialId} {
+      allow get, list: if isVerifiedUser();
+      allow create: if isValidId(materialId)
+        && isAdmin()
+        && isValidLessonMaterial(incoming())
+        && incoming().id == materialId;
+      allow update: if isValidId(materialId)
+        && isAdmin()
+        && isValidLessonMaterial(incoming())
+        && incoming().id == resource.data.id
+        && incoming().courseId == resource.data.courseId
+        && incoming().lessonId == resource.data.lessonId
+        && incoming().createdAt == resource.data.createdAt;
+      allow delete: if isValidId(materialId) && isAdmin();
+    }
   }
 }
+

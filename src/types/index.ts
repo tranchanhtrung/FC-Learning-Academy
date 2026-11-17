@@ -12,6 +12,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
+  requestedRole?: UserRole;
   position: string;
   department: string;
   property: string;
@@ -145,6 +146,52 @@ export interface CourseMaterial {
   downloadUrl?: string;
   descriptionVi?: string;
   descriptionEn?: string;
+}
+
+export type LessonMaterialType =
+  | 'pdf'
+  | 'excel'
+  | 'slide'
+  | 'docx'
+  | 'video'
+  | 'checklist'
+  | 'link'
+  | 'other';
+
+export type LessonMaterialStorageMode =
+  | 'firestore_inline'
+  | 'firebase_storage'
+  | 'external_link';
+
+export interface LessonMaterialDoc {
+  id: string;
+  courseId: string;
+  courseCode: string;
+  lessonId: string;
+  lessonOrder: number;
+  lessonTitleVi: string;
+  lessonTitleEn: string;
+  titleVi: string;
+  titleEn: string;
+  descriptionVi?: string;
+  descriptionEn?: string;
+  materialType: LessonMaterialType;
+  storageMode: LessonMaterialStorageMode;
+  fileName?: string;
+  mimeType?: string;
+  fileSizeBytes?: number;
+  fileSizeLabel: string;
+  inlineBase64?: string;
+  downloadUrl?: string;
+  storagePath?: string;
+  externalUrl?: string;
+  isRequired: boolean;
+  uploadedByUid: string;
+  uploadedByName: string;
+  uploadedByEmail?: string;
+  uploadedByRole: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CourseCaseStudy {
@@ -710,10 +757,17 @@ export interface FirebaseUserProfileDoc {
   email: string;
   name: string;
   role: UserRole;
+  requestedRole?: UserRole;
   position?: string;
   department?: string;
   property?: string;
+  avatar?: string;
+  supervisorId?: string;
   supervisorUid?: string;
+  currentLevel?: ProficiencyLevel;
+  targetLevel?: ProficiencyLevel;
+  careerPathId?: string;
+  joinedDate?: string;
   isAdmin?: boolean;
   emailVerified?: boolean;
   updatedAt: string;
@@ -1465,6 +1519,57 @@ export interface SimulationSessionDoc {
   updatedAt: string;
 }
 
+export type PermissionCategory = 'modules' | 'governance' | 'workflows';
 
+export type PermissionKey =
+  | 'view_dashboard'
+  | 'view_my_learning'
+  | 'view_learning_paths'
+  | 'view_courses'
+  | 'view_competency_framework'
+  | 'view_assessments'
+  | 'view_talent_suite'
+  | 'view_ojt_projects'
+  | 'view_ai_assistant'
+  | 'view_simulator'
+  | 'view_certifications'
+  | 'view_reports'
+  | 'view_administration'
+  | 'manage_users_rbac'
+  | 'configure_role_permissions'
+  | 'access_data_import_center'
+  | 'access_sim_import_center'
+  | 'manage_sim_admin'
+  | 'manage_competency_framework'
+  | 'manage_lesson_materials'
+  | 'switch_dashboard_perspective'
+  | 'view_all_learners_data'
+  | 'assess_team_members'
+  | 'manage_team_idp'
+  | 'grade_ojt_submissions'
+  | 'issue_certificates'
+  | 'preview_draft_scenarios';
 
+export interface PermissionDefinition {
+  key: PermissionKey;
+  category: PermissionCategory;
+  nameVi: string;
+  nameEn: string;
+  descriptionVi: string;
+  descriptionEn: string;
+  riskTier: 'standard' | 'elevated' | 'critical';
+  lockedForSuperAdmin?: boolean;
+}
 
+export type RolePermissionsMap = Record<UserRole, PermissionKey[]>;
+
+export interface RolePermissionPolicyDoc {
+  id: UserRole;
+  role: UserRole;
+  permissions: PermissionKey[];
+  descriptionEn?: string;
+  descriptionVi?: string;
+  updatedByUid?: string;
+  updatedByName?: string;
+  updatedAt: string;
+}

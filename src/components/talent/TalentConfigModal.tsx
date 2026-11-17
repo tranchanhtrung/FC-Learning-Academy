@@ -10,7 +10,7 @@ interface TalentConfigModalProps {
 }
 
 export const TalentConfigModal: React.FC<TalentConfigModalProps> = ({ open, onClose }) => {
-  const { talentConfig, updateTalentConfig, competencies, language, currentUser } = useApp();
+  const { talentConfig, updateTalentConfig, competencies, language, hasPermission } = useApp();
   const [draft, setDraft] = useState<TalentConfigDoc>(talentConfig);
   const [saving, setSaving] = useState(false);
 
@@ -22,7 +22,7 @@ export const TalentConfigModal: React.FC<TalentConfigModalProps> = ({ open, onCl
 
   if (!open) return null;
 
-  const isAuthorized = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const isAuthorized = hasPermission('manage_team_idp');
   const ratioSum =
     Number(draft.ratio702010.experiential) +
     Number(draft.ratio702010.social) +

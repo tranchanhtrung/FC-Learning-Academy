@@ -33,8 +33,12 @@ service firebase.storage {
           request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\.spreadsheetml\\.sheet') ||
           request.resource.contentType.matches('application/vnd\\.ms-excel') ||
           request.resource.contentType.matches('text/csv') ||
+          request.resource.contentType.matches('text/plain') ||
+          request.resource.contentType.matches('text/markdown') ||
           request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document') ||
           request.resource.contentType.matches('application/msword') ||
+          request.resource.contentType.matches('application/vnd\\.openxmlformats-officedocument\\.presentationml\\.presentation') ||
+          request.resource.contentType.matches('application/vnd\\.ms-powerpoint') ||
           request.resource.contentType.matches('image/png') ||
           request.resource.contentType.matches('image/jpeg') ||
           request.resource.contentType.matches('image/webp') ||

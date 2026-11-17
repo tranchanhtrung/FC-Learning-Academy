@@ -9,11 +9,15 @@ import {
   getFirestoreCollectionDocs,
   fetchImportLogsFromFirestore,
   writeImportLogToFirestore,
+  writeScenarioImportJobToFirestore,
+  writeScenarioVersionToFirestore,
+  syncRecordToFirestore,
   commitCollectionToFirestore,
   uploadAuthorizedTrainingFile,
   type StorageUploadCategory,
   type StorageUploadResult,
 } from '../../lib/firebase';
+import { generateDatasetSnapshotForScenario } from '../../lib/simulatorEngine';
 import {
   Upload,
   FileSpreadsheet,
@@ -194,6 +198,7 @@ const DEFAULT_SIMULATOR_SPECS: SheetSpec[] = [
 export const DataImportCenterView: React.FC = () => {
   const {
     currentUser,
+    hasPermission,
     language,
     showToast,
     firebaseUser,
@@ -213,8 +218,8 @@ export const DataImportCenterView: React.FC = () => {
   const hasFirestoreAdminAccess = Boolean(
     firebaseUser?.emailVerified && (firebaseProfile?.isAdmin || isBootstrappedOwnerEmail)
   );
-  const isAuthorized =
-    currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager' || hasFirestoreAdminAccess;
+  const hasImportPermission = hasPermission('access_data_import_center');
+  const isAuthorized = hasImportPermission || hasFirestoreAdminAccess;
 
   // 9-Step Wizard State
   const [step, setStep] = useState<WizardStep>(1);
@@ -282,13 +287,13 @@ export const DataImportCenterView: React.FC = () => {
   const [uploadedAssets, setUploadedAssets] = useState<StorageUploadResult[]>([]);
 
   const effectiveApiUserId =
-    currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager'
+    hasImportPermission
       ? currentUser.id
       : hasFirestoreAdminAccess
       ? 'user_admin'
       : currentUser.id;
   const effectiveApiRole =
-    currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager'
+    hasImportPermission
       ? currentUser.role
       : hasFirestoreAdminAccess
       ? 'super_admin'
@@ -1001,6 +1006,61 @@ export const DataImportCenterView: React.FC = () => {
             severity: 'error',
             reason: `Could not record audit log to /importLogs: ${logMsg}`,
           });
+        }
+
+        if (selectedDataset === 'simulator_starter') {
+          await writeScenarioImportJobToFirestore({
+            id: logDoc.id,
+            fileName: logDoc.fileName,
+            strategy: duplicateStrategy,
+            mode: 'firebase_client',
+            status: logDoc.status,
+            totalRows: logDoc.totalRowsDetected,
+            validRows: logDoc.validRecords,
+            errorCount: failedCount,
+            warningCount: validationResult.warningCount,
+            createdCount,
+            updatedCount,
+            skippedCount,
+            failedCount,
+            performedById: auth.currentUser.uid,
+            performedByName: actorDisplayName,
+            performedByEmail: actorEmail,
+            startedAt,
+            updatedAt: completedAt,
+          }).catch(() => {});
+
+          const importedScenarios = Object.values(collectionsSnapshot.simulationScenarios || {});
+          const importedHotels = collectionsSnapshot.hotelSimulationProfiles || {};
+          const importedFin = Object.values(collectionsSnapshot.simulationFinancialData || {});
+          const importedOps = Object.values(collectionsSnapshot.simulationOperationalData || {});
+
+          for (const scn of importedScenarios) {
+            const hotel = importedHotels[String(scn.hotelId)];
+            const scnFin = importedFin.filter((f: any) => String(f.scenarioId) === String(scn.id));
+            const scnOps = importedOps.filter((o: any) => String(o.scenarioId) === String(scn.id));
+            const ds = generateDatasetSnapshotForScenario(scn as any, hotel as any, undefined, scnFin as any, scnOps as any);
+            await syncRecordToFirestore(
+              'simulationDatasets',
+              ds.datasetId || String(scn.id),
+              { ...ds, scenarioId: scn.id },
+              true
+            ).catch(() => {});
+
+            await writeScenarioVersionToFirestore({
+              id: `scnver_${scn.id}_v${scn.versionNumber || 1}_${Date.now()}`,
+              scenarioId: scn.id,
+              scenarioCode: scn.scenarioCode,
+              versionNumber: Number(scn.versionNumber || 1),
+              datasetVersion: scn.datasetVersion || '2026.v1',
+              status: scn.status || 'Validated',
+              isActive: scn.status === 'Published',
+              changeSummary: `Data Import Center (${duplicateStrategy}) from ${logDoc.fileName}`,
+              importJobId: logDoc.id,
+              createdBy: currentUser.name,
+              createdAt: completedAt,
+            }).catch(() => {});
+          }
         }
 
         await fetch('/api/import/log-audit', {

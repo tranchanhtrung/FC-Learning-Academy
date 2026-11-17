@@ -1,16 +1,26 @@
 import {
   collection,
   doc,
+  getDoc,
+  getDocFromServer,
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   writeBatch,
   query,
   where,
   orderBy,
   limit,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { auth, db, firebaseConfigSummary, handleFirestoreError, OperationType } from './firebase';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  ROLE_META,
+  SYSTEM_ROLES,
+  sanitizeRolePermissionsList,
+} from './rbac';
+import type { LessonMaterialDoc, PermissionKey, RolePermissionPolicyDoc, UserRole } from '../types';
 
 export type DuplicateStrategy = 'skip' | 'update' | 'insert_new' | 'reject';
 export type SimulationScenarioLifecycleStatus = 'Draft' | 'Validated' | 'Published' | 'Archived';
@@ -22,6 +32,29 @@ export interface ChunkWriteOutcome {
   failedCount: number;
   succeededIds: string[];
   failedRecords: Array<{ collection: string; id: string; reason: string; record?: Record<string, any> }>;
+}
+
+/**
+ * Recursively removes undefined values from plain objects so Firebase SDK never throws
+ * "Unsupported field value: undefined".
+ */
+export function sanitizeForFirestore<T>(value: T): T {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item)) as unknown as T;
+  }
+  if (typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value as Record<string, any>)) {
+      if (v !== undefined) {
+        out[k] = sanitizeForFirestore(v);
+      }
+    }
+    return out as T;
+  }
+  return value;
 }
 
 export async function getFirestoreCollectionDocs(
@@ -41,6 +74,22 @@ export async function getFirestoreCollectionDocs(
   }
 }
 
+export async function getScopedCollectionDocs(
+  collectionName: string,
+  uid: string,
+  isAdmin: boolean,
+  ownerField = 'employeeUid'
+): Promise<Record<string, any>[]> {
+  try {
+    const ref = collection(db, collectionName);
+    const q = isAdmin ? ref : query(ref, where(ownerField, '==', uid));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, collectionName);
+  }
+}
+
 export async function fetchImportLogsFromFirestore(maxLogs = 25): Promise<any[]> {
   try {
     const q = query(collection(db, 'importLogs'), orderBy('startedAt', 'desc'), limit(maxLogs));
@@ -53,7 +102,7 @@ export async function fetchImportLogsFromFirestore(maxLogs = 25): Promise<any[]>
 
 export async function writeImportLogToFirestore(logData: Record<string, any>): Promise<void> {
   try {
-    await setDoc(doc(db, 'importLogs', logData.id), logData);
+    await setDoc(doc(db, 'importLogs', logData.id), sanitizeForFirestore(logData));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `importLogs/${logData.id}`);
   }
@@ -61,7 +110,7 @@ export async function writeImportLogToFirestore(logData: Record<string, any>): P
 
 export async function writeScenarioImportJobToFirestore(jobData: Record<string, any>): Promise<void> {
   try {
-    await setDoc(doc(db, 'scenarioImportJobs', jobData.id), jobData, { merge: true });
+    await setDoc(doc(db, 'scenarioImportJobs', jobData.id), sanitizeForFirestore(jobData), { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `scenarioImportJobs/${jobData.id}`);
   }
@@ -69,15 +118,25 @@ export async function writeScenarioImportJobToFirestore(jobData: Record<string, 
 
 export async function writeScenarioImportErrorToFirestore(errData: Record<string, any>): Promise<void> {
   try {
-    await setDoc(doc(db, 'scenarioImportErrors', errData.id), errData);
+    await setDoc(doc(db, 'scenarioImportErrors', errData.id), sanitizeForFirestore(errData));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `scenarioImportErrors/${errData.id}`);
   }
 }
 
+export async function fetchScenarioImportErrorsFromFirestore(jobId: string): Promise<Record<string, any>[]> {
+  try {
+    const q = query(collection(db, 'scenarioImportErrors'), where('jobId', '==', jobId));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, `scenarioImportErrors?jobId=${jobId}`);
+  }
+}
+
 export async function writeScenarioVersionToFirestore(versionData: Record<string, any>): Promise<void> {
   try {
-    await setDoc(doc(db, 'scenarioVersions', versionData.id), versionData);
+    await setDoc(doc(db, 'scenarioVersions', versionData.id), sanitizeForFirestore(versionData));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `scenarioVersions/${versionData.id}`);
   }
@@ -85,7 +144,11 @@ export async function writeScenarioVersionToFirestore(versionData: Record<string
 
 export async function saveScenarioCompetencyMappingToFirestore(mappingData: Record<string, any>): Promise<void> {
   try {
-    await setDoc(doc(db, 'scenarioCompetencyMappings', mappingData.id), mappingData, { merge: true });
+    await setDoc(
+      doc(db, 'scenarioCompetencyMappings', mappingData.id),
+      sanitizeForFirestore(mappingData),
+      { merge: true }
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `scenarioCompetencyMappings/${mappingData.id}`);
   }
@@ -138,7 +201,7 @@ export async function publishSimulationScenarioInFirestore(
     patch.unpublishedAt = now;
   }
   try {
-    await updateDoc(ref, patch);
+    await updateDoc(ref, sanitizeForFirestore(patch));
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `simulationScenarios/${scenarioId}`);
   }
@@ -151,10 +214,324 @@ export async function syncRecordToFirestore(
   merge = true
 ): Promise<void> {
   try {
-    await setDoc(doc(db, collectionName, docId), payload, { merge });
+    await setDoc(doc(db, collectionName, docId), sanitizeForFirestore(payload), { merge });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${docId}`);
   }
+}
+
+export async function deleteRecordFromFirestore(
+  collectionName: string,
+  docId: string
+): Promise<void> {
+  try {
+    await deleteDoc(doc(db, collectionName, docId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${docId}`);
+  }
+}
+
+export async function listAdminRegistryEntries(): Promise<
+  Array<{ uid: string; email: string; role: string; grantedAt: string }>
+> {
+  try {
+    const snap = await getDocs(collection(db, 'admins'));
+    return snap.docs.map((d) => ({
+      uid: d.id,
+      email: String(d.data()?.email || ''),
+      role: String(d.data()?.role || 'lnd_manager'),
+      grantedAt: String(d.data()?.grantedAt || ''),
+    }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'admins');
+  }
+}
+
+export function buildFirestoreUserProfilePayload(user: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  requestedRole?: string;
+  position?: string;
+  department?: string;
+  property?: string;
+  avatar?: string;
+  supervisorId?: string;
+  currentLevel?: number;
+  targetLevel?: number;
+  careerPathId?: string;
+  joinedDate?: string;
+}): Record<string, any> {
+  const now = new Date().toISOString();
+  const payload: Record<string, any> = {
+    uid: user.id,
+    employeeId: user.id.startsWith('user_') ? user.id : `emp_${user.id.slice(0, 12)}`,
+    name: (user.name || 'Academy Member').trim().slice(0, 150),
+    email: (user.email || '').trim().slice(0, 200),
+    role: user.role,
+    position: (user.position || 'Hospitality Finance Professional').trim().slice(0, 150),
+    department: (user.department || 'Finance & Accounting').trim().slice(0, 150),
+    property: (user.property || 'FC Learning Academy').trim().slice(0, 200),
+    currentLevel: Math.min(4, Math.max(1, Number(user.currentLevel) || 2)),
+    targetLevel: Math.min(4, Math.max(1, Number(user.targetLevel) || 4)),
+    joinedDate: (user.joinedDate || now.split('T')[0]).slice(0, 64),
+    updatedAt: now,
+  };
+  if (user.requestedRole) payload.requestedRole = user.requestedRole;
+  if (user.avatar) payload.avatar = user.avatar.slice(0, 1000);
+  if (user.supervisorId && /^[a-zA-Z0-9_\-]+$/.test(user.supervisorId)) {
+    payload.supervisorId = user.supervisorId;
+  }
+  if (user.careerPathId) payload.careerPathId = user.careerPathId.slice(0, 128);
+  return sanitizeForFirestore(payload);
+}
+
+export async function syncOfficialUserToFirestore(
+  user: Parameters<typeof buildFirestoreUserProfilePayload>[0],
+  syncAdminRegistry = false
+): Promise<void> {
+  const payload = buildFirestoreUserProfilePayload(user);
+  try {
+    // Full document write guarantees strict alignment with firestore.rules hasOnly()
+    await setDoc(doc(db, 'userProfiles', user.id), payload);
+    if (syncAdminRegistry && (user.role === 'super_admin' || user.role === 'lnd_manager') && user.email) {
+      try {
+        await setDoc(doc(db, 'admins', user.id), {
+          uid: user.id,
+          email: user.email.trim().slice(0, 200),
+          role: user.role,
+          grantedAt: new Date().toISOString(),
+        });
+      } catch {
+        // Admin registry update is best-effort for non-owner admins
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `userProfiles/${user.id}`);
+  }
+}
+
+export async function seedOfficialUsersToFirestore(
+  experienceUsers: Array<Parameters<typeof buildFirestoreUserProfilePayload>[0]>,
+  options: { overwrite?: boolean; existingIds?: Set<string> } = {}
+): Promise<{
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  adminSyncedCount: number;
+}> {
+  let existingIds = options.existingIds;
+  if (!existingIds) {
+    const existingSnap = await getFirestoreCollectionDocs('userProfiles');
+    existingIds = existingSnap.ids;
+  }
+
+  const strategy: DuplicateStrategy = options.overwrite ? 'update' : 'skip';
+  const records = experienceUsers.map((u) => buildFirestoreUserProfilePayload(u));
+  const outcome = await commitCollectionToFirestore('userProfiles', records, existingIds, strategy);
+
+  let adminSyncedCount = 0;
+  for (const u of experienceUsers) {
+    if ((u.role === 'super_admin' || u.role === 'lnd_manager') && u.email) {
+      try {
+        await setDoc(doc(db, 'admins', u.id), {
+          uid: u.id,
+          email: u.email.trim().slice(0, 200),
+          role: u.role,
+          grantedAt: new Date().toISOString(),
+        });
+        adminSyncedCount++;
+      } catch {
+        // non-blocking
+      }
+    }
+  }
+
+  return {
+    createdCount: outcome.createdCount,
+    updatedCount: outcome.updatedCount,
+    skippedCount: outcome.skippedCount,
+    failedCount: outcome.failedCount,
+    adminSyncedCount,
+  };
+}
+
+export async function fetchRolePermissionsFromFirestore(): Promise<RolePermissionPolicyDoc[]> {
+  try {
+    const snap = await getDocs(collection(db, 'rolePermissions'));
+    return snap.docs.map((d) => ({ id: d.id as UserRole, ...(d.data() as any) }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'rolePermissions');
+  }
+}
+
+export async function saveRolePermissionPolicyToFirestore(
+  role: UserRole,
+  permissions: PermissionKey[],
+  actor?: { uid?: string; name?: string }
+): Promise<RolePermissionPolicyDoc> {
+  const sanitizedPermissions = sanitizeRolePermissionsList(role, permissions);
+  const payload: RolePermissionPolicyDoc = sanitizeForFirestore({
+    id: role,
+    role,
+    permissions: sanitizedPermissions,
+    descriptionEn: ROLE_META[role]?.scopeSummaryEn || '',
+    descriptionVi: ROLE_META[role]?.scopeSummaryVi || '',
+    updatedByUid: (actor?.uid || auth.currentUser?.uid || 'system').slice(0, 128),
+    updatedByName: (actor?.name || auth.currentUser?.email || 'Administrator').slice(0, 150),
+    updatedAt: new Date().toISOString(),
+  });
+  try {
+    await setDoc(doc(db, 'rolePermissions', role), payload);
+    return payload;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `rolePermissions/${role}`);
+  }
+}
+
+export async function seedDefaultRolePermissionsToFirestore(
+  existingRoleIds?: Set<string>,
+  actor?: { uid?: string; name?: string }
+): Promise<number> {
+  let synced = 0;
+  for (const role of SYSTEM_ROLES) {
+    if (existingRoleIds && existingRoleIds.has(role)) continue;
+    await saveRolePermissionPolicyToFirestore(role, DEFAULT_ROLE_PERMISSIONS[role], actor);
+    synced++;
+  }
+  return synced;
+}
+
+export async function fetchLessonMaterialsFromFirestore(): Promise<LessonMaterialDoc[]> {
+  try {
+    const snap = await getDocs(collection(db, 'lessonMaterials'));
+    return snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as any) }) as LessonMaterialDoc)
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, 'lessonMaterials');
+  }
+}
+
+export async function saveLessonMaterialToFirestore(
+  material: LessonMaterialDoc
+): Promise<LessonMaterialDoc> {
+  const payload = sanitizeForFirestore(material);
+  try {
+    await setDoc(doc(db, 'lessonMaterials', material.id), payload);
+    return payload;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `lessonMaterials/${material.id}`);
+  }
+}
+
+export async function deleteLessonMaterialFromFirestore(materialId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'lessonMaterials', materialId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `lessonMaterials/${materialId}`);
+  }
+}
+
+export async function testFirestoreReadWrite(isAdmin: boolean): Promise<{
+  readOk: boolean;
+  writeOk: boolean;
+  message: string;
+  checkedAt: string;
+  counts: Record<string, number>;
+}> {
+  const checkedAt = new Date().toISOString();
+  let readOk = false;
+  let writeOk = false;
+  const notes: string[] = [];
+
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    readOk = true;
+  } catch (err: any) {
+    notes.push(`Read failed: ${err?.message || String(err)}`);
+  }
+
+  if (auth.currentUser?.emailVerified) {
+    if (isAdmin) {
+      try {
+        await setDoc(
+          doc(db, 'test', 'connection'),
+          sanitizeForFirestore({
+            status: 'ok',
+            projectId: firebaseConfigSummary.projectId,
+            databaseId: firebaseConfigSummary.databaseId,
+            checkedAt,
+            checkedByUid: auth.currentUser.uid,
+            checkedByEmail: auth.currentUser.email || '',
+          }),
+          { merge: true }
+        );
+        const verifySnap = await getDocFromServer(doc(db, 'test', 'connection'));
+        if (verifySnap.exists()) {
+          writeOk = true;
+          readOk = true;
+        }
+      } catch (err: any) {
+        notes.push(`Write failed: ${err?.message || String(err)}`);
+      }
+    } else {
+      try {
+        const uid = auth.currentUser.uid;
+        const profSnap = await getDoc(doc(db, 'userProfiles', uid));
+        if (profSnap.exists()) {
+          await updateDoc(doc(db, 'userProfiles', uid), { updatedAt: checkedAt });
+          writeOk = true;
+        }
+      } catch (err: any) {
+        notes.push(`Profile write failed: ${err?.message || String(err)}`);
+      }
+    }
+  } else {
+    notes.push('Verified Firebase sign-in required for write check.');
+  }
+
+  const probeCols = [
+    'competencyDomains',
+    'competencies',
+    'courses',
+    'simulationScenarios',
+    'simulationSessions',
+    'enrollments',
+    'individualDevelopmentPlans',
+  ];
+  const counts: Record<string, number> = {};
+  if (auth.currentUser?.emailVerified) {
+    await Promise.all(
+      probeCols.map(async (col) => {
+        try {
+          if (col === 'simulationScenarios' && !isAdmin) {
+            const list = await fetchPublishedSimulationScenarios();
+            counts[col] = list.length;
+          } else if ((col === 'simulationSessions' || col === 'enrollments' || col === 'individualDevelopmentPlans') && !isAdmin) {
+            const list = await getScopedCollectionDocs(col, auth.currentUser!.uid, false, 'employeeUid');
+            counts[col] = list.length;
+          } else {
+            const res = await getFirestoreCollectionDocs(col);
+            counts[col] = res.docs.length;
+          }
+        } catch {
+          counts[col] = 0;
+        }
+      })
+    );
+  }
+
+  const message =
+    readOk && writeOk
+      ? `Read & Write verified on ${firebaseConfigSummary.projectId} (${firebaseConfigSummary.databaseId})`
+      : readOk
+      ? `Read OK${notes.length ? ` • ${notes.join(' | ')}` : ''}`
+      : notes.join(' | ') || 'Firestore check failed';
+
+  return { readOk, writeOk, message, checkedAt, counts };
 }
 
 export async function fetchAllProductionMasterData(isAdminOrLnd: boolean): Promise<{
@@ -172,32 +549,39 @@ export async function fetchAllProductionMasterData(isAdminOrLnd: boolean): Promi
     'annualTrainingMatrix',
     'careerPaths',
   ];
+  // simulationReferenceAnalysis is Admin-only per firestore.rules
   const simCollections = [
     'hotelSimulationProfiles',
     'simulationFinancialData',
     'simulationOperationalData',
     'simulationBusinessChallenges',
     'simulationTasks',
-    'simulationReferenceAnalysis',
+    ...(isAdminOrLnd ? ['simulationReferenceAnalysis'] : []),
     'simulationDecisionOptions',
     'simulationRoleplayPrompts',
     'simulationEvaluationRubrics',
     'simulationCompetencyMappings',
   ];
 
-  const masterCollections: Record<string, Record<string, any>[]> = {};
-  const counts: Record<string, number> = {};
+  const masterCollections: Record<string, Record<string, any>[]> = {
+    simulationReferenceAnalysis: [],
+  };
+  const counts: Record<string, number> = {
+    simulationReferenceAnalysis: 0,
+  };
 
-  for (const col of academyCollections) {
-    try {
-      const res = await getFirestoreCollectionDocs(col);
-      masterCollections[col] = res.docs;
-      counts[col] = res.docs.length;
-    } catch {
-      masterCollections[col] = [];
-      counts[col] = 0;
-    }
-  }
+  await Promise.all(
+    academyCollections.map(async (col) => {
+      try {
+        const res = await getFirestoreCollectionDocs(col);
+        masterCollections[col] = res.docs;
+        counts[col] = res.docs.length;
+      } catch {
+        masterCollections[col] = [];
+        counts[col] = 0;
+      }
+    })
+  );
 
   try {
     const scenarios = isAdminOrLnd
@@ -210,18 +594,145 @@ export async function fetchAllProductionMasterData(isAdminOrLnd: boolean): Promi
     counts.simulationScenarios = 0;
   }
 
-  for (const col of simCollections) {
-    try {
-      const res = await getFirestoreCollectionDocs(col);
-      masterCollections[col] = res.docs;
-      counts[col] = res.docs.length;
-    } catch {
-      masterCollections[col] = [];
-      counts[col] = 0;
-    }
-  }
+  await Promise.all(
+    simCollections.map(async (col) => {
+      try {
+        const res = await getFirestoreCollectionDocs(col);
+        masterCollections[col] = res.docs;
+        counts[col] = res.docs.length;
+      } catch {
+        masterCollections[col] = [];
+        counts[col] = 0;
+      }
+    })
+  );
 
   return { masterCollections, counts };
+}
+
+export interface ProductionTransactionalData {
+  enrollments: Record<string, any>[];
+  quizAttempts: Record<string, any>[];
+  practicalSubmissions: Record<string, any>[];
+  simulationSessions: Record<string, any>[];
+  simulationDatasets: Record<string, any>[];
+  simulationEvaluations: Record<string, any>[];
+  simulationAssignments: Record<string, any>[];
+  simulationAuditLogs: Record<string, any>[];
+  scenarioVersions: Record<string, any>[];
+  scenarioImportJobs: Record<string, any>[];
+  scenarioCompetencyMappings: Record<string, any>[];
+  talentConfig: Record<string, any> | null;
+  competencyAssessments: Record<string, any>[];
+  developmentActivities: Record<string, any>[];
+  individualDevelopmentPlans: Record<string, any>[];
+  idpReviewLogs: Record<string, any>[];
+  competencyReassessments: Record<string, any>[];
+  careerReadinessReviews: Record<string, any>[];
+  userProfiles: Record<string, any>[];
+  rolePermissions: RolePermissionPolicyDoc[];
+  lessonMaterials: LessonMaterialDoc[];
+}
+
+export async function fetchProductionTransactionalData(
+  uid: string,
+  isAdminOrLnd: boolean
+): Promise<ProductionTransactionalData> {
+  const safeScoped = async (col: string, ownerField = 'employeeUid'): Promise<Record<string, any>[]> => {
+    try {
+      return await getScopedCollectionDocs(col, uid, isAdminOrLnd, ownerField);
+    } catch {
+      return [];
+    }
+  };
+  const safeList = async (col: string): Promise<Record<string, any>[]> => {
+    try {
+      const res = await getFirestoreCollectionDocs(col);
+      return res.docs;
+    } catch {
+      return [];
+    }
+  };
+  const safeGetOne = async (col: string, docId: string): Promise<Record<string, any> | null> => {
+    try {
+      const snap = await getDoc(doc(db, col, docId));
+      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [
+    enrollments,
+    quizAttempts,
+    practicalSubmissions,
+    simulationSessions,
+    simulationDatasets,
+    simulationEvaluations,
+    simulationAssignments,
+    simulationAuditLogs,
+    scenarioVersions,
+    scenarioImportJobs,
+    scenarioCompetencyMappings,
+    talentConfigList,
+    competencyAssessments,
+    developmentActivities,
+    individualDevelopmentPlans,
+    idpReviewLogs,
+    competencyReassessments,
+    careerReadinessReviews,
+    userProfiles,
+    rolePermissions,
+    lessonMaterials,
+  ] = await Promise.all([
+    safeScoped('enrollments', 'employeeUid'),
+    safeScoped('quizAttempts', 'employeeUid'),
+    safeScoped('practicalSubmissions', 'employeeUid'),
+    safeScoped('simulationSessions', 'employeeUid'),
+    safeList('simulationDatasets'),
+    safeScoped('simulationEvaluations', 'learnerUid'),
+    safeScoped('simulationAssignments', 'learnerId'),
+    isAdminOrLnd ? safeList('simulationAuditLogs') : Promise.resolve([]),
+    isAdminOrLnd ? safeList('scenarioVersions') : Promise.resolve([]),
+    isAdminOrLnd ? safeList('scenarioImportJobs') : Promise.resolve([]),
+    safeList('scenarioCompetencyMappings'),
+    isAdminOrLnd ? safeList('talentConfig') : safeGetOne('talentConfig', 'default').then((d) => (d ? [d] : [])),
+    safeScoped('competencyAssessments', 'employeeUid'),
+    safeScoped('developmentActivities', 'employeeUid'),
+    safeScoped('individualDevelopmentPlans', 'employeeUid'),
+    safeScoped('idpReviewLogs', 'employeeUid'),
+    safeScoped('competencyReassessments', 'employeeUid'),
+    safeScoped('careerReadinessReviews', 'employeeUid'),
+    isAdminOrLnd ? safeList('userProfiles') : safeGetOne('userProfiles', uid).then((d) => (d ? [d] : [])),
+    safeList('rolePermissions'),
+    safeList('lessonMaterials'),
+  ]);
+
+  return {
+    enrollments,
+    quizAttempts,
+    practicalSubmissions,
+    simulationSessions,
+    simulationDatasets,
+    simulationEvaluations,
+    simulationAssignments,
+    simulationAuditLogs,
+    scenarioVersions,
+    scenarioImportJobs,
+    scenarioCompetencyMappings,
+    talentConfig: talentConfigList[0] || null,
+    competencyAssessments,
+    developmentActivities,
+    individualDevelopmentPlans,
+    idpReviewLogs,
+    competencyReassessments,
+    careerReadinessReviews,
+    userProfiles,
+    rolePermissions: rolePermissions as RolePermissionPolicyDoc[],
+    lessonMaterials: (lessonMaterials as LessonMaterialDoc[]).sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    ),
+  };
 }
 
 /**
@@ -246,7 +757,8 @@ export async function commitCollectionToFirestore(
 
   const toWrite: Array<{ record: Record<string, any>; mode: 'create' | 'update' }> = [];
 
-  for (const record of records) {
+  for (const rawRecord of records) {
+    const record = sanitizeForFirestore(rawRecord);
     const docId = String(record.id);
     const exists = existingIds.has(docId);
     if (exists) {

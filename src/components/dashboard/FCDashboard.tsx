@@ -23,10 +23,15 @@ export const FCDashboard: React.FC = () => {
     language,
     t,
     setActiveTab,
+    canAccessRoute,
   } = useApp();
 
   // My direct team members (those supervised by this FC or in the same property)
-  const myTeam = users.filter((u) => u.role === 'learner' && (u.supervisorId === currentUser.id || u.property.includes('Grand Horizon')));
+  const myTeam = users.filter(
+    (u) =>
+      u.role === 'learner' &&
+      (u.supervisorId === currentUser.id || u.property === currentUser.property)
+  );
   const pendingSubmissions = submissions.filter((s) => s.status === 'submitted' || s.status === 'under_review');
 
   // Compute live urgent coaching list from latest assessments for each team member
@@ -92,13 +97,15 @@ export const FCDashboard: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setActiveTab('assessments')}
-          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
-        >
-          <ClipboardCheck className="w-4 h-4" />
-          <span>{language === 'vi' ? 'Đánh giá năng lực nhân viên' : 'Conduct Assessment'}</span>
-        </button>
+        {canAccessRoute('assessments') && (
+          <button
+            onClick={() => setActiveTab('assessments')}
+            className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            <span>{language === 'vi' ? 'Đánh giá năng lực nhân viên' : 'Conduct Assessment'}</span>
+          </button>
+        )}
       </div>
 
       {/* KPI Cards */}
@@ -143,12 +150,14 @@ export const FCDashboard: React.FC = () => {
                 {language === 'vi' ? 'Đánh giá định kỳ theo 6 miền năng lực USALI' : 'Assessed according to 6 USALI competency domains'}
               </p>
             </div>
-            <button
-              onClick={() => setActiveTab('assessments')}
-              className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-            >
-              {language === 'vi' ? 'Xem ma trận' : 'View Matrix'} &rarr;
-            </button>
+            {canAccessRoute('assessments') && (
+              <button
+                onClick={() => setActiveTab('assessments')}
+                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+              >
+                {language === 'vi' ? 'Xem ma trận' : 'View Matrix'} &rarr;
+              </button>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -178,12 +187,14 @@ export const FCDashboard: React.FC = () => {
                       Level {member.currentLevel} / {member.targetLevel}
                     </span>
                   </div>
-                  <button
-                    onClick={() => setActiveTab('assessments')}
-                    className="px-2.5 py-1 text-xs font-semibold bg-slate-200 hover:bg-slate-900 hover:text-white rounded-lg transition-colors cursor-pointer"
-                  >
-                    {language === 'vi' ? 'Đánh giá' : 'Assess'}
-                  </button>
+                  {canAccessRoute('assessments') && (
+                    <button
+                      onClick={() => setActiveTab('assessments')}
+                      className="px-2.5 py-1 text-xs font-semibold bg-slate-200 hover:bg-slate-900 hover:text-white rounded-lg transition-colors cursor-pointer"
+                    >
+                      {language === 'vi' ? 'Đánh giá' : 'Assess'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -221,12 +232,14 @@ export const FCDashboard: React.FC = () => {
               <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500">
                 {language === 'vi' ? 'Hàng Đợi Chấm Bài OJT' : 'OJT Deliverable Queue'}
               </h4>
-              <button
-                onClick={() => setActiveTab('ojtProjects')}
-                className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
-              >
-                {t.common.all} &rarr;
-              </button>
+              {canAccessRoute('ojtProjects') && (
+                <button
+                  onClick={() => setActiveTab('ojtProjects')}
+                  className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                >
+                  {t.common.all} &rarr;
+                </button>
+              )}
             </div>
 
             {submissions.map((sub) => {
@@ -240,12 +253,14 @@ export const FCDashboard: React.FC = () => {
                     <p className="font-bold text-slate-800">{u?.name}</p>
                     <p className="text-[10px] text-slate-500 truncate max-w-[180px]">{sub.fileName}</p>
                   </div>
-                  <button
-                    onClick={() => setActiveTab('ojtProjects')}
-                    className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] cursor-pointer"
-                  >
-                    {language === 'vi' ? 'Chấm điểm' : 'Review'}
-                  </button>
+                  {canAccessRoute('ojtProjects') && (
+                    <button
+                      onClick={() => setActiveTab('ojtProjects')}
+                      className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[10px] cursor-pointer"
+                    >
+                      {language === 'vi' ? 'Chấm điểm' : 'Review'}
+                    </button>
+                  )}
                 </div>
               );
             })}

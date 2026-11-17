@@ -44,6 +44,7 @@ export const SimulationAdminTab: React.FC = () => {
     assignSimulatorScenario,
     setActiveTab,
     launchSimulationWorkspace,
+    hasPermission,
   } = useApp();
 
   const [adminSubTab, setAdminSubTab] = useState<'scenarios' | 'hotels' | 'assignments' | 'audit'>('scenarios');
@@ -53,7 +54,8 @@ export const SimulationAdminTab: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
 
-  const isLndOrAdmin = ['super_admin', 'lnd_manager'].includes(currentUser.role);
+  const isLndOrAdmin = hasPermission('manage_sim_admin');
+  const canImportScenarios = hasPermission('access_data_import_center');
 
   // Scenario Builder State
   const [showNewScenario, setShowNewScenario] = useState(false);
@@ -151,6 +153,8 @@ export const SimulationAdminTab: React.FC = () => {
     await assignSimulatorScenario({ ...asgnForm, scenarioId: targetId });
   };
 
+  if (!isLndOrAdmin) return null;
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -164,22 +168,24 @@ export const SimulationAdminTab: React.FC = () => {
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isLndOrAdmin && (
-            <button
-              onClick={() => setActiveTab('simImportCenter')}
-              className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
-              <span>{language === 'vi' ? 'Trung Tâm Nhập Kịch Bản' : 'Scenario Import Center'}</span>
-            </button>
+          {canImportScenarios && (
+            <>
+              <button
+                onClick={() => setActiveTab('simImportCenter')}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-600" />
+                <span>{language === 'vi' ? 'Trung Tâm Nhập Kịch Bản' : 'Scenario Import Center'}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('simVersionHistory')}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-slate-500" />
+                <span>{language === 'vi' ? 'Lịch Sử Phiên Bản' : 'Version History'}</span>
+              </button>
+            </>
           )}
-          <button
-            onClick={() => setActiveTab('simVersionHistory')}
-            className="px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <GitBranch className="w-3.5 h-3.5 text-slate-500" />
-            <span>{language === 'vi' ? 'Lịch Sử Phiên Bản' : 'Version History'}</span>
-          </button>
           <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-semibold">
             {[
               { id: 'scenarios', label: language === 'vi' ? 'Kịch Bản & Xuất Bản' : 'Scenarios' },

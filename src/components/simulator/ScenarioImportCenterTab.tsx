@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Upload,
   Download,
@@ -18,12 +18,15 @@ import { useApp } from '../../context/AppContext';
 import { auth } from '../../lib/firebase';
 import {
   commitCollectionToFirestore,
+  fetchScenarioImportErrorsFromFirestore,
   getFirestoreCollectionDocs,
   saveScenarioCompetencyMappingToFirestore,
+  syncRecordToFirestore,
   writeScenarioImportErrorToFirestore,
   writeScenarioImportJobToFirestore,
   writeScenarioVersionToFirestore,
 } from '../../lib/firestore';
+import { generateDatasetSnapshotForScenario } from '../../lib/simulatorEngine';
 import { ScenarioDetailPreviewModal } from './ScenarioDetailPreviewModal';
 import type {
   ScenarioImportErrorDoc,
@@ -158,15 +161,19 @@ export const ScenarioImportCenterTab: React.FC = () => {
     competencies,
     scenarioImportJobs,
     scenarioCompetencyMappings,
+    dataSourceMode,
+    setDataSourceMode,
+    firebaseProfile,
+    refreshFromFirestore,
     refreshSimulatorData,
     refreshSimulatorWorkspace,
     refreshScenarioGovernance,
     setActiveTab,
     showToast,
+    hasPermission,
   } = useApp();
 
-  const isAuthorizedAdmin =
-    currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const isAuthorizedAdmin = hasPermission('access_sim_import_center');
 
   const [fileName, setFileName] = useState<string>('');
   const [fileBase64, setFileBase64] = useState<string>('');
@@ -174,8 +181,18 @@ export const ScenarioImportCenterTab: React.FC = () => {
   const [duplicateStrategy, setDuplicateStrategy] = useState<SimulatorImportStrategy>('skip');
   const [defaultImportedStatus, setDefaultImportedStatus] = useState<SimulationScenarioStatus>('Validated');
   const [batchSize, setBatchSize] = useState<number>(25);
-  const [targetMode, setTargetMode] = useState<'demo_local' | 'firebase_client' | 'firebase_admin'>('demo_local');
+  const [targetMode, setTargetMode] = useState<'demo_local' | 'firebase_client' | 'firebase_admin'>(() =>
+    dataSourceMode === 'firestore' || (auth.currentUser?.emailVerified && firebaseProfile?.isAdmin)
+      ? 'firebase_client'
+      : 'demo_local'
+  );
   const [allowPartialOnErrors, setAllowPartialOnErrors] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      setTargetMode('firebase_client');
+    }
+  }, [dataSourceMode]);
 
   const [parsing, setParsing] = useState(false);
   const [executing, setExecuting] = useState(false);
@@ -222,6 +239,34 @@ export const ScenarioImportCenterTab: React.FC = () => {
         ...(overrideCompMap || draftCompMap),
       };
 
+      let existingIdsByCollection: Record<string, string[]> | undefined;
+      let existingCodeToIdByCollection: Record<string, Record<string, string>> | undefined;
+      let existingCompetencyIds: string[] | undefined;
+
+      if (targetMode === 'firebase_client' && auth.currentUser?.emailVerified) {
+        existingIdsByCollection = {};
+        existingCodeToIdByCollection = {};
+        try {
+          const [compRes, ...colRes] = await Promise.all([
+            getFirestoreCollectionDocs('competencies'),
+            ...SIMULATOR_COLLECTIONS_ORDER.map((s) =>
+              getFirestoreCollectionDocs(s.collectionName).catch(() => ({ ids: new Set<string>(), docs: [] }))
+            ),
+          ]);
+          existingCompetencyIds = compRes.docs.map((d) => String(d.id));
+          existingCodeToIdByCollection.competencies = {};
+          compRes.docs.forEach((d) => {
+            if (d.code) existingCodeToIdByCollection!.competencies[String(d.code)] = String(d.id);
+          });
+          SIMULATOR_COLLECTIONS_ORDER.forEach((spec, idx) => {
+            const snap = colRes[idx];
+            existingIdsByCollection![spec.collectionName] = Array.from(snap.ids);
+          });
+        } catch {
+          // Fallback to server store comparison if Firestore read fails
+        }
+      }
+
       const res = await fetch('/api/import/parse-validate', {
         method: 'POST',
         headers: authHeaders(),
@@ -234,6 +279,9 @@ export const ScenarioImportCenterTab: React.FC = () => {
           defaultImportedStatus,
           columnMappingsBySheet: overrideColMaps || columnMappingsBySheet,
           targetMode: targetMode === 'firebase_admin' ? 'firebase_admin' : 'demo_local',
+          existingIdsByCollection,
+          existingCodeToIdByCollection,
+          existingCompetencyIds,
         }),
       });
       const data = await res.json();
@@ -387,24 +435,54 @@ export const ScenarioImportCenterTab: React.FC = () => {
     }
     setExecuting(true);
     try {
-      // Optional direct Firestore browser client commit when explicitly chosen
       if (targetMode === 'firebase_client') {
         if (!auth.currentUser?.emailVerified) {
           showToast('Sign in with a verified Firebase Admin account first to commit via Firebase Client.', 'error');
           return;
         }
         const jobId = `simjob_${Date.now()}`;
+        const now = new Date().toISOString();
         let createdCount = 0;
         let updatedCount = 0;
         let skippedCount = 0;
         let failedCount = 0;
+        const skippedScenarioIds = new Set<string>();
+        const allFailedRecords: Array<{ collection: string; id: string; reason: string; sheetName: string }> = [];
+
+        const existingHotels = await getFirestoreCollectionDocs('hotelSimulationProfiles');
+        const existingScenarios = await getFirestoreCollectionDocs('simulationScenarios');
+
+        if (duplicateStrategy === 'skip' || duplicateStrategy === 'insert_new') {
+          for (const scn of validation.sanitizedByCollection.simulationScenarios || []) {
+            if (existingScenarios.ids.has(String(scn.id))) {
+              skippedScenarioIds.add(String(scn.id));
+            }
+          }
+        }
+
         for (const spec of SIMULATOR_COLLECTIONS_ORDER) {
-          const rows = (validation.sanitizedByCollection[spec.collectionName] || []).map((r) => ({
-            ...r,
-            importBatchId: jobId,
-          }));
+          const rawRows = validation.sanitizedByCollection[spec.collectionName] || [];
+          const rows = rawRows
+            .filter((r) => {
+              if (spec.collectionName !== 'hotelSimulationProfiles' && r.scenarioId && skippedScenarioIds.has(String(r.scenarioId))) {
+                skippedCount++;
+                return false;
+              }
+              return true;
+            })
+            .map((r) => ({
+              ...r,
+              importBatchId: jobId,
+            }));
           if (rows.length === 0) continue;
-          const existing = await getFirestoreCollectionDocs(spec.collectionName);
+
+          const existing =
+            spec.collectionName === 'hotelSimulationProfiles'
+              ? existingHotels
+              : spec.collectionName === 'simulationScenarios'
+              ? existingScenarios
+              : await getFirestoreCollectionDocs(spec.collectionName);
+
           const out = await commitCollectionToFirestore(
             spec.collectionName,
             rows,
@@ -415,28 +493,45 @@ export const ScenarioImportCenterTab: React.FC = () => {
           updatedCount += out.updatedCount;
           skippedCount += out.skippedCount;
           failedCount += out.failedCount;
+          out.failedRecords.forEach((f) =>
+            allFailedRecords.push({ ...f, sheetName: spec.sheetName })
+          );
         }
-        await writeScenarioImportJobToFirestore({
-          id: jobId,
-          fileName,
-          strategy: duplicateStrategy,
-          mode: 'firebase_client',
-          status: failedCount > 0 ? 'partial_failure' : 'completed',
-          totalRows: validation.totalRowsDetected,
-          validRows: validation.validRecords,
-          errorCount: failedCount,
-          warningCount: validation.warningCount,
-          createdCount,
-          updatedCount,
-          skippedCount,
-          failedCount,
-          performedById: currentUser.id,
-          performedByName: currentUser.name,
-          performedByEmail: currentUser.email,
-          startedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }).catch(() => {});
+
+        for (let i = 0; i < allFailedRecords.length; i++) {
+          const errItem = allFailedRecords[i];
+          await writeScenarioImportErrorToFirestore({
+            id: `simerr_${jobId}_${i}`,
+            jobId,
+            sheetName: errItem.sheetName,
+            collectionName: errItem.collection,
+            rowNumber: 0,
+            recordId: errItem.id,
+            message: errItem.reason,
+            createdAt: now,
+          }).catch(() => {});
+        }
+
+        const hotelsMap = new Map<string, any>();
+        [...existingHotels.docs, ...(validation.sanitizedByCollection.hotelSimulationProfiles || [])].forEach((h) => {
+          hotelsMap.set(String(h.id), h);
+        });
+        const allFin = validation.sanitizedByCollection.simulationFinancialData || [];
+        const allOps = validation.sanitizedByCollection.simulationOperationalData || [];
+
         for (const scn of validation.sanitizedByCollection.simulationScenarios || []) {
+          if (skippedScenarioIds.has(String(scn.id))) continue;
+          const hotel = hotelsMap.get(String(scn.hotelId));
+          const scnFin = allFin.filter((f: any) => String(f.scenarioId) === String(scn.id));
+          const scnOps = allOps.filter((o: any) => String(o.scenarioId) === String(scn.id));
+          const ds = generateDatasetSnapshotForScenario(scn as any, hotel, undefined, scnFin as any, scnOps as any);
+          await syncRecordToFirestore(
+            'simulationDatasets',
+            ds.datasetId || String(scn.id),
+            { ...ds, scenarioId: scn.id },
+            true
+          ).catch(() => {});
+
           await writeScenarioVersionToFirestore({
             id: `scnver_${scn.id}_v${scn.versionNumber || 1}_${Date.now()}`,
             scenarioId: scn.id,
@@ -448,12 +543,54 @@ export const ScenarioImportCenterTab: React.FC = () => {
             changeSummary: `Firebase Client Excel import (${duplicateStrategy}) from ${fileName}`,
             importJobId: jobId,
             createdBy: currentUser.name,
-            createdAt: new Date().toISOString(),
+            createdAt: now,
           }).catch(() => {});
         }
+
+        const jobDoc = {
+          id: jobId,
+          fileName,
+          strategy: duplicateStrategy,
+          mode: 'firebase_client',
+          status:
+            failedCount > 0
+              ? createdCount + updatedCount > 0
+                ? 'partial_failure'
+                : 'failed'
+              : 'completed',
+          totalRows: validation.totalRowsDetected,
+          validRows: validation.validRecords,
+          errorCount: failedCount,
+          warningCount: validation.warningCount,
+          createdCount,
+          updatedCount,
+          skippedCount,
+          failedCount,
+          performedById: auth.currentUser.uid,
+          performedByName: currentUser.name,
+          performedByEmail: auth.currentUser.email || currentUser.email,
+          startedAt: now,
+          updatedAt: now,
+        };
+        await writeScenarioImportJobToFirestore(jobDoc).catch(() => {});
+
+        setExecutionResult({ job: jobDoc, failedRecords: allFailedRecords });
+        if (createdCount + updatedCount > 0) {
+          setDataSourceMode('firestore');
+          await refreshFromFirestore('firestore');
+        } else {
+          await refreshFromFirestore();
+        }
+        showToast(
+          failedCount > 0
+            ? `Firestore import finished with ${failedCount} error(s): ${createdCount} created, ${updatedCount} updated, ${skippedCount} skipped.`
+            : `Firestore import completed: ${createdCount} created, ${updatedCount} updated, ${skippedCount} skipped.`,
+          failedCount > 0 && createdCount + updatedCount === 0 ? 'error' : 'success'
+        );
+        return;
       }
 
-      // Always execute through backend simulator pipeline (and Firebase Admin when selected)
+      // Server backend pipeline (demo_local or firebase_admin)
       const apiMode = targetMode === 'firebase_admin' ? 'firebase_admin' : 'demo_local';
       const res = await fetch('/api/import/execute', {
         method: 'POST',
@@ -524,6 +661,15 @@ export const ScenarioImportCenterTab: React.FC = () => {
     if (inspectedJobErrors?.jobId === jobId) {
       setInspectedJobErrors(null);
       return;
+    }
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      try {
+        const fsErrors = await fetchScenarioImportErrorsFromFirestore(jobId);
+        setInspectedJobErrors({ jobId, errors: fsErrors as ScenarioImportErrorDoc[] });
+        return;
+      } catch {
+        // fallback to API if Firestore lookup fails
+      }
     }
     const res = await fetch(`/api/simulator/import-jobs/${encodeURIComponent(jobId)}/errors`, {
       headers: { 'x-user-id': currentUser.id, 'x-user-role': currentUser.role },

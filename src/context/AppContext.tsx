@@ -1,16 +1,51 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
   auth,
   subscribeFirebaseAuth,
   resolveAuthenticatedUserProfile,
+  signOutFirebase,
   fetchAllProductionMasterData,
+  fetchProductionTransactionalData,
   publishSimulationScenarioInFirestore,
   syncRecordToFirestore,
+  deleteRecordFromFirestore,
   getFirestoreCollectionDocs,
+  writeScenarioVersionToFirestore,
+  syncOfficialUserToFirestore,
+  seedOfficialUsersToFirestore,
+  saveRolePermissionPolicyToFirestore,
+  seedDefaultRolePermissionsToFirestore,
+  fetchLessonMaterialsFromFirestore,
+  saveLessonMaterialToFirestore,
+  deleteLessonMaterialFromFirestore,
+  uploadAuthorizedTrainingFile,
+  validateStorageFile,
 } from '../lib/firebase';
 import {
+  fileToBase64,
+  formatFileSizeLabel,
+  inferMaterialTypeFromFile,
+  FIRESTORE_INLINE_MAX_BYTES,
+  FIREBASE_STORAGE_MAX_BYTES,
+} from '../lib/lessonMaterials';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  SYSTEM_ROLES,
+  canAccessTab,
+  normalizeRolePermissionsMap,
+  roleHasPermission,
+  sanitizeRolePermissionsList,
+} from '../lib/rbac';
+import {
+  generateDatasetSnapshotForScenario,
+  evaluateDeterministicSimulation,
+} from '../lib/simulatorEngine';
+import {
   User,
+  UserRole,
+  PermissionKey,
+  RolePermissionsMap,
   ProficiencyLevel,
   CompetencyDomain,
   Competency,
@@ -54,6 +89,9 @@ import {
   ScenarioVersionDoc,
   ScenarioImportJobDoc,
   ScenarioCompetencyMappingDoc,
+  LessonMaterialDoc,
+  LessonMaterialType,
+  LessonMaterialStorageMode,
 } from '../types';
 import { DEFAULT_TALENT_CONFIG } from '../lib/talentEngine';
 import {
@@ -188,6 +226,20 @@ interface AppContextType {
   // Firebase Live Auth, Production Mode & FC Business Partner Simulator
   firebaseUser: FirebaseUser | null;
   firebaseProfile: FirebaseUserProfileDoc | null;
+  officialAuthUser: User | null;
+  isPreviewingRole: boolean;
+  useOfficialAccountIdentity: () => void;
+  signOutOfficialAccount: () => Promise<void>;
+  authModalTab: 'login' | 'register' | 'reset' | null;
+  openAuthModal: (tab?: 'login' | 'register' | 'reset') => void;
+  closeAuthModal: () => void;
+  syncAllExperienceRolesToFirestore: (overwrite?: boolean) => Promise<{
+    createdCount: number;
+    updatedCount: number;
+    skippedCount: number;
+    failedCount: number;
+    adminSyncedCount: number;
+  }>;
   dataSourceMode: 'demo' | 'firestore';
   setDataSourceMode: (mode: 'demo' | 'firestore') => void;
   productionCounts: Record<string, number>;
@@ -258,6 +310,34 @@ interface AppContextType {
   upsertSimulatorScenario: (payload: any, existingId?: string) => Promise<SimulationScenarioDoc | null>;
   upsertHotelProfile: (payload: any) => Promise<HotelSimulationProfileDoc | null>;
   launchSimulationWorkspace: (scenarioId: string, subTab?: string, sessionId?: string | null) => void;
+
+  // Dynamic RBAC Role Permissions Control
+  rolePermissions: RolePermissionsMap;
+  rolePermissionMeta: Partial<Record<UserRole, { updatedAt: string; updatedByName?: string }>>;
+  hasPermission: (permission: PermissionKey) => boolean;
+  canAccessRoute: (tabId: string) => boolean;
+  saveRolePermissionPolicy: (role: UserRole, permissions: PermissionKey[]) => Promise<boolean>;
+  saveAllRolePermissions: (updatedMap: RolePermissionsMap) => Promise<boolean>;
+  resetRolePermissions: (role?: UserRole) => Promise<boolean>;
+
+  // Per-Lesson Learning Materials (Firestore / Demo)
+  lessonMaterials: LessonMaterialDoc[];
+  refreshLessonMaterials: () => Promise<void>;
+  uploadLessonMaterial: (params: {
+    courseId: string;
+    lessonId: string;
+    titleVi: string;
+    titleEn: string;
+    descriptionVi?: string;
+    descriptionEn?: string;
+    materialType?: LessonMaterialType;
+    isRequired?: boolean;
+    file?: File | null;
+    externalUrl?: string;
+    preferredStorage?: 'auto' | LessonMaterialStorageMode;
+    forceFirestore?: boolean;
+  }) => Promise<LessonMaterialDoc | null>;
+  deleteLessonMaterial: (materialId: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -296,7 +376,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [dismissToast]
   );
 
+  const hasManualRoleSwitchRef = useRef(false);
+
   const setCurrentUser = useCallback((user: User) => {
+    hasManualRoleSwitchRef.current = true;
     setCurrentUserState(user);
     localStorage.setItem('fc_active_user_id', user.id);
   }, []);
@@ -305,6 +388,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [domains, setDomains] = useState<CompetencyDomain[]>(COMPETENCY_DOMAINS);
   const [courses, setCourses] = useState<Course[]>(COURSES);
   const [learningPaths, setLearningPaths] = useState<LearningPath[]>(LEARNING_PATHS);
+  const [ojtAssignments, setOjtAssignments] = useState<OJTAssignment[]>(OJT_ASSIGNMENTS);
   const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
@@ -313,12 +397,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [idps, setIdps] = useState<IndividualDevelopmentPlan[]>(INITIAL_IDPS);
   const [certificates, setCertificates] = useState<Certificate[]>(INITIAL_CERTIFICATES);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionsMap>(() =>
+    normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS)
+  );
+  const [rolePermissionMeta, setRolePermissionMeta] = useState<
+    Partial<Record<UserRole, { updatedAt: string; updatedByName?: string }>>
+  >({});
+  const [lessonMaterials, setLessonMaterials] = useState<LessonMaterialDoc[]>([]);
 
   // Firebase Auth & Production Firestore State
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(() => auth.currentUser);
   const [firebaseProfile, setFirebaseProfile] = useState<FirebaseUserProfileDoc | null>(null);
-  const [dataSourceMode, setDataSourceMode] = useState<'demo' | 'firestore'>('demo');
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'reset' | null>(null);
+  const openAuthModal = useCallback((tab: 'login' | 'register' | 'reset' = 'login') => {
+    setAuthModalTab(tab);
+  }, []);
+  const closeAuthModal = useCallback(() => {
+    setAuthModalTab(null);
+  }, []);
+  const [dataSourceMode, setDataSourceModeState] = useState<'demo' | 'firestore'>(() => {
+    try {
+      return localStorage.getItem('fc_data_source_mode') === 'firestore' ? 'firestore' : 'demo';
+    } catch {
+      return 'demo';
+    }
+  });
+  const setDataSourceMode = useCallback((mode: 'demo' | 'firestore') => {
+    try {
+      localStorage.setItem('fc_data_source_mode', mode);
+    } catch {
+      // ignore storage errors
+    }
+    if (mode === 'firestore') {
+      hasManualRoleSwitchRef.current = false;
+    }
+    setDataSourceModeState(mode);
+  }, []);
   const [productionCounts, setProductionCounts] = useState<Record<string, number>>({});
+
+  const mapProfileDocToUser = useCallback((docItem: Record<string, any>): User => {
+    const uid = String(docItem.uid || docItem.id || docItem.employeeId || '');
+    const seedMatch = INITIAL_USERS.find((u) => u.id === uid || u.id === docItem.id);
+    const resolvedName = String(docItem.name || seedMatch?.name || 'Academy Member');
+    const resolvedAvatar =
+      String(docItem.avatar || '') ||
+      seedMatch?.avatar ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(resolvedName)}&background=0A192F&color=D4AF37`;
+    return {
+      id: uid,
+      name: resolvedName,
+      email: String(docItem.email || seedMatch?.email || ''),
+      role: (docItem.role || seedMatch?.role || 'learner') as User['role'],
+      requestedRole: docItem.requestedRole as User['role'] | undefined,
+      position: String(docItem.position || seedMatch?.position || 'Hospitality Finance Professional'),
+      department: String(docItem.department || seedMatch?.department || 'Finance & Accounting'),
+      property: String(docItem.property || seedMatch?.property || 'FC Learning Academy'),
+      avatar: resolvedAvatar,
+      supervisorId: docItem.supervisorId || seedMatch?.supervisorId,
+      currentLevel: (Math.min(4, Math.max(1, Number(docItem.currentLevel || seedMatch?.currentLevel || 2))) as ProficiencyLevel),
+      targetLevel: (Math.min(4, Math.max(1, Number(docItem.targetLevel || seedMatch?.targetLevel || 4))) as ProficiencyLevel),
+      careerPathId: docItem.careerPathId || seedMatch?.careerPathId,
+      joinedDate: String(docItem.joinedDate || seedMatch?.joinedDate || new Date().toISOString().split('T')[0]),
+    };
+  }, []);
+
+  const officialAuthUser: User | null = useMemo(() => {
+    if (!firebaseUser?.emailVerified || !firebaseProfile) return null;
+    return mapProfileDocToUser(firebaseProfile);
+  }, [firebaseUser?.emailVerified, firebaseProfile, mapProfileDocToUser]);
+
+  const useOfficialAccountIdentity = useCallback(() => {
+    if (!officialAuthUser) return;
+    hasManualRoleSwitchRef.current = false;
+    setCurrentUserState(officialAuthUser);
+    localStorage.setItem('fc_active_user_id', officialAuthUser.id);
+    showToast(
+      language === 'vi'
+        ? `Đang sử dụng tài khoản chính thức: ${officialAuthUser.name}`
+        : `Active as official account: ${officialAuthUser.name}`,
+      'success'
+    );
+  }, [officialAuthUser, language, showToast]);
 
   // Simulator Collections
   const [simulatorData, setSimulatorData] = useState<{
@@ -426,12 +585,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Load persisted LMS data on mount
+  // Load persisted LMS data on mount (skip in Production Firestore Live mode once verified)
   useEffect(() => {
+    const savedMode = (() => {
+      try {
+        return localStorage.getItem('fc_data_source_mode');
+      } catch {
+        return 'demo';
+      }
+    })();
+    if (savedMode === 'firestore' && auth.currentUser?.emailVerified) return;
+
     fetch('/api/bootstrap')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
+        if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) return;
         if (Array.isArray(data.users) && data.users.length > 0) {
           setUsers(data.users);
           setCurrentUserState((prev) => data.users.find((u: User) => u.id === prev.id) || prev);
@@ -450,9 +619,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (Array.isArray(data.certificates)) setCertificates(data.certificates);
         if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
+        if (data.rolePermissions) {
+          setRolePermissions(normalizeRolePermissionsMap(data.rolePermissions));
+        }
+        if (Array.isArray(data.lessonMaterials)) {
+          setLessonMaterials(data.lessonMaterials);
+        }
       })
       .catch((err) => console.warn('Bootstrap fallback to local initial data:', err));
-  }, []);
+  }, [dataSourceMode]);
 
   const authHeaders = useCallback(
     () => ({
@@ -463,7 +638,412 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [currentUser.id, currentUser.role]
   );
 
+  const refreshFromFirestore = useCallback(
+    async (forceMode?: 'demo' | 'firestore') => {
+      const fb = auth.currentUser;
+      if (!fb || !fb.emailVerified) return;
+
+      const activeMode = forceMode ?? dataSourceMode;
+
+      try {
+        const profile = await resolveAuthenticatedUserProfile(fb);
+        if (profile) {
+          setFirebaseProfile(profile);
+        }
+        // Firestore Rules authorize admin operations strictly by Firebase Auth token/admins doc
+        const isAdminOrLnd = Boolean(
+          profile?.isAdmin || profile?.role === 'super_admin' || profile?.role === 'lnd_manager'
+        );
+
+        const [{ masterCollections, counts }, txData] = await Promise.all([
+          fetchAllProductionMasterData(isAdminOrLnd),
+          fetchProductionTransactionalData(fb.uid, isAdminOrLnd),
+        ]);
+
+        let syncedUserProfiles = txData.userProfiles;
+        if (activeMode === 'firestore' && isAdminOrLnd) {
+          const existingProfileIds = new Set(
+            syncedUserProfiles.map((p: any) => String(p.uid || p.id || ''))
+          );
+          const missingExperienceUsers = INITIAL_USERS.filter((u) => !existingProfileIds.has(u.id));
+          if (missingExperienceUsers.length > 0) {
+            try {
+              await seedOfficialUsersToFirestore(missingExperienceUsers, {
+                overwrite: false,
+                existingIds: existingProfileIds,
+              });
+              const refreshed = await getFirestoreCollectionDocs('userProfiles');
+              syncedUserProfiles = refreshed.docs;
+            } catch (seedErr) {
+              console.warn('Auto-seed experience roles note:', seedErr);
+            }
+          }
+        }
+
+        let syncedRolePermissions = txData.rolePermissions || [];
+        if (activeMode === 'firestore' && isAdminOrLnd) {
+          const existingPolicyIds = new Set(
+            syncedRolePermissions.map((rp: any) => String(rp.role || rp.id || ''))
+          );
+          const missingPolicies = SYSTEM_ROLES.filter((r) => !existingPolicyIds.has(r));
+          if (missingPolicies.length > 0) {
+            try {
+              await seedDefaultRolePermissionsToFirestore(existingPolicyIds, {
+                uid: fb.uid,
+                name: profile?.name || fb.email || 'Admin',
+              });
+              const refreshedPolicies = await getFirestoreCollectionDocs('rolePermissions');
+              syncedRolePermissions = refreshedPolicies.docs as any[];
+            } catch (seedPolicyErr) {
+              console.warn('Auto-seed rolePermissions note:', seedPolicyErr);
+            }
+          }
+        }
+
+        if (syncedRolePermissions.length > 0) {
+          setRolePermissions(normalizeRolePermissionsMap(syncedRolePermissions));
+          const metaMap: Partial<Record<UserRole, { updatedAt: string; updatedByName?: string }>> = {};
+          for (const docItem of syncedRolePermissions) {
+            const r = (docItem.role || docItem.id) as UserRole;
+            if (SYSTEM_ROLES.includes(r)) {
+              metaMap[r] = {
+                updatedAt: docItem.updatedAt || '',
+                updatedByName: docItem.updatedByName,
+              };
+            }
+          }
+          setRolePermissionMeta(metaMap);
+        }
+
+        setProductionCounts({
+          ...counts,
+          enrollments: txData.enrollments.length,
+          quizAttempts: txData.quizAttempts.length,
+          practicalSubmissions: txData.practicalSubmissions.length,
+          simulationSessions: txData.simulationSessions.length,
+          simulationEvaluations: txData.simulationEvaluations.length,
+          individualDevelopmentPlans: txData.individualDevelopmentPlans.length,
+          userProfiles: syncedUserProfiles.length,
+          rolePermissions: syncedRolePermissions.length,
+          lessonMaterials: (txData.lessonMaterials || []).length,
+        });
+
+        const hasProdAcademy =
+          (counts.competencyDomains || 0) > 0 || (counts.competencies || 0) > 0 || (counts.courses || 0) > 0;
+        const hasProdSim = (counts.simulationScenarios || 0) > 0;
+
+        if (activeMode === 'firestore') {
+          const officialUser = profile ? mapProfileDocToUser(profile) : null;
+          if (syncedUserProfiles.length > 0 || officialUser) {
+            const firestoreUsers = syncedUserProfiles.map((p) => mapProfileDocToUser(p));
+            const byId = new Map<string, User>();
+            if (officialUser) {
+              byId.set(officialUser.id, officialUser);
+            }
+            for (const u of firestoreUsers) {
+              if (!byId.has(u.id)) {
+                byId.set(u.id, u);
+              }
+            }
+            if (!isAdminOrLnd) {
+              // Non-admin verified user sees their official profile plus experience roster metadata for supervisor lookup
+              for (const u of INITIAL_USERS) {
+                if (!byId.has(u.id)) {
+                  byId.set(u.id, u);
+                }
+              }
+            }
+            const mergedUsers = Array.from(byId.values());
+            setUsers(mergedUsers);
+
+            if (officialUser) {
+              setCurrentUserState((prev) => {
+                if (isAdminOrLnd && hasManualRoleSwitchRef.current) {
+                  return mergedUsers.find((u) => u.id === prev.id) || officialUser;
+                }
+                localStorage.setItem('fc_active_user_id', officialUser.id);
+                return officialUser;
+              });
+            }
+          }
+          if (hasProdAcademy) {
+            if (masterCollections.competencyDomains?.length > 0) {
+              setDomains(
+                masterCollections.competencyDomains.map((d: any) => {
+                  const fallbackDom = COMPETENCY_DOMAINS.find((fd) => fd.id === d.id || fd.code === d.code);
+                  return {
+                    id: d.id,
+                    code: d.code,
+                    nameEn: d.nameEn,
+                    nameVi: d.nameVi,
+                    descriptionEn: d.descriptionEn || fallbackDom?.descriptionEn || '',
+                    descriptionVi: d.descriptionVi || fallbackDom?.descriptionVi || '',
+                    iconName: fallbackDom?.iconName || 'BookOpen',
+                    color: fallbackDom?.color || 'blue',
+                  };
+                })
+              );
+            }
+            if (masterCollections.competencies?.length > 0) {
+              setCompetencies(
+                masterCollections.competencies.map((c: any) => {
+                  const fallbackComp = COMPETENCIES.find((fc) => fc.id === c.id || fc.code === c.code);
+                  const tgt = (Math.min(4, Math.max(1, Number(c.targetLevel) || 3))) as ProficiencyLevel;
+                  return {
+                    id: c.id,
+                    code: c.code,
+                    domainId: c.domainId,
+                    nameEn: c.nameEn,
+                    nameVi: c.nameVi,
+                    definitionEn: c.definitionEn || fallbackComp?.definitionEn || '',
+                    definitionVi: c.definitionVi || fallbackComp?.definitionVi || '',
+                    expectedLevelByPosition: fallbackComp?.expectedLevelByPosition || {
+                      Accountant: 1,
+                      'Senior Accountant': 2,
+                      'Assistant Financial Controller': 3,
+                      'Financial Controller': tgt,
+                      'Strategic Finance Business Partner': 4,
+                    },
+                    assessmentCriteria: fallbackComp?.assessmentCriteria || {
+                      level1: 'Foundation proficiency',
+                      level2: 'Operational proficiency',
+                      level3: 'Advanced proficiency',
+                      level4: 'Strategic FC partner',
+                    },
+                    assessmentCriteriaEn: fallbackComp?.assessmentCriteriaEn,
+                    evidenceRequirements: fallbackComp?.evidenceRequirements || ['Practical OJT Deliverable'],
+                    evidenceRequirementsEn: fallbackComp?.evidenceRequirementsEn,
+                    associatedCourseIds: fallbackComp?.associatedCourseIds || [],
+                  };
+                })
+              );
+            }
+            if (masterCollections.courses?.length > 0) {
+              setCourses(
+                masterCollections.courses.map((c: any) => {
+                  const fallbackCourse = COURSES.find((fc) => fc.id === c.id || fc.code === c.code);
+                  const domainObj = COMPETENCY_DOMAINS.find((d) => d.id === c.domainId);
+                  return {
+                    id: c.id,
+                    code: c.code,
+                    titleEn: c.titleEn,
+                    titleVi: c.titleVi,
+                    category: fallbackCourse?.category || domainObj?.nameEn || 'Hospitality Finance',
+                    domainId: c.domainId,
+                    difficulty:
+                      Number(c.targetLevel) === 1
+                        ? 'Foundation'
+                        : Number(c.targetLevel) === 2
+                        ? 'Operational'
+                        : Number(c.targetLevel) === 3
+                        ? 'Advanced'
+                        : 'Strategic',
+                    durationHours: Number(c.durationHours || fallbackCourse?.durationHours || 4),
+                    instructorName: fallbackCourse?.instructorName || 'FC Academy Faculty',
+                    instructorTitle: fallbackCourse?.instructorTitle || 'Hospitality Financial Controller',
+                    prerequisites: fallbackCourse?.prerequisites || [],
+                    prerequisitesEn: fallbackCourse?.prerequisitesEn,
+                    learningObjectivesEn: fallbackCourse?.learningObjectivesEn || [c.descriptionEn || c.titleEn],
+                    learningObjectivesVi: fallbackCourse?.learningObjectivesVi || [c.descriptionVi || c.titleVi],
+                    modules: fallbackCourse?.modules || [],
+                    passingScore: Number(c.passingScore || fallbackCourse?.passingScore || 80),
+                    thumbnail: fallbackCourse?.thumbnail || '/assets/courses/usali.jpg',
+                    isMandatoryForFC: Number(c.targetLevel) >= 3,
+                    materials: fallbackCourse?.materials,
+                    caseStudy: fallbackCourse?.caseStudy,
+                    practicalAssignmentId: fallbackCourse?.practicalAssignmentId,
+                    practicalAssignmentTitle: fallbackCourse?.practicalAssignmentTitle,
+                    practicalAssignmentTitleEn: fallbackCourse?.practicalAssignmentTitleEn,
+                    quizQuestionIds: fallbackCourse?.quizQuestionIds,
+                    syllabus: fallbackCourse?.syllabus || COURSE_SYLLABI_BY_CODE[c.code],
+                  };
+                })
+              );
+            }
+            if (masterCollections.practicalAssignments?.length > 0) {
+              setOjtAssignments(
+                masterCollections.practicalAssignments.map((p: any) => {
+                  const fbOjt = OJT_ASSIGNMENTS.find((o) => o.id === p.id || o.code === p.code);
+                  const delivList: string[] = p.deliverables
+                    ? typeof p.deliverables === 'string'
+                      ? p.deliverables.split(';').map((s: string) => s.trim()).filter(Boolean)
+                      : Array.isArray(p.deliverables)
+                      ? p.deliverables
+                      : []
+                    : [];
+                  return {
+                    id: p.id,
+                    code: p.code || fbOjt?.code || p.id,
+                    titleEn: p.titleEn || fbOjt?.titleEn || '',
+                    titleVi: p.titleVi || fbOjt?.titleVi || '',
+                    domainId: p.domainId || fbOjt?.domainId || 'D2',
+                    propertyContext: fbOjt?.propertyContext || 'Hotel Finance Operation',
+                    propertyContextEn: fbOjt?.propertyContextEn || 'Hotel Finance Operation',
+                    descriptionEn: p.scenarioEn || fbOjt?.descriptionEn || '',
+                    descriptionVi: p.scenarioVi || fbOjt?.descriptionVi || '',
+                    deliverablesEn: delivList.length > 0 ? delivList : fbOjt?.deliverablesEn || [],
+                    deliverablesVi: fbOjt?.deliverablesVi || delivList,
+                    templateFileName: fbOjt?.templateFileName,
+                    evaluationRubric: fbOjt?.evaluationRubric || [
+                      {
+                        criterionVi: 'Độ chính xác USALI & khuyến nghị',
+                        criterionEn: 'USALI Accuracy & Recommendations',
+                        maxPoints: Number(p.maxScore || 100),
+                      },
+                    ],
+                  };
+                })
+              );
+            }
+            if (masterCollections.careerPaths?.length > 0) {
+              setLearningPaths(
+                masterCollections.careerPaths.map((p: any, idx: number) => {
+                  const fallbackPath = LEARNING_PATHS.find((lp) => lp.id === p.id || lp.code === p.code);
+                  const reqCourses = Array.isArray(p.requiredCourseIds) ? p.requiredCourseIds : [];
+                  return {
+                    id: p.id,
+                    code: p.code || `CP-${idx + 1}`,
+                    titleEn: p.nameEn || p.titleEn || `${p.fromRole} → ${p.toRole}`,
+                    titleVi: p.nameVi || p.titleVi || `${p.fromRole} → ${p.toRole}`,
+                    targetRole: p.toRole || fallbackPath?.targetRole || 'Financial Controller',
+                    descriptionEn: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} months)`,
+                    descriptionVi: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} tháng)`,
+                    totalHours: fallbackPath?.totalHours || Math.max(8, reqCourses.length * 4),
+                    stages: fallbackPath?.stages || [
+                      {
+                        stageNumber: 1,
+                        titleEn: p.nameEn || 'Core Track',
+                        titleVi: p.nameVi || 'Lộ Trình Cốt Lõi',
+                        requiredCourses: reqCourses,
+                        requiredOjtAssignments: Array.isArray(p.requiredPracticalIds) ? p.requiredPracticalIds : [],
+                        readinessCriteriaEn: `Minimum Assessment Score: ${p.minAssessmentScore || 80}%`,
+                        readinessCriteriaVi: `Điểm đánh giá tối thiểu: ${p.minAssessmentScore || 80}%`,
+                      },
+                    ],
+                  };
+                })
+              );
+            }
+          }
+
+          // Bind Academy transactional collections directly from Firestore
+          setEnrollments(txData.enrollments as CourseEnrollment[]);
+          setQuizAttempts(txData.quizAttempts as QuizAttempt[]);
+          setSubmissions(txData.practicalSubmissions as AssignmentSubmission[]);
+
+          // Bind Simulator master & transactional collections
+          const hotelProfiles = masterCollections.hotelSimulationProfiles as HotelSimulationProfileDoc[];
+          const scenarios = masterCollections.simulationScenarios as SimulationScenarioDoc[];
+          const financialRows = masterCollections.simulationFinancialData as SimulationFinancialRecordDoc[];
+          const operationalRows = masterCollections.simulationOperationalData as SimulationOperationalRecordDoc[];
+
+          setSimulatorData({
+            hotelSimulationProfiles: hotelProfiles,
+            simulationScenarios: scenarios,
+            simulationFinancialData: financialRows,
+            simulationOperationalData: operationalRows,
+            simulationBusinessChallenges: masterCollections.simulationBusinessChallenges as SimulationBusinessChallengeDoc[],
+            simulationTasks: masterCollections.simulationTasks as SimulationTaskDoc[],
+            simulationReferenceAnalysis: masterCollections.simulationReferenceAnalysis as SimulationReferenceAnalysisDoc[],
+            simulationDecisionOptions: masterCollections.simulationDecisionOptions as SimulationDecisionOptionDoc[],
+            simulationRoleplayPrompts: masterCollections.simulationRoleplayPrompts as SimulationRoleplayPromptDoc[],
+            simulationEvaluationRubrics: masterCollections.simulationEvaluationRubrics as SimulationEvaluationRubricDoc[],
+            simulationCompetencyMappings: masterCollections.simulationCompetencyMappings as SimulationCompetencyMappingDoc[],
+            simulationSessions: txData.simulationSessions as SimulationSessionDoc[],
+          });
+
+          // Hydrate versioned USALI dataset snapshots from Firestore + compute on-the-fly for newly imported scenarios
+          const datasetsMap: Record<string, HotelSimulationDatasetSnapshot> = {};
+          txData.simulationDatasets.forEach((ds: any) => {
+            const key = ds.scenarioId || ds.id;
+            if (key) datasetsMap[key] = ds as HotelSimulationDatasetSnapshot;
+          });
+          scenarios.forEach((scn) => {
+            if (!datasetsMap[scn.id]) {
+              const matchedHotel = hotelProfiles.find((h) => h.id === scn.hotelId);
+              const scnFin = financialRows.filter((f) => f.scenarioId === scn.id);
+              const scnOps = operationalRows.filter((o) => o.scenarioId === scn.id);
+              datasetsMap[scn.id] = generateDatasetSnapshotForScenario(scn, matchedHotel, undefined, scnFin, scnOps);
+            }
+          });
+
+          setSimulatorWorkspace({
+            datasets: datasetsMap,
+            evaluations: txData.simulationEvaluations as SimulationEvaluationDoc[],
+            assignments: txData.simulationAssignments as SimulationAssignmentDoc[],
+            auditLogs: txData.simulationAuditLogs as SimulationAuditLogDoc[],
+          });
+
+          setScenarioVersions(txData.scenarioVersions as ScenarioVersionDoc[]);
+          setScenarioImportJobs(txData.scenarioImportJobs as ScenarioImportJobDoc[]);
+          setScenarioCompetencyMappings(txData.scenarioCompetencyMappings as ScenarioCompetencyMappingDoc[]);
+
+          // Bind Competency Gap Engine & IDP collections directly from Firestore
+          if (txData.talentConfig) {
+            setTalentConfig(txData.talentConfig as TalentConfigDoc);
+          }
+          setCompetencyAssessments(txData.competencyAssessments as CompetencyAssessmentDoc[]);
+          setDevelopmentActivities(txData.developmentActivities as DevelopmentActivityDoc[]);
+          setTalentIdps(txData.individualDevelopmentPlans as IndividualDevelopmentPlanDoc[]);
+          setIdpReviewLogs(txData.idpReviewLogs as IdpReviewLogDoc[]);
+          setCompetencyReassessments(txData.competencyReassessments as CompetencyReassessmentDoc[]);
+          setCareerReadinessReviews(txData.careerReadinessReviews as CareerReadinessReviewDoc[]);
+          setLessonMaterials(txData.lessonMaterials || []);
+        } else if (hasProdSim) {
+          setProductionCounts((prev) => ({ ...prev }));
+        }
+      } catch (err) {
+        console.warn('Firestore refresh note:', err instanceof Error ? err.message : String(err));
+      }
+    },
+    [dataSourceMode, mapProfileDocToUser]
+  );
+
+  const signOutOfficialAccount = useCallback(async () => {
+    hasManualRoleSwitchRef.current = false;
+    await signOutFirebase();
+    setFirebaseProfile(null);
+    setDataSourceMode('demo');
+    setUsers(INITIAL_USERS);
+    const defaultDemoUser =
+      INITIAL_USERS.find((u) => u.id === 'user_learner1') || INITIAL_USERS[0];
+    setCurrentUserState(defaultDemoUser);
+    localStorage.setItem('fc_active_user_id', defaultDemoUser.id);
+    showToast(
+      language === 'vi'
+        ? 'Đã đăng xuất tài khoản chính thức và quay về chế độ Demo Sandbox.'
+        : 'Signed out of official account and switched to Demo Sandbox mode.',
+      'info'
+    );
+  }, [language, setDataSourceMode, showToast]);
+
+  const syncAllExperienceRolesToFirestore = useCallback(
+    async (overwrite = false) => {
+      if (!auth.currentUser?.emailVerified) {
+        throw new Error(
+          language === 'vi'
+            ? 'Cần đăng nhập tài khoản Firebase Admin đã xác minh email.'
+            : 'Verified Firebase Admin login is required.'
+        );
+      }
+      const res = await seedOfficialUsersToFirestore(INITIAL_USERS, { overwrite });
+      await refreshFromFirestore(dataSourceMode);
+      showToast(
+        language === 'vi'
+          ? `Đã khai báo vai trò trải nghiệm lên Firestore: ${res.createdCount} mới, ${res.updatedCount} cập nhật, ${res.skippedCount} giữ nguyên.`
+          : `Declared experience roles in Firestore: ${res.createdCount} created, ${res.updatedCount} updated, ${res.skippedCount} existing.`,
+        res.failedCount > 0 ? 'error' : 'success'
+      );
+      return res;
+    },
+    [dataSourceMode, language, refreshFromFirestore, showToast]
+  );
+
   const refreshTalentData = useCallback(async () => {
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      await refreshFromFirestore('firestore');
+      return;
+    }
     try {
       const res = await fetch('/api/talent/bootstrap', {
         headers: {
@@ -484,16 +1064,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore network error on bootstrap
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, dataSourceMode, refreshFromFirestore]);
 
   useEffect(() => {
-    refreshTalentData();
+    if (dataSourceMode !== 'firestore' || !auth.currentUser?.emailVerified) {
+      refreshTalentData();
+    }
     if (currentUser.role === 'learner') {
       setSelectedTalentEmployeeId(currentUser.id);
     }
-  }, [refreshTalentData, currentUser.id, currentUser.role]);
+  }, [refreshTalentData, currentUser.id, currentUser.role, dataSourceMode]);
 
   const refreshSimulatorWorkspace = useCallback(async () => {
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      await refreshFromFirestore('firestore');
+      return;
+    }
     try {
       const res = await fetch('/api/simulator/workspace', {
         headers: {
@@ -512,9 +1098,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore offline
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, dataSourceMode, refreshFromFirestore]);
 
   const refreshSimulatorData = useCallback(async () => {
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      await refreshFromFirestore('firestore');
+      return;
+    }
     try {
       const res = await fetch('/api/simulator/data', {
         headers: {
@@ -542,13 +1132,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore network error
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, dataSourceMode, refreshFromFirestore]);
 
   useEffect(() => {
-    refreshSimulatorData();
-  }, [refreshSimulatorData]);
+    if (dataSourceMode !== 'firestore' || !auth.currentUser?.emailVerified) {
+      refreshSimulatorData();
+    }
+  }, [refreshSimulatorData, dataSourceMode]);
 
   const refreshScenarioGovernance = useCallback(async () => {
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      await refreshFromFirestore('firestore');
+      return;
+    }
     const isSupOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
       currentUser.role
     );
@@ -582,192 +1178,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {
       // ignore offline
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, currentUser.role, dataSourceMode, refreshFromFirestore]);
 
   useEffect(() => {
-    refreshScenarioGovernance();
-  }, [refreshScenarioGovernance]);
-
-  const refreshFromFirestore = useCallback(async (forceMode?: 'demo' | 'firestore') => {
-    const fb = auth.currentUser;
-    if (!fb || !fb.emailVerified) return;
-
-    const activeMode = forceMode ?? dataSourceMode;
-
-    try {
-      const profile = await resolveAuthenticatedUserProfile(fb);
-      if (profile) {
-        setFirebaseProfile(profile);
-      }
-      const isAdminOrLnd = Boolean(
-        profile?.isAdmin ||
-          profile?.role === 'super_admin' ||
-          profile?.role === 'lnd_manager' ||
-          currentUser.role === 'super_admin' ||
-          currentUser.role === 'lnd_manager'
-      );
-
-      const { masterCollections, counts } = await fetchAllProductionMasterData(isAdminOrLnd);
-      setProductionCounts(counts);
-
-      const hasProdAcademy =
-        (counts.competencyDomains || 0) > 0 || (counts.competencies || 0) > 0 || (counts.courses || 0) > 0;
-      const hasProdSim = (counts.simulationScenarios || 0) > 0;
-
-      if (activeMode === 'firestore' || hasProdAcademy || hasProdSim) {
-        if (hasProdAcademy && activeMode === 'firestore') {
-          if (masterCollections.competencyDomains?.length > 0) {
-            setDomains(
-              masterCollections.competencyDomains.map((d: any) => {
-                const fallbackDom = COMPETENCY_DOMAINS.find((fd) => fd.id === d.id || fd.code === d.code);
-                return {
-                  id: d.id,
-                  code: d.code,
-                  nameEn: d.nameEn,
-                  nameVi: d.nameVi,
-                  descriptionEn: d.descriptionEn || fallbackDom?.descriptionEn || '',
-                  descriptionVi: d.descriptionVi || fallbackDom?.descriptionVi || '',
-                  iconName: fallbackDom?.iconName || 'BookOpen',
-                  color: fallbackDom?.color || 'blue',
-                };
-              })
-            );
-          }
-          if (masterCollections.competencies?.length > 0) {
-            setCompetencies(
-              masterCollections.competencies.map((c: any) => {
-                const fallbackComp = COMPETENCIES.find((fc) => fc.id === c.id || fc.code === c.code);
-                const tgt = (Math.min(4, Math.max(1, Number(c.targetLevel) || 3))) as ProficiencyLevel;
-                return {
-                  id: c.id,
-                  code: c.code,
-                  domainId: c.domainId,
-                  nameEn: c.nameEn,
-                  nameVi: c.nameVi,
-                  definitionEn: c.definitionEn || fallbackComp?.definitionEn || '',
-                  definitionVi: c.definitionVi || fallbackComp?.definitionVi || '',
-                  expectedLevelByPosition: fallbackComp?.expectedLevelByPosition || {
-                    Accountant: 1,
-                    'Senior Accountant': 2,
-                    'Assistant Financial Controller': 3,
-                    'Financial Controller': tgt,
-                    'Strategic Finance Business Partner': 4,
-                  },
-                  assessmentCriteria: fallbackComp?.assessmentCriteria || {
-                    level1: 'Foundation proficiency',
-                    level2: 'Operational proficiency',
-                    level3: 'Advanced proficiency',
-                    level4: 'Strategic FC partner',
-                  },
-                  assessmentCriteriaEn: fallbackComp?.assessmentCriteriaEn,
-                  evidenceRequirements: fallbackComp?.evidenceRequirements || ['Practical OJT Deliverable'],
-                  evidenceRequirementsEn: fallbackComp?.evidenceRequirementsEn,
-                  associatedCourseIds: fallbackComp?.associatedCourseIds || [],
-                };
-              })
-            );
-          }
-          if (masterCollections.courses?.length > 0) {
-            setCourses(
-              masterCollections.courses.map((c: any) => {
-                const fallbackCourse = COURSES.find((fc) => fc.id === c.id || fc.code === c.code);
-                const domainObj = COMPETENCY_DOMAINS.find((d) => d.id === c.domainId);
-                return {
-                  id: c.id,
-                  code: c.code,
-                  titleEn: c.titleEn,
-                  titleVi: c.titleVi,
-                  category: fallbackCourse?.category || domainObj?.nameEn || 'Hospitality Finance',
-                  domainId: c.domainId,
-                  difficulty:
-                    Number(c.targetLevel) === 1
-                      ? 'Foundation'
-                      : Number(c.targetLevel) === 2
-                      ? 'Operational'
-                      : Number(c.targetLevel) === 3
-                      ? 'Advanced'
-                      : 'Strategic',
-                  durationHours: Number(c.durationHours || fallbackCourse?.durationHours || 4),
-                  instructorName: fallbackCourse?.instructorName || 'FC Academy Faculty',
-                  instructorTitle: fallbackCourse?.instructorTitle || 'Hospitality Financial Controller',
-                  prerequisites: fallbackCourse?.prerequisites || [],
-                  prerequisitesEn: fallbackCourse?.prerequisitesEn,
-                  learningObjectivesEn: fallbackCourse?.learningObjectivesEn || [c.descriptionEn || c.titleEn],
-                  learningObjectivesVi: fallbackCourse?.learningObjectivesVi || [c.descriptionVi || c.titleVi],
-                  modules: fallbackCourse?.modules || [],
-                  passingScore: Number(c.passingScore || fallbackCourse?.passingScore || 80),
-                  thumbnail: fallbackCourse?.thumbnail || '/assets/courses/usali.jpg',
-                  isMandatoryForFC: Number(c.targetLevel) >= 3,
-                  materials: fallbackCourse?.materials,
-                  caseStudy: fallbackCourse?.caseStudy,
-                  practicalAssignmentId: fallbackCourse?.practicalAssignmentId,
-                  practicalAssignmentTitle: fallbackCourse?.practicalAssignmentTitle,
-                  practicalAssignmentTitleEn: fallbackCourse?.practicalAssignmentTitleEn,
-                  quizQuestionIds: fallbackCourse?.quizQuestionIds,
-                  syllabus: fallbackCourse?.syllabus || COURSE_SYLLABI_BY_CODE[c.code],
-                };
-              })
-            );
-          }
-          if (masterCollections.careerPaths?.length > 0) {
-            setLearningPaths(
-              masterCollections.careerPaths.map((p: any, idx: number) => {
-                const fallbackPath = LEARNING_PATHS.find((lp) => lp.id === p.id || lp.code === p.code);
-                const reqCourses = Array.isArray(p.requiredCourseIds) ? p.requiredCourseIds : [];
-                return {
-                  id: p.id,
-                  code: p.code || `CP-${idx + 1}`,
-                  titleEn: p.nameEn || p.titleEn || `${p.fromRole} → ${p.toRole}`,
-                  titleVi: p.nameVi || p.titleVi || `${p.fromRole} → ${p.toRole}`,
-                  targetRole: p.toRole || fallbackPath?.targetRole || 'Financial Controller',
-                  descriptionEn: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} months)`,
-                  descriptionVi: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} tháng)`,
-                  totalHours: fallbackPath?.totalHours || Math.max(8, reqCourses.length * 4),
-                  stages: fallbackPath?.stages || [
-                    {
-                      stageNumber: 1,
-                      titleEn: p.nameEn || 'Core Track',
-                      titleVi: p.nameVi || 'Lộ Trình Cốt Lõi',
-                      requiredCourses: reqCourses,
-                      requiredOjtAssignments: Array.isArray(p.requiredPracticalIds) ? p.requiredPracticalIds : [],
-                      readinessCriteriaEn: `Minimum Assessment Score: ${p.minAssessmentScore || 80}%`,
-                      readinessCriteriaVi: `Điểm đánh giá tối thiểu: ${p.minAssessmentScore || 80}%`,
-                    },
-                  ],
-                };
-              })
-            );
-          }
-        }
-
-        if (hasProdSim) {
-          let sessionsDocs: SimulationSessionDoc[] = [];
-          try {
-            const sessSnap = await getFirestoreCollectionDocs('simulationSessions');
-            sessionsDocs = sessSnap.docs as SimulationSessionDoc[];
-          } catch {
-            sessionsDocs = [];
-          }
-          setSimulatorData({
-            hotelSimulationProfiles: masterCollections.hotelSimulationProfiles as HotelSimulationProfileDoc[],
-            simulationScenarios: masterCollections.simulationScenarios as SimulationScenarioDoc[],
-            simulationFinancialData: masterCollections.simulationFinancialData as SimulationFinancialRecordDoc[],
-            simulationOperationalData: masterCollections.simulationOperationalData as SimulationOperationalRecordDoc[],
-            simulationBusinessChallenges: masterCollections.simulationBusinessChallenges as SimulationBusinessChallengeDoc[],
-            simulationTasks: masterCollections.simulationTasks as SimulationTaskDoc[],
-            simulationReferenceAnalysis: masterCollections.simulationReferenceAnalysis as SimulationReferenceAnalysisDoc[],
-            simulationDecisionOptions: masterCollections.simulationDecisionOptions as SimulationDecisionOptionDoc[],
-            simulationRoleplayPrompts: masterCollections.simulationRoleplayPrompts as SimulationRoleplayPromptDoc[],
-            simulationEvaluationRubrics: masterCollections.simulationEvaluationRubrics as SimulationEvaluationRubricDoc[],
-            simulationCompetencyMappings: masterCollections.simulationCompetencyMappings as SimulationCompetencyMappingDoc[],
-            simulationSessions: sessionsDocs,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('Firestore refresh note:', err instanceof Error ? err.message : String(err));
+    if (dataSourceMode !== 'firestore' || !auth.currentUser?.emailVerified) {
+      refreshScenarioGovernance();
     }
-  }, [currentUser.role, dataSourceMode]);
+  }, [refreshScenarioGovernance, dataSourceMode]);
 
   useEffect(() => {
     const unsub = subscribeFirebaseAuth(async (user) => {
@@ -784,22 +1201,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [refreshFromFirestore]);
 
   useEffect(() => {
-    refreshSimulatorWorkspace();
-  }, [refreshSimulatorWorkspace]);
-
-  useEffect(() => {
     if (dataSourceMode === 'demo') {
+      setUsers(INITIAL_USERS);
+      setCurrentUserState((prev) =>
+        INITIAL_USERS.find((u) => u.id === prev.id) ||
+        INITIAL_USERS.find((u) => u.id === 'user_learner1') ||
+        INITIAL_USERS[0]
+      );
       setDomains(COMPETENCY_DOMAINS);
       setCourses(COURSES);
       setLearningPaths(LEARNING_PATHS);
+      setOjtAssignments(OJT_ASSIGNMENTS);
       setCompetencies(COMPETENCIES);
       refreshSimulatorData();
       refreshSimulatorWorkspace();
-    } else {
-      refreshFromFirestore();
-      refreshSimulatorWorkspace();
+      refreshTalentData();
+      refreshScenarioGovernance();
+    } else if (auth.currentUser?.emailVerified) {
+      refreshFromFirestore('firestore');
     }
-  }, [dataSourceMode, refreshFromFirestore, refreshSimulatorData, refreshSimulatorWorkspace]);
+  }, [
+    dataSourceMode,
+    refreshFromFirestore,
+    refreshSimulatorData,
+    refreshSimulatorWorkspace,
+    refreshTalentData,
+    refreshScenarioGovernance,
+  ]);
+
+  const isLiveFirestoreMode = (): boolean =>
+    dataSourceMode === 'firestore' && Boolean(auth.currentUser?.emailVerified);
 
   const transitionScenarioStatus = async (
     scenarioId: string,
@@ -807,35 +1238,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note?: string
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/simulator/scenarios/${encodeURIComponent(scenarioId)}/status`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ status, note }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        showToast(d.error || 'Failed to update scenario status.', 'error');
-        return false;
+      const liveMode = isLiveFirestoreMode();
+      let updatedScenarioPatch: Partial<SimulationScenarioDoc> = {};
+
+      if (!liveMode) {
+        const res = await fetch(`/api/simulator/scenarios/${encodeURIComponent(scenarioId)}/status`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ status, note }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          showToast(d.error || 'Failed to update scenario status.', 'error');
+          return false;
+        }
+        const d = await res.json();
+        updatedScenarioPatch = d.scenario || {};
+      } else {
+        // Live Firestore Mode: validate directly in client and commit atomically
+        const scn = simulatorData.simulationScenarios.find((s) => s.id === scenarioId);
+        if (!scn) {
+          showToast('Scenario not found in Firestore workspace.', 'error');
+          return false;
+        }
+        const now = new Date().toISOString();
+        await publishSimulationScenarioInFirestore(scenarioId, status, currentUser.name);
+
+        const verId = `scnver_${scenarioId}_v${Number(scn.versionNumber || 1)}_${Date.now()}`;
+        const verDoc: ScenarioVersionDoc = {
+          id: verId,
+          scenarioId,
+          scenarioCode: scn.scenarioCode || scenarioId,
+          versionNumber: Number(scn.versionNumber || 1),
+          datasetVersion: scn.datasetVersion || '2026.v1',
+          status,
+          isActive: status === 'Published',
+          changeSummary: note || `Lifecycle transition to ${status} in Production Firestore`,
+          createdBy: currentUser.name,
+          createdAt: now,
+        };
+        await writeScenarioVersionToFirestore(verDoc);
+
+        const logId = `simaud_${Date.now()}`;
+        await syncRecordToFirestore(
+          'simulationAuditLogs',
+          logId,
+          {
+            id: logId,
+            action: `SCENARIO_STATUS_${status.toUpperCase()}`,
+            actorId: auth.currentUser!.uid,
+            actorName: currentUser.name,
+            actorRole: currentUser.role,
+            scenarioId,
+            detail: note || `Changed ${scn.scenarioCode || scenarioId} status to ${status}`,
+            timestamp: now,
+          },
+          true
+        );
+
+        // Best-effort local mirror if backend has it
+        fetch(`/api/simulator/scenarios/${encodeURIComponent(scenarioId)}/status`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ status, note }),
+        }).catch(() => {});
       }
-      const d = await res.json();
-      if (auth.currentUser?.emailVerified) {
-        await publishSimulationScenarioInFirestore(scenarioId, status, currentUser.name).catch(() => {});
+
+      if (!liveMode && auth.currentUser?.emailVerified) {
+        await publishSimulationScenarioInFirestore(scenarioId, status, currentUser.name);
       }
+
       setSimulatorData((prev) => ({
         ...prev,
         simulationScenarios: prev.simulationScenarios.map((s) =>
           s.id === scenarioId
             ? {
                 ...s,
-                ...(d.scenario || {}),
+                ...updatedScenarioPatch,
                 status,
                 isActive: status === 'Published',
               }
             : s
         ),
       }));
-      refreshScenarioGovernance();
-      refreshSimulatorWorkspace();
+      if (liveMode) {
+        await refreshFromFirestore('firestore');
+      } else {
+        refreshScenarioGovernance();
+        refreshSimulatorWorkspace();
+      }
       showToast(
         language === 'vi'
           ? `Đã chuyển trạng thái kịch bản sang ${status}.`
@@ -851,39 +1342,118 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleScenarioPublish = transitionScenarioStatus;
 
+  const buildFirestoreSessionPayload = (doc: SimulationSessionDoc, employeeUid: string): Record<string, any> => ({
+    id: doc.id,
+    scenarioId: doc.scenarioId,
+    scenarioTitle: doc.scenarioTitle || doc.scenarioId,
+    hotelSimulationId: doc.hotelSimulationId,
+    employeeId: doc.employeeId || currentUser.id,
+    employeeUid,
+    language: doc.language,
+    difficulty: doc.difficulty,
+    currentStep: doc.currentStep,
+    datasetVersion: doc.datasetVersion,
+    versionNumber: doc.versionNumber,
+    datasetSnapshot: doc.datasetSnapshot,
+    analysisNotes: doc.analysisNotes,
+    analysisWorkspace: doc.analysisWorkspace,
+    decisionWorkspace: doc.decisionWorkspace,
+    executiveReport: doc.executiveReport,
+    roleplayConfig: doc.roleplayConfig,
+    selectedOptionIds: Array.isArray(doc.selectedOptionIds) ? doc.selectedOptionIds : [],
+    learnerAnalysis: typeof doc.learnerAnalysis === 'string' ? doc.learnerAnalysis : '',
+    conversation: Array.isArray(doc.conversation) ? doc.conversation : [],
+    evaluation: doc.evaluation,
+    evaluationId: doc.evaluationId,
+    finalScore: doc.finalScore,
+    competencyResults: doc.competencyResults,
+    feedbackSummary: doc.feedbackSummary,
+    evidenceUrl: doc.evidenceUrl,
+    status: doc.status === 'completed' ? 'completed' : 'in_progress',
+    startedAt: doc.startedAt || new Date().toISOString(),
+    submittedAt: doc.submittedAt,
+    completedAt: doc.completedAt,
+    updatedAt: new Date().toISOString(),
+  });
+
   const saveSimulationSession = async (
     payload: Partial<SimulationSessionDoc> & { scenarioId: string }
   ): Promise<SimulationSessionDoc | null> => {
     try {
-      const res = await fetch('/api/simulator/sessions', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to save simulation session.', 'error');
-        return null;
-      }
-      const saved: SimulationSessionDoc = data.session;
-      if (auth.currentUser?.emailVerified && saved?.id) {
+      const liveMode = isLiveFirestoreMode();
+      let saved: SimulationSessionDoc | null = null;
+
+      if (!liveMode) {
+        const res = await fetch('/api/simulator/sessions', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Failed to save simulation session.', 'error');
+          return null;
+        }
+        saved = data.session;
+      } else {
+        const scenario = simulatorData.simulationScenarios.find((s) => s.id === payload.scenarioId);
+        const now = new Date().toISOString();
+        const existing = payload.id
+          ? simulatorData.simulationSessions.find((s) => s.id === payload.id)
+          : undefined;
+        const sessionId = existing?.id || payload.id || `simsess_${Date.now()}`;
+        saved = {
+          ...(existing || {}),
+          ...payload,
+          id: sessionId,
+          scenarioId: payload.scenarioId,
+          scenarioTitle:
+            payload.scenarioTitle || existing?.scenarioTitle || scenario?.titleEn || payload.scenarioId,
+          hotelSimulationId: payload.hotelSimulationId || existing?.hotelSimulationId || scenario?.hotelId,
+          employeeId: existing?.employeeId || payload.employeeId || currentUser.id,
+          employeeUid: auth.currentUser!.uid,
+          selectedOptionIds:
+            payload.selectedOptionIds ||
+            payload.decisionWorkspace?.selectedOptionIds ||
+            existing?.selectedOptionIds ||
+            [],
+          learnerAnalysis:
+            payload.learnerAnalysis ??
+            payload.analysisWorkspace?.significantVariances ??
+            existing?.learnerAnalysis ??
+            '',
+          conversation: payload.conversation || existing?.conversation || [],
+          status: payload.status === 'completed' ? 'completed' : 'in_progress',
+          startedAt: existing?.startedAt || payload.startedAt || now,
+          updatedAt: now,
+        } as SimulationSessionDoc;
+
         await syncRecordToFirestore(
           'simulationSessions',
           saved.id,
-          {
-            ...saved,
-            employeeUid: auth.currentUser.uid,
-          },
+          buildFirestoreSessionPayload(saved, auth.currentUser!.uid),
+          true
+        );
+      }
+
+      if (!liveMode && auth.currentUser?.emailVerified && saved?.id) {
+        await syncRecordToFirestore(
+          'simulationSessions',
+          saved.id,
+          buildFirestoreSessionPayload(saved, auth.currentUser.uid),
           true
         ).catch(() => {});
       }
-      setSimulatorData((prev) => ({
-        ...prev,
-        simulationSessions: [
-          saved,
-          ...prev.simulationSessions.filter((s) => s.id !== saved.id),
-        ],
-      }));
+
+      if (saved) {
+        setSimulatorData((prev) => ({
+          ...prev,
+          simulationSessions: [
+            saved!,
+            ...prev.simulationSessions.filter((s) => s.id !== saved!.id),
+          ],
+        }));
+      }
       return saved;
     } catch (err: any) {
       showToast(err?.message || 'Failed to save simulation session.', 'error');
@@ -902,36 +1472,126 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ) => {
     try {
-      const res = await fetch(`/api/simulator/sessions/${encodeURIComponent(sessionId)}/evaluate`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to evaluate simulation session.', 'error');
-        return null;
+      const liveMode = isLiveFirestoreMode();
+      let savedSession: SimulationSessionDoc | null = null;
+      let evalDoc: SimulationEvaluationDoc | null = null;
+      let aiFallbackUsed = false;
+
+      // Try server AI+deterministic evaluator first
+      try {
+        const res = await fetch(`/api/simulator/sessions/${encodeURIComponent(sessionId)}/evaluate`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          savedSession = data.session;
+          evalDoc = data.evaluation;
+          aiFallbackUsed = Boolean(data.aiFallbackUsed);
+        } else if (!liveMode) {
+          showToast(data.error || 'Failed to evaluate simulation session.', 'error');
+          return null;
+        }
+      } catch (fetchErr) {
+        if (!liveMode) throw fetchErr;
       }
-      const savedSession: SimulationSessionDoc = data.session;
-      const evalDoc: SimulationEvaluationDoc = data.evaluation;
+
+      // In Live Firestore Mode, fallback deterministically for Firestore-only scenarios/sessions
+      if (liveMode && (!savedSession || !evalDoc)) {
+        const sess = simulatorData.simulationSessions.find((s) => s.id === sessionId);
+        if (!sess) {
+          showToast('Simulation session not found in Firestore.', 'error');
+          return null;
+        }
+        const scenario = simulatorData.simulationScenarios.find((s) => s.id === sess.scenarioId);
+        if (!scenario) {
+          showToast('Scenario definition missing in Firestore.', 'error');
+          return null;
+        }
+        const hotel = simulatorData.hotelSimulationProfiles.find((h) => h.id === scenario.hotelId);
+        const scnFin = simulatorData.simulationFinancialData.filter((f) => f.scenarioId === scenario.id);
+        const scnOps = simulatorData.simulationOperationalData.filter((o) => o.scenarioId === scenario.id);
+        const snapshot =
+          simulatorWorkspace.datasets[scenario.id] ||
+          generateDatasetSnapshotForScenario(scenario, hotel, undefined, scnFin, scnOps);
+        const decisionOptions = simulatorData.simulationDecisionOptions.filter((o) => o.scenarioId === scenario.id);
+        const rubrics = simulatorData.simulationEvaluationRubrics.filter((r) => r.scenarioId === scenario.id);
+
+        const evalOut = evaluateDeterministicSimulation({
+          scenario,
+          datasetSnapshot: snapshot,
+          analysisWorkspace: payload.analysisWorkspace || sess.analysisWorkspace,
+          decisionWorkspace: payload.decisionWorkspace || sess.decisionWorkspace,
+          executiveReport: payload.executiveReport || sess.executiveReport,
+          decisionOptions,
+          rubrics,
+          conversation: payload.conversation || sess.conversation || [],
+          courses,
+          ojtAssignments,
+          competencies,
+          language: payload.language || language,
+        });
+
+        const now = new Date().toISOString();
+        const evalId = `simeval_${Date.now()}`;
+        evalDoc = {
+          id: evalId,
+          sessionId,
+          scenarioId: scenario.id,
+          learnerId: sess.employeeId || currentUser.id,
+          learnerUid: auth.currentUser!.uid,
+          totalScore: evalOut.totalScore,
+          scoringCriteria: evalOut.scoringCriteria,
+          strengths: evalOut.strengths,
+          improvementAreas: evalOut.improvementAreas,
+          missedOpportunities: evalOut.missedOpportunities,
+          calculationErrors: evalOut.calculationErrors,
+          recommendations: evalOut.recommendations,
+          recommendedCompetencies: evalOut.recommendedCompetencies,
+          recommendedCourseIds: evalOut.recommendedCourseIds,
+          recommendedPracticalIds: evalOut.recommendedPracticalIds,
+          suggestedIdpObjectives: evalOut.suggestedIdpObjectives,
+          advisoryDisclaimer:
+            language === 'vi'
+              ? 'Kết quả đánh giá tự động phục vụ cố vấn học tập; cấp quản lý/L&D có quyền thẩm định cuối cùng.'
+              : 'Deterministic simulation score advisory; subject to human assessor confirmation.',
+          assessorType: 'deterministic_plus_ai',
+          createdAt: now,
+        };
+
+        savedSession = {
+          ...sess,
+          analysisWorkspace: payload.analysisWorkspace || sess.analysisWorkspace,
+          decisionWorkspace: payload.decisionWorkspace || sess.decisionWorkspace,
+          executiveReport: payload.executiveReport || sess.executiveReport,
+          conversation: payload.conversation || sess.conversation || [],
+          evaluationId: evalId,
+          finalScore: evalOut.totalScore,
+          feedbackSummary: evalOut.recommendations.join(' '),
+          status: 'completed',
+          submittedAt: now,
+          completedAt: now,
+          updatedAt: now,
+        };
+        aiFallbackUsed = true;
+      }
+
+      if (!savedSession || !evalDoc) return null;
 
       if (auth.currentUser?.emailVerified) {
-        if (savedSession?.id) {
-          syncRecordToFirestore(
-            'simulationSessions',
-            savedSession.id,
-            { ...savedSession, employeeUid: auth.currentUser.uid },
-            true
-          ).catch(() => {});
-        }
-        if (evalDoc?.id) {
-          syncRecordToFirestore(
-            'simulationEvaluations',
-            evalDoc.id,
-            { ...evalDoc, learnerUid: auth.currentUser.uid },
-            true
-          ).catch(() => {});
-        }
+        await syncRecordToFirestore(
+          'simulationSessions',
+          savedSession.id,
+          buildFirestoreSessionPayload(savedSession, auth.currentUser.uid),
+          true
+        );
+        await syncRecordToFirestore(
+          'simulationEvaluations',
+          evalDoc.id,
+          { ...evalDoc, learnerUid: auth.currentUser.uid },
+          true
+        );
       }
 
       await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
@@ -944,7 +1604,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         session: savedSession,
         evaluation: evalDoc,
-        aiFallbackUsed: Boolean(data.aiFallbackUsed),
+        aiFallbackUsed,
       };
     } catch (err: any) {
       showToast(err?.message || 'Simulation evaluation failed.', 'error');
@@ -962,18 +1622,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ): Promise<SimulationEvaluationDoc | null> => {
     try {
-      const res = await fetch(`/api/simulator/evaluations/${encodeURIComponent(evaluationId)}/review`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Assessor review denied.', 'error');
-        return null;
+      const liveMode = isLiveFirestoreMode();
+      let updatedEval: SimulationEvaluationDoc | null = null;
+
+      try {
+        const res = await fetch(`/api/simulator/evaluations/${encodeURIComponent(evaluationId)}/review`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          updatedEval = data.evaluation;
+        } else if (!liveMode) {
+          showToast(data.error || 'Assessor review denied.', 'error');
+          return null;
+        }
+      } catch (err) {
+        if (!liveMode) throw err;
       }
-      if (auth.currentUser?.emailVerified && data.evaluation?.id) {
-        syncRecordToFirestore('simulationEvaluations', data.evaluation.id, data.evaluation, true).catch(() => {});
+
+      if (liveMode && !updatedEval) {
+        const existing = simulatorWorkspace.evaluations.find((e) => e.id === evaluationId);
+        if (!existing) {
+          showToast('Evaluation record not found in Firestore.', 'error');
+          return null;
+        }
+        const adjustedCriteria = existing.scoringCriteria.map((c) => {
+          const override = payload.criterionAdjustments?.[c.criterionCode];
+          return override !== undefined ? { ...c, score: Number(override) } : c;
+        });
+        const nextTotal =
+          payload.adjustedTotalScore !== undefined
+            ? Number(payload.adjustedTotalScore)
+            : adjustedCriteria.reduce((acc, c) => acc + (c.score * c.weightPercent) / 100, 0);
+
+        updatedEval = {
+          ...existing,
+          scoringCriteria: adjustedCriteria,
+          adjustedTotalScore: Math.round(nextTotal),
+          assessorType: 'human_reviewed',
+          assessorComments: payload.assessorComments,
+          adjustmentReason: payload.adjustmentReason,
+          reviewerId: auth.currentUser?.uid || currentUser.id,
+          reviewerName: currentUser.name,
+          reviewedAt: new Date().toISOString(),
+        };
+      }
+
+      if (!updatedEval) return null;
+
+      if (auth.currentUser?.emailVerified) {
+        await syncRecordToFirestore('simulationEvaluations', updatedEval.id, updatedEval, true);
       }
       await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
       showToast(
@@ -982,7 +1682,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : 'Human assessor score adjustment saved.',
         'success'
       );
-      return data.evaluation;
+      return updatedEval;
     } catch (err: any) {
       showToast(err?.message || 'Failed to save assessor review.', 'error');
       return null;
@@ -997,25 +1697,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     note?: string;
   }): Promise<SimulationAssignmentDoc | null> => {
     try {
-      const res = await fetch('/api/simulator/assignments', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to assign simulation.', 'error');
-        return null;
+      const liveMode = isLiveFirestoreMode();
+      let assignment: SimulationAssignmentDoc | null = null;
+
+      if (!liveMode) {
+        const res = await fetch('/api/simulator/assignments', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Failed to assign simulation.', 'error');
+          return null;
+        }
+        assignment = data.assignment;
+      } else {
+        const createdAssignment: SimulationAssignmentDoc = {
+          id: `simasn_${Date.now()}`,
+          scenarioId: payload.scenarioId,
+          learnerId: payload.learnerId,
+          dueDate: payload.dueDate,
+          mandatory: Boolean(payload.mandatory),
+          note: payload.note || '',
+          assignedById: auth.currentUser!.uid,
+          assignedByName: currentUser.name,
+          assignedAt: new Date().toISOString(),
+          status: 'assigned',
+        };
+        assignment = createdAssignment;
+        await syncRecordToFirestore('simulationAssignments', createdAssignment.id, createdAssignment, true);
       }
-      if (auth.currentUser?.emailVerified && data.assignment?.id) {
-        syncRecordToFirestore('simulationAssignments', data.assignment.id, data.assignment, true).catch(() => {});
+
+      if (!liveMode && auth.currentUser?.emailVerified && assignment?.id) {
+        syncRecordToFirestore('simulationAssignments', assignment.id, assignment, true).catch(() => {});
       }
       await refreshSimulatorWorkspace();
       showToast(
         language === 'vi' ? 'Đã giao kịch bản mô phỏng cho học viên.' : 'Simulation scenario assigned to learner.',
         'success'
       );
-      return data.assignment;
+      return assignment;
     } catch (err: any) {
       showToast(err?.message || 'Failed to assign scenario.', 'error');
       return null;
@@ -1027,28 +1749,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     existingId?: string
   ): Promise<SimulationScenarioDoc | null> => {
     try {
-      const url = existingId
-        ? `/api/simulator/scenarios/${encodeURIComponent(existingId)}`
-        : '/api/simulator/scenarios';
-      const res = await fetch(url, {
-        method: existingId ? 'PUT' : 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to save scenario.', 'error');
-        return null;
+      const liveMode = isLiveFirestoreMode();
+      let scenarioDoc: SimulationScenarioDoc | null = null;
+      let datasetDoc: HotelSimulationDatasetSnapshot | null = null;
+
+      try {
+        const url = existingId
+          ? `/api/simulator/scenarios/${encodeURIComponent(existingId)}`
+          : '/api/simulator/scenarios';
+        const res = await fetch(url, {
+          method: existingId ? 'PUT' : 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          scenarioDoc = data.scenario;
+          datasetDoc = data.dataset || null;
+        } else if (!liveMode) {
+          showToast(data.error || 'Failed to save scenario.', 'error');
+          return null;
+        }
+      } catch (err) {
+        if (!liveMode) throw err;
       }
-      if (auth.currentUser?.emailVerified && data.scenario?.id) {
-        syncRecordToFirestore('simulationScenarios', data.scenario.id, data.scenario, true).catch(() => {});
+
+      if (liveMode && !scenarioDoc) {
+        const now = new Date().toISOString();
+        const existing = existingId
+          ? simulatorData.simulationScenarios.find((s) => s.id === existingId)
+          : undefined;
+        const nextId = existing?.id || payload.id || `sim_scn_${Date.now()}`;
+        const nextVer = (Number(existing?.versionNumber || 0) || 0) + 1;
+        scenarioDoc = {
+          ...(existing || {}),
+          id: nextId,
+          scenarioCode: payload.scenarioCode || existing?.scenarioCode || nextId.toUpperCase(),
+          hotelId: payload.hotelId || existing?.hotelId || simulatorData.hotelSimulationProfiles[0]?.id || 'hotel_01',
+          titleEn: payload.titleEn || existing?.titleEn || 'Untitled Scenario',
+          titleVi: payload.titleVi || existing?.titleVi || payload.titleEn || 'Kịch bản mới',
+          summaryEn: payload.summaryEn || existing?.summaryEn || '',
+          summaryVi: payload.summaryVi || existing?.summaryVi || '',
+          category: payload.category || existing?.category || 'Financial Control',
+          difficultyLevel: Number(payload.difficultyLevel || existing?.difficultyLevel || 2) as 1 | 2 | 3 | 4,
+          targetRole: payload.targetRole || existing?.targetRole || 'Financial Controller',
+          periodLabel: payload.periodLabel || existing?.periodLabel || '2026-Q1',
+          competencyIds: payload.competencyIds || existing?.competencyIds || [],
+          status: payload.status || existing?.status || 'Draft',
+          isActive: (payload.status || existing?.status || 'Draft') === 'Published',
+          datasetVersion: payload.datasetVersion || existing?.datasetVersion || `2026.v${nextVer}`,
+          versionNumber: nextVer,
+          importedAt: existing?.importedAt || now,
+          importBatchId: existing?.importBatchId || `manual_${Date.now()}`,
+          updatedAt: now,
+        } as SimulationScenarioDoc;
+        const hotel = simulatorData.hotelSimulationProfiles.find((h) => h.id === scenarioDoc!.hotelId);
+        datasetDoc = generateDatasetSnapshotForScenario(scenarioDoc, hotel);
       }
+
+      if (!scenarioDoc) return null;
+
+      if (auth.currentUser?.emailVerified) {
+        await syncRecordToFirestore('simulationScenarios', scenarioDoc.id, scenarioDoc, true);
+        if (datasetDoc) {
+          await syncRecordToFirestore(
+            'simulationDatasets',
+            datasetDoc.datasetId || scenarioDoc.id,
+            { ...datasetDoc, scenarioId: scenarioDoc.id },
+            true
+          ).catch(() => {});
+        }
+        await writeScenarioVersionToFirestore({
+          id: `scnver_${scenarioDoc.id}_v${Number(scenarioDoc.versionNumber || 1)}_${Date.now()}`,
+          scenarioId: scenarioDoc.id,
+          scenarioCode: scenarioDoc.scenarioCode,
+          versionNumber: Number(scenarioDoc.versionNumber || 1),
+          datasetVersion: scenarioDoc.datasetVersion || '2026.v1',
+          status: scenarioDoc.status,
+          isActive: scenarioDoc.status === 'Published',
+          changeSummary: existingId ? 'Updated scenario metadata & USALI dataset' : 'Created simulation scenario',
+          createdBy: currentUser.name,
+          createdAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
+
       await Promise.all([refreshSimulatorData(), refreshSimulatorWorkspace()]);
       showToast(
         language === 'vi' ? 'Đã lưu kịch bản mô phỏng & bộ dữ liệu USALI.' : 'Scenario & USALI dataset saved.',
         'success'
       );
-      return data.scenario;
+      return scenarioDoc;
     } catch (err: any) {
       showToast(err?.message || 'Failed to save scenario.', 'error');
       return null;
@@ -1057,25 +1847,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const upsertHotelProfile = async (payload: any): Promise<HotelSimulationProfileDoc | null> => {
     try {
-      const res = await fetch('/api/simulator/hotel-profiles', {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || 'Failed to save hotel profile.', 'error');
-        return null;
+      const liveMode = isLiveFirestoreMode();
+      let profileDoc: HotelSimulationProfileDoc | null = null;
+
+      if (!liveMode) {
+        const res = await fetch('/api/simulator/hotel-profiles', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.error || 'Failed to save hotel profile.', 'error');
+          return null;
+        }
+        profileDoc = data.profile;
+      } else {
+        const now = new Date().toISOString();
+        const id = payload.id || `hotel_${Date.now()}`;
+        profileDoc = {
+          id,
+          hotelCode: payload.hotelCode || id.toUpperCase(),
+          hotelName: payload.hotelName || 'New Simulation Hotel',
+          brandTier: payload.brandTier || '5-Star Luxury Resort',
+          city: payload.city || 'Ho Chi Minh City',
+          roomsAvailable: Number(payload.roomsAvailable || Number(payload.totalKeys || 250) * 30),
+          totalKeys: Number(payload.totalKeys || 250),
+          fcPositionLevel: payload.fcPositionLevel || 'Financial Controller',
+          currency: payload.currency || 'USD',
+          importedAt: payload.importedAt || now,
+          importBatchId: payload.importBatchId || `manual_${Date.now()}`,
+        } as HotelSimulationProfileDoc;
+        await syncRecordToFirestore('hotelSimulationProfiles', profileDoc.id, profileDoc, true);
       }
-      if (auth.currentUser?.emailVerified && data.profile?.id) {
-        syncRecordToFirestore('hotelSimulationProfiles', data.profile.id, data.profile, true).catch(() => {});
+
+      if (!liveMode && auth.currentUser?.emailVerified && profileDoc?.id) {
+        syncRecordToFirestore('hotelSimulationProfiles', profileDoc.id, profileDoc, true).catch(() => {});
       }
       await refreshSimulatorData();
       showToast(
         language === 'vi' ? 'Đã lưu hồ sơ khách sạn mô phỏng.' : 'Hotel simulation profile saved.',
         'success'
       );
-      return data.profile;
+      return profileDoc;
     } catch (err: any) {
       showToast(err?.message || 'Failed to save hotel profile.', 'error');
       return null;
@@ -1106,6 +1920,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setEnrollments((prev) => [optimistic, ...prev]);
 
+    let finalEnrollment = optimistic;
     try {
       const res = await fetch('/api/enrollments', {
         method: 'POST',
@@ -1115,25 +1930,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         if (data.enrollment) {
+          finalEnrollment = data.enrollment;
           setEnrollments((prev) => [
             data.enrollment,
             ...prev.filter((e) => !(e.userId === currentUser.id && e.courseId === courseId)),
           ]);
-          if (auth.currentUser?.emailVerified) {
-            syncRecordToFirestore('enrollments', data.enrollment.id, {
-              ...data.enrollment,
-              employeeUid: auth.currentUser.uid,
-              updatedAt: new Date().toISOString(),
-            }).catch(() => {});
-          }
         }
       }
     } catch (e) {
-      console.warn('Enrollment persisted locally:', e);
+      console.warn('Enrollment local fallback:', e);
+    }
+
+    if (auth.currentUser?.emailVerified) {
+      try {
+        await syncRecordToFirestore('enrollments', finalEnrollment.id, {
+          ...finalEnrollment,
+          employeeUid: auth.currentUser.uid,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (fsErr: any) {
+        if (isLiveFirestoreMode()) {
+          showToast(fsErr?.message || 'Failed to sync enrollment to Firestore.', 'error');
+        }
+      }
     }
   };
 
   const updateCourseProgress = async (courseId: string, moduleId: string) => {
+    let computedEnrollment: CourseEnrollment | null = null;
     setEnrollments((prev) => {
       const exists = prev.some((e) => e.userId === currentUser.id && e.courseId === courseId);
       const list = exists
@@ -1155,16 +1979,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const completed = enr.completedModules.includes(moduleId)
             ? enr.completedModules
             : [...enr.completedModules, moduleId];
-          const course = COURSES.find((c) => c.id === courseId);
-          const totalModules = course?.modules.length || 1;
+          const course = courses.find((c) => c.id === courseId) || COURSES.find((c) => c.id === courseId);
+          const totalModules = Math.max(1, course?.modules?.length || 1);
           const percent = Math.min(100, Math.round((completed.length / totalModules) * 100));
-          return {
+          computedEnrollment = {
             ...enr,
             completedModules: completed,
             progressPercent: percent,
             status: percent === 100 ? 'completed' : 'in_progress',
             completedDate: percent === 100 ? new Date().toISOString().split('T')[0] : enr.completedDate,
           };
+          return computedEnrollment;
         }
         return enr;
       });
@@ -1179,6 +2004,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         if (data.enrollment) {
+          computedEnrollment = data.enrollment;
           setEnrollments((prev) =>
             prev.map((e) => (e.userId === currentUser.id && e.courseId === courseId ? data.enrollment : e))
           );
@@ -1186,6 +2012,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.warn('Progress saved locally:', e);
+    }
+
+    if (auth.currentUser?.emailVerified && computedEnrollment) {
+      try {
+        await syncRecordToFirestore('enrollments', (computedEnrollment as CourseEnrollment).id, {
+          ...(computedEnrollment as CourseEnrollment),
+          employeeUid: auth.currentUser.uid,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (fsErr: any) {
+        if (isLiveFirestoreMode()) {
+          showToast(fsErr?.message || 'Failed to save course progress to Firestore.', 'error');
+        }
+      }
     }
   };
 
@@ -1210,16 +2050,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setQuizAttempts((prev) => [newAttempt, ...prev]);
 
+    let updatedEnrForCourse: CourseEnrollment | null = null;
     if (courseId) {
       setEnrollments((prev) =>
-        prev.map((e) =>
-          e.userId === currentUser.id && e.courseId === courseId
-            ? { ...e, quizScore: Math.max(e.quizScore || 0, score) }
-            : e
-        )
+        prev.map((e) => {
+          if (e.userId === currentUser.id && e.courseId === courseId) {
+            updatedEnrForCourse = { ...e, quizScore: Math.max(e.quizScore || 0, score) };
+            return updatedEnrForCourse;
+          }
+          return e;
+        })
       );
     }
 
+    let persistedAttempt = newAttempt;
     try {
       const res = await fetch('/api/quizzes/attempt', {
         method: 'POST',
@@ -1234,17 +2078,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           answers,
         }),
       });
-      if (res.ok && auth.currentUser?.emailVerified) {
+      if (res.ok) {
         const qData = await res.json();
-        if (qData.attempt?.id) {
-          syncRecordToFirestore('quizAttempts', qData.attempt.id, {
-            ...qData.attempt,
-            employeeUid: auth.currentUser.uid,
-          }).catch(() => {});
-        }
+        if (qData.attempt?.id) persistedAttempt = qData.attempt;
       }
     } catch (e) {
       console.warn('Quiz attempt saved locally:', e);
+    }
+
+    if (auth.currentUser?.emailVerified) {
+      try {
+        await syncRecordToFirestore('quizAttempts', persistedAttempt.id, {
+          ...persistedAttempt,
+          employeeUid: auth.currentUser.uid,
+        });
+        if (updatedEnrForCourse) {
+          await syncRecordToFirestore('enrollments', (updatedEnrForCourse as CourseEnrollment).id, {
+            ...(updatedEnrForCourse as CourseEnrollment),
+            employeeUid: auth.currentUser.uid,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (fsErr: any) {
+        if (isLiveFirestoreMode()) {
+          showToast(fsErr?.message || 'Failed to sync quiz attempt to Firestore.', 'error');
+        }
+      }
     }
   };
 
@@ -1271,6 +2130,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setSubmissions((prev) => [newSub, ...prev]);
 
+    let finalSub = newSub;
     try {
       const res = await fetch('/api/ojt/submit', {
         method: 'POST',
@@ -1286,18 +2146,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         if (data.submission) {
+          finalSub = data.submission;
           setSubmissions((prev) => [data.submission, ...prev.filter((s) => s.id !== newSub.id)]);
-          if (auth.currentUser?.emailVerified) {
-            syncRecordToFirestore('practicalSubmissions', data.submission.id, {
-              ...data.submission,
-              employeeUid: auth.currentUser.uid,
-            }).catch(() => {});
-          }
         }
         refreshAuditLogs();
       }
     } catch (e) {
       console.warn('OJT submission persisted locally:', e);
+    }
+
+    if (auth.currentUser?.emailVerified) {
+      try {
+        await syncRecordToFirestore('practicalSubmissions', finalSub.id, {
+          ...finalSub,
+          employeeUid: auth.currentUser.uid,
+        });
+      } catch (fsErr: any) {
+        if (isLiveFirestoreMode()) {
+          showToast(fsErr?.message || 'Failed to sync assignment submission to Firestore.', 'error');
+        }
+      }
     }
   };
 
@@ -1307,19 +2175,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     feedback: string,
     status: 'approved' | 'revision_requested'
   ) => {
+    let gradedSub: (AssignmentSubmission & { employeeUid?: string }) | null = null;
+    const reviewedDate = new Date().toISOString().split('T')[0];
+
     setSubmissions((prev) =>
-      prev.map((s) =>
-        s.id === submissionId
-          ? {
-              ...s,
-              score,
-              feedback,
-              status,
-              reviewedBy: currentUser.name,
-              reviewedDate: new Date().toISOString().split('T')[0],
-            }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id === submissionId) {
+          gradedSub = {
+            ...s,
+            score,
+            feedback,
+            status,
+            reviewedBy: currentUser.name,
+            reviewedDate,
+          };
+          return gradedSub;
+        }
+        return s;
+      })
     );
 
     try {
@@ -1339,6 +2212,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.warn('OJT grade persisted locally:', e);
+    }
+
+    if (auth.currentUser?.emailVerified && gradedSub) {
+      try {
+        await syncRecordToFirestore('practicalSubmissions', submissionId, {
+          ...(gradedSub as AssignmentSubmission & { employeeUid?: string }),
+          employeeUid: (gradedSub as any).employeeUid || auth.currentUser.uid,
+        });
+      } catch (fsErr: any) {
+        if (isLiveFirestoreMode()) {
+          showToast(fsErr?.message || 'Failed to save OJT grading to Firestore.', 'error');
+        }
+      }
     }
   };
 
@@ -1363,6 +2249,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Competency saved locally:', e);
     }
+
+    if (auth.currentUser?.emailVerified && isLiveFirestoreMode()) {
+      try {
+        const now = new Date().toISOString();
+        const targetLvl = Number(
+          comp.expectedLevelByPosition?.['Financial Controller'] || 3
+        );
+        await syncRecordToFirestore('competencies', comp.id, {
+          id: comp.id,
+          code: comp.code,
+          domainId: comp.domainId,
+          nameEn: comp.nameEn,
+          nameVi: comp.nameVi,
+          definitionEn: comp.definitionEn || '',
+          definitionVi: comp.definitionVi || '',
+          targetLevel: Math.min(4, Math.max(1, targetLvl)),
+          importedAt: now,
+          importBatchId: `ui_edit_${Date.now()}`,
+        });
+      } catch (fsErr: any) {
+        showToast(fsErr?.message || 'Failed to save competency to Firestore.', 'error');
+      }
+    }
   };
 
   const deleteCompetency = async (id: string) => {
@@ -1375,6 +2284,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       refreshAuditLogs();
     } catch (e) {
       console.warn('Competency deleted locally:', e);
+    }
+
+    if (auth.currentUser?.emailVerified && isLiveFirestoreMode()) {
+      try {
+        await deleteRecordFromFirestore('competencies', id);
+      } catch (fsErr: any) {
+        showToast(fsErr?.message || 'Failed to delete competency from Firestore.', 'error');
+      }
     }
   };
 
@@ -1603,6 +2520,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addUser = async (userData: Partial<User>): Promise<User | null> => {
+    if (isLiveFirestoreMode()) {
+      const name = String(userData.name || '').trim();
+      const email = String(userData.email || '').trim();
+      if (!name || !email) {
+        showToast(language === 'vi' ? 'Vui lòng nhập họ tên và email.' : 'Name and email are required.', 'error');
+        return null;
+      }
+      const newUser: User = {
+        id: `user_${Date.now()}`,
+        name,
+        email,
+        role: (userData.role || 'learner') as User['role'],
+        position: String(userData.position || 'Senior Accountant').trim(),
+        department: String(userData.department || 'Finance & Accounting').trim(),
+        property: String(userData.property || 'Grand Horizon Saigon Hotel & Residences').trim(),
+        avatar:
+          userData.avatar ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0A192F&color=D4AF37`,
+        currentLevel: Math.max(1, Math.min(4, Number(userData.currentLevel) || 2)) as ProficiencyLevel,
+        targetLevel: Math.max(1, Math.min(4, Number(userData.targetLevel) || 4)) as ProficiencyLevel,
+        joinedDate: new Date().toISOString().split('T')[0],
+        careerPathId: userData.careerPathId || 'path_accountant_to_senior',
+        supervisorId: userData.supervisorId || 'user_fc1',
+      };
+      try {
+        await syncOfficialUserToFirestore(newUser, true);
+        setUsers((prev) => [...prev, newUser]);
+        setProductionCounts((prev) => ({
+          ...prev,
+          userProfiles: (prev.userProfiles || 0) + 1,
+        }));
+        fetch('/api/users', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(userData),
+        }).catch(() => {});
+        return newUser;
+      } catch (fsErr: any) {
+        showToast(fsErr?.message || 'Failed to create official user in Firestore.', 'error');
+        return null;
+      }
+    }
+
     try {
       const res = await fetch('/api/users', {
         method: 'POST',
@@ -1626,6 +2586,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUser = async (userId: string, updates: Partial<User>): Promise<User | null> => {
+    if (isLiveFirestoreMode()) {
+      const existing = users.find((u) => u.id === userId) || (currentUser.id === userId ? currentUser : null);
+      if (!existing) {
+        showToast('User not found in official directory.', 'error');
+        return null;
+      }
+      const merged: User = {
+        ...existing,
+        ...updates,
+        id: userId,
+      };
+      try {
+        await syncOfficialUserToFirestore(merged, Boolean(firebaseProfile?.isAdmin));
+        setUsers((prev) => prev.map((u) => (u.id === userId ? merged : u)));
+        if (currentUser.id === userId) {
+          setCurrentUserState(merged);
+        }
+        if (firebaseProfile && firebaseUser?.uid === userId) {
+          setFirebaseProfile((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  name: merged.name,
+                  email: merged.email,
+                  role: merged.role,
+                  position: merged.position,
+                  department: merged.department,
+                  property: merged.property,
+                  currentLevel: merged.currentLevel,
+                  targetLevel: merged.targetLevel,
+                  careerPathId: merged.careerPathId,
+                  updatedAt: new Date().toISOString(),
+                }
+              : null
+          );
+        }
+        fetch(`/api/users/${encodeURIComponent(userId)}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify(updates),
+        }).catch(() => {});
+        return merged;
+      } catch (fsErr: any) {
+        showToast(fsErr?.message || 'Failed to update official user in Firestore.', 'error');
+        return null;
+      }
+    }
+
     try {
       const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, {
         method: 'PUT',
@@ -1670,6 +2678,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const pickAllowedFields = (obj: Record<string, any>, allowed: string[]) => {
+    const out: Record<string, any> = {};
+    for (const k of allowed) {
+      if (obj[k] !== undefined) out[k] = obj[k];
+    }
+    return out;
+  };
+
+  const syncTalentAssessmentDoc = async (docItem: any) => {
+    if (!auth.currentUser?.emailVerified || !docItem?.id) return;
+    const payload = pickAllowedFields(
+      { ...docItem, employeeUid: docItem.employeeUid || auth.currentUser.uid },
+      [
+        'id', 'version', 'supersedesId', 'employeeId', 'employeeUid', 'employeeName',
+        'property', 'department', 'currentPosition', 'targetPosition', 'assessmentPeriod',
+        'assessorId', 'assessorUid', 'assessorName', 'assessorType', 'status',
+        'submittedAt', 'approvedById', 'approvedByName', 'approvedAt', 'rejectionReason',
+        'overallComments', 'results', 'createdAt', 'updatedAt',
+      ]
+    );
+    await syncRecordToFirestore('competencyAssessments', docItem.id, payload, true);
+  };
+
+  const syncTalentActivityDoc = async (docItem: any) => {
+    if (!auth.currentUser?.emailVerified || !docItem?.id) return;
+    const payload = pickAllowedFields(
+      { ...docItem, employeeUid: docItem.employeeUid || auth.currentUser.uid },
+      [
+        'id', 'idpId', 'objectiveId', 'employeeId', 'employeeUid', 'competencyId',
+        'competencyCode', 'domainId', 'category', 'ratioCategory', 'titleEn', 'titleVi',
+        'descriptionEn', 'descriptionVi', 'sourceType', 'sourceRecordId', 'sourceCode',
+        'targetLevel', 'estimatedHours', 'dueDate', 'status', 'validationStatus',
+        'evidenceRequired', 'evidenceNotes', 'evidenceFileName', 'evidenceUrl',
+        'validatedById', 'validatedByName', 'validatedAt', 'validatorFeedback',
+        'assignedById', 'assignedByName', 'createdAt', 'updatedAt',
+      ]
+    );
+    await syncRecordToFirestore('developmentActivities', docItem.id, payload, true);
+  };
+
+  const syncTalentIdpDoc = async (docItem: any) => {
+    if (!auth.currentUser?.emailVerified || !docItem?.id) return;
+    const payload = pickAllowedFields(
+      { ...docItem, employeeUid: docItem.employeeUid || auth.currentUser.uid },
+      [
+        'id', 'version', 'employeeId', 'employeeUid', 'employeeName', 'property',
+        'department', 'currentPosition', 'targetPosition', 'sourceAssessmentId',
+        'sourceAssessmentPeriod', 'managerId', 'managerUid', 'managerName', 'status',
+        'periodStart', 'periodEnd', 'overallGoalEn', 'overallGoalVi', 'ratioTarget',
+        'objectives', 'submittedAt', 'managerReviewedBy', 'managerReviewedAt',
+        'lndApprovedBy', 'lndApprovedAt', 'activatedAt', 'completedAt', 'closedAt',
+        'rejectionNotes', 'createdBy', 'createdAt', 'updatedAt',
+      ]
+    );
+    await syncRecordToFirestore('individualDevelopmentPlans', docItem.id, payload, true);
+  };
+
   const updateTalentConfig = async (updates: Partial<TalentConfigDoc>): Promise<boolean> => {
     try {
       const res = await fetch('/api/talent/config', {
@@ -1682,7 +2747,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Failed to save configuration', 'error');
         return false;
       }
-      if (data.talentConfig) setTalentConfig(data.talentConfig);
+      if (data.talentConfig) {
+        setTalentConfig(data.talentConfig);
+        if (auth.currentUser?.emailVerified) {
+          const cfgPayload = pickAllowedFields(
+            { ...data.talentConfig, id: data.talentConfig.id || 'default' },
+            [
+              'id', 'weightMode', 'competencyOverrides', 'customPositionTargets',
+              'ratio702010', 'readinessThresholds', 'updatedBy', 'updatedAt',
+            ]
+          );
+          await syncRecordToFirestore('talentConfig', cfgPayload.id, cfgPayload, true);
+        }
+      }
       refreshAuditLogs();
       showToast(language === 'vi' ? 'Đã lưu cấu hình Competency & IDP Engine.' : 'Talent configuration updated.', 'success');
       return true;
@@ -1703,6 +2780,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok) {
         showToast(data.error || 'Failed to save competency assessment', 'error');
         return null;
+      }
+      if (data.assessment) {
+        await syncTalentAssessmentDoc(data.assessment);
       }
       await refreshTalentData();
       refreshAuditLogs();
@@ -1729,6 +2809,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Failed to transition assessment', 'error');
         return null;
       }
+      if (data.assessment) {
+        await syncTalentAssessmentDoc(data.assessment);
+      }
       await refreshTalentData();
       refreshAuditLogs();
       return data.assessment;
@@ -1750,6 +2833,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Failed to create development activity', 'error');
         return null;
       }
+      if (data.activity) {
+        await syncTalentActivityDoc(data.activity);
+      }
       await refreshTalentData();
       refreshAuditLogs();
       return data.activity;
@@ -1770,6 +2856,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok) {
         showToast(data.error || 'Failed to update activity', 'error');
         return null;
+      }
+      if (data.activity) {
+        await syncTalentActivityDoc(data.activity);
       }
       await refreshTalentData();
       return data.activity;
@@ -1796,6 +2885,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Failed to create IDP', 'error');
         return { error: data.error };
       }
+      if (data.idp) {
+        // Ensure referenced sourceAssessment doc exists in Firestore before IDP creation (Rules FK check)
+        const srcAsmt = competencyAssessments.find((a) => a.id === data.idp.sourceAssessmentId);
+        if (srcAsmt) {
+          await syncTalentAssessmentDoc(srcAsmt).catch(() => {});
+        }
+        await syncTalentIdpDoc(data.idp);
+        if (data.reviewLog?.id && auth.currentUser?.emailVerified) {
+          await syncRecordToFirestore(
+            'idpReviewLogs',
+            data.reviewLog.id,
+            pickAllowedFields(
+              { ...data.reviewLog, employeeUid: data.reviewLog.employeeUid || auth.currentUser.uid },
+              ['id', 'idpId', 'employeeId', 'employeeUid', 'action', 'fromStatus', 'toStatus', 'actorId', 'actorName', 'actorRole', 'comment', 'timestamp']
+            ),
+            true
+          ).catch(() => {});
+        }
+      }
       await refreshTalentData();
       refreshAuditLogs();
       return { idp: data.idp };
@@ -1820,6 +2928,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok) {
         showToast(data.error || 'IDP workflow transition denied', 'error');
         return null;
+      }
+      if (data.idp) {
+        await syncTalentIdpDoc(data.idp);
+      }
+      if (data.reviewLog?.id && auth.currentUser?.emailVerified) {
+        await syncRecordToFirestore(
+          'idpReviewLogs',
+          data.reviewLog.id,
+          pickAllowedFields(
+            { ...data.reviewLog, employeeUid: data.reviewLog.employeeUid || auth.currentUser.uid },
+            ['id', 'idpId', 'employeeId', 'employeeUid', 'action', 'fromStatus', 'toStatus', 'actorId', 'actorName', 'actorRole', 'comment', 'timestamp']
+          ),
+          true
+        ).catch(() => {});
       }
       await refreshTalentData();
       refreshAuditLogs();
@@ -1849,6 +2971,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Objective update blocked', 'error');
         return null;
       }
+      if (data.idp) {
+        await syncTalentIdpDoc(data.idp);
+      }
       await refreshTalentData();
       return data.idp;
     } catch (e: any) {
@@ -1868,6 +2993,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok) {
         showToast(data.error || 'Reassessment failed', 'error');
         return null;
+      }
+      if (auth.currentUser?.emailVerified) {
+        if (data.newAssessment) {
+          await syncTalentAssessmentDoc(data.newAssessment);
+        }
+        if (data.reassessment?.id) {
+          await syncRecordToFirestore(
+            'competencyReassessments',
+            data.reassessment.id,
+            pickAllowedFields(
+              { ...data.reassessment, employeeUid: data.reassessment.employeeUid || auth.currentUser.uid },
+              [
+                'id', 'employeeId', 'employeeUid', 'employeeName', 'idpId', 'baselineAssessmentId',
+                'newApprovedAssessmentId', 'targetPosition', 'reassessmentDate', 'assessorId',
+                'assessorName', 'assessorRole', 'beforeAchievementPct', 'afterAchievementPct',
+                'netImprovementPct', 'gapsClosedCount', 'remainingGapsCount', 'items',
+                'summaryFeedback', 'createdAt',
+              ]
+            ),
+            true
+          );
+        }
       }
       await refreshTalentData();
       refreshAuditLogs();
@@ -1890,6 +3037,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         showToast(data.error || 'Readiness review blocked', 'error');
         return null;
       }
+      if (auth.currentUser?.emailVerified && data.review?.id) {
+        await syncRecordToFirestore(
+          'careerReadinessReviews',
+          data.review.id,
+          pickAllowedFields(
+            { ...data.review, employeeUid: data.review.employeeUid || auth.currentUser.uid },
+            [
+              'id', 'employeeId', 'employeeUid', 'employeeName', 'property', 'department',
+              'currentPosition', 'targetPosition', 'sourceAssessmentId', 'sourceIdpId',
+              'computedStatus', 'finalStatus', 'achievementPct', 'weightedAchievementPct',
+              'idpCompletionPct', 'criticalAchievementPct', 'criticalBlockers',
+              'recommendedNextSteps', 'reviewerId', 'reviewerName', 'reviewerRole',
+              'reviewNotes', 'reviewedAt',
+            ]
+          ),
+          true
+        );
+      }
       await refreshTalentData();
       refreshAuditLogs();
       return data.review;
@@ -1898,6 +3063,452 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
   };
+
+  const hasPermission = useCallback(
+    (permission: PermissionKey): boolean => {
+      return roleHasPermission(currentUser.role, permission, rolePermissions);
+    },
+    [currentUser.role, rolePermissions]
+  );
+
+  const canAccessRoute = useCallback(
+    (tabId: string): boolean => {
+      return canAccessTab(currentUser.role, tabId, rolePermissions);
+    },
+    [currentUser.role, rolePermissions]
+  );
+
+  const saveRolePermissionPolicy = useCallback(
+    async (role: UserRole, permissions: PermissionKey[]): Promise<boolean> => {
+      const sanitized = sanitizeRolePermissionsList(role, permissions);
+      try {
+        if (isLiveFirestoreMode() && auth.currentUser?.emailVerified) {
+          const savedDoc = await saveRolePermissionPolicyToFirestore(role, sanitized, {
+            uid: auth.currentUser.uid,
+            name: officialAuthUser?.name || currentUser.name,
+          });
+          setRolePermissions((prev) => ({ ...prev, [role]: savedDoc.permissions }));
+          setRolePermissionMeta((prev) => ({
+            ...prev,
+            [role]: { updatedAt: savedDoc.updatedAt, updatedByName: savedDoc.updatedByName },
+          }));
+        } else {
+          const res = await fetch(`/api/rbac/permissions/${role}`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify({ permissions: sanitized }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast(data.error || 'Failed to update role permissions', 'error');
+            return false;
+          }
+          setRolePermissions(normalizeRolePermissionsMap(data.rolePermissions));
+          setRolePermissionMeta((prev) => ({
+            ...prev,
+            [role]: { updatedAt: new Date().toISOString(), updatedByName: currentUser.name },
+          }));
+          refreshAuditLogs();
+        }
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Unable to save role permissions', 'error');
+        return false;
+      }
+    },
+    [authHeaders, currentUser.name, isLiveFirestoreMode, officialAuthUser?.name, refreshAuditLogs, showToast]
+  );
+
+  const saveAllRolePermissions = useCallback(
+    async (updatedMap: RolePermissionsMap): Promise<boolean> => {
+      try {
+        const normalized = normalizeRolePermissionsMap(updatedMap);
+        if (isLiveFirestoreMode() && auth.currentUser?.emailVerified) {
+          const updatedMeta: Partial<Record<UserRole, { updatedAt: string; updatedByName?: string }>> = {};
+          for (const role of SYSTEM_ROLES) {
+            const savedDoc = await saveRolePermissionPolicyToFirestore(role, normalized[role], {
+              uid: auth.currentUser.uid,
+              name: officialAuthUser?.name || currentUser.name,
+            });
+            updatedMeta[role] = { updatedAt: savedDoc.updatedAt, updatedByName: savedDoc.updatedByName };
+          }
+          setRolePermissions(normalized);
+          setRolePermissionMeta((prev) => ({ ...prev, ...updatedMeta }));
+          setProductionCounts((prev) => ({ ...prev, rolePermissions: SYSTEM_ROLES.length }));
+        } else {
+          for (const role of SYSTEM_ROLES) {
+            const res = await fetch(`/api/rbac/permissions/${role}`, {
+              method: 'PUT',
+              headers: authHeaders(),
+              body: JSON.stringify({ permissions: normalized[role] }),
+            });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              showToast(errData.error || 'Failed to persist role permissions', 'error');
+              return false;
+            }
+          }
+          setRolePermissions(normalized);
+          const nowIso = new Date().toISOString();
+          setRolePermissionMeta((prev) => {
+            const next = { ...prev };
+            SYSTEM_ROLES.forEach((r) => {
+              next[r] = { updatedAt: nowIso, updatedByName: currentUser.name };
+            });
+            return next;
+          });
+          refreshAuditLogs();
+        }
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Error saving role permissions matrix', 'error');
+        return false;
+      }
+    },
+    [authHeaders, currentUser.name, isLiveFirestoreMode, officialAuthUser?.name, refreshAuditLogs, showToast]
+  );
+
+  const resetRolePermissions = useCallback(
+    async (role?: UserRole): Promise<boolean> => {
+      try {
+        if (isLiveFirestoreMode() && auth.currentUser?.emailVerified) {
+          const rolesToReset = role ? [role] : SYSTEM_ROLES;
+          for (const r of rolesToReset) {
+            const savedDoc = await saveRolePermissionPolicyToFirestore(r, DEFAULT_ROLE_PERMISSIONS[r], {
+              uid: auth.currentUser.uid,
+              name: officialAuthUser?.name || currentUser.name,
+            });
+            setRolePermissions((prev) => ({ ...prev, [r]: savedDoc.permissions }));
+            setRolePermissionMeta((prev) => ({
+              ...prev,
+              [r]: { updatedAt: savedDoc.updatedAt, updatedByName: savedDoc.updatedByName },
+            }));
+          }
+        } else {
+          const res = await fetch('/api/rbac/reset', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({ role }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast(data.error || 'Failed to reset role permissions', 'error');
+            return false;
+          }
+          setRolePermissions(normalizeRolePermissionsMap(data.rolePermissions));
+          refreshAuditLogs();
+        }
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to reset role permissions', 'error');
+        return false;
+      }
+    },
+    [authHeaders, currentUser.name, isLiveFirestoreMode, officialAuthUser?.name, refreshAuditLogs, showToast]
+  );
+
+  const refreshLessonMaterials = useCallback(async () => {
+    try {
+      if (isLiveFirestoreMode() && auth.currentUser?.emailVerified) {
+        const docs = await fetchLessonMaterialsFromFirestore();
+        setLessonMaterials(docs);
+        return;
+      }
+      const res = await fetch('/api/lesson-materials');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.lessonMaterials)) {
+          setLessonMaterials(data.lessonMaterials);
+        }
+      }
+    } catch (err) {
+      console.warn('Refresh lesson materials note:', err);
+    }
+  }, [isLiveFirestoreMode]);
+
+  const uploadLessonMaterial = useCallback(
+    async (params: {
+      courseId: string;
+      lessonId: string;
+      titleVi: string;
+      titleEn: string;
+      descriptionVi?: string;
+      descriptionEn?: string;
+      materialType?: LessonMaterialType;
+      isRequired?: boolean;
+      file?: File | null;
+      externalUrl?: string;
+      preferredStorage?: 'auto' | LessonMaterialStorageMode;
+      forceFirestore?: boolean;
+    }): Promise<LessonMaterialDoc | null> => {
+      try {
+        const courseObj = courses.find((c) => c.id === params.courseId);
+        if (!courseObj) {
+          showToast(language === 'vi' ? 'Không tìm thấy khóa học.' : 'Course not found.', 'error');
+          return null;
+        }
+        const lessonIdx = courseObj.modules.findIndex((m) => m.id === params.lessonId);
+        const lessonObj = lessonIdx >= 0 ? courseObj.modules[lessonIdx] : undefined;
+        if (!lessonObj) {
+          showToast(language === 'vi' ? 'Không tìm thấy bài học.' : 'Lesson not found.', 'error');
+          return null;
+        }
+
+        const useFirestore =
+          Boolean(auth.currentUser?.emailVerified) &&
+          (Boolean(params.forceFirestore) || isLiveFirestoreMode());
+
+        const trimmedUrl = params.externalUrl?.trim() || '';
+        if (!params.file && !trimmedUrl) {
+          showToast(
+            language === 'vi'
+              ? 'Vui lòng chọn tệp tải lên hoặc nhập đường dẫn URL.'
+              : 'Please select a file or enter a resource URL.',
+            'error'
+          );
+          return null;
+        }
+
+        const now = new Date().toISOString();
+        const docId = `lmat_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        const titleVi =
+          params.titleVi.trim() ||
+          params.file?.name ||
+          (language === 'vi' ? 'Học liệu bài học' : 'Lesson Material');
+        const titleEn = params.titleEn.trim() || titleVi;
+
+        let resolvedType: LessonMaterialType =
+          params.materialType || (params.file ? inferMaterialTypeFromFile(params.file) : 'link');
+        let storageMode: LessonMaterialStorageMode = 'external_link';
+        let fileName: string | undefined;
+        let mimeType: string | undefined;
+        let fileSizeBytes: number | undefined;
+        let fileSizeLabel = 'External URL';
+        let inlineBase64: string | undefined;
+        let downloadUrl: string | undefined;
+        let storagePath: string | undefined;
+        let externalUrl: string | undefined;
+
+        if (params.file) {
+          const fileCheck = validateStorageFile(params.file);
+          if (!fileCheck.valid) {
+            showToast(fileCheck.error || 'Invalid file.', 'error');
+            return null;
+          }
+          fileName = params.file.name;
+          mimeType = params.file.type || 'application/octet-stream';
+          fileSizeBytes = params.file.size;
+          fileSizeLabel = formatFileSizeLabel(params.file.size);
+
+          const pref = params.preferredStorage || 'auto';
+          const canInline = params.file.size <= FIRESTORE_INLINE_MAX_BYTES;
+
+          if (pref === 'firestore_inline' || (pref === 'auto' && canInline)) {
+            if (!canInline) {
+              showToast(
+                language === 'vi'
+                  ? `Tệp (${fileSizeLabel}) vượt ngưỡng lưu trực tiếp 650KB của Firestore. Vui lòng chọn chế độ Firebase Storage (tối đa 10MB).`
+                  : `File (${fileSizeLabel}) exceeds Firestore 650KB inline limit. Please use Firebase Storage mode (up to 10MB).`,
+                'error'
+              );
+              return null;
+            }
+            const b64 = await fileToBase64(params.file);
+            if (b64.length > 920000) {
+              showToast(
+                language === 'vi'
+                  ? 'Dung lượng mã hóa vượt giới hạn 1MB của Firestore.'
+                  : 'Encoded file exceeds Firestore 1MB safety cap.',
+                'error'
+              );
+              return null;
+            }
+            storageMode = 'firestore_inline';
+            inlineBase64 = b64;
+          } else {
+            if (params.file.size > FIREBASE_STORAGE_MAX_BYTES) {
+              showToast(
+                language === 'vi' ? 'Tệp vượt giới hạn 10MB.' : 'File exceeds 10MB limit.',
+                'error'
+              );
+              return null;
+            }
+            if (useFirestore) {
+              try {
+                const uploaded = await uploadAuthorizedTrainingFile({
+                  file: params.file,
+                  category: 'course_materials',
+                  recordId: courseObj.id,
+                  filePrefix: lessonObj.id,
+                });
+                storageMode = 'firebase_storage';
+                downloadUrl = uploaded.downloadUrl;
+                storagePath = uploaded.fullPath;
+              } catch (storageErr: any) {
+                if (canInline) {
+                  const b64 = await fileToBase64(params.file);
+                  if (b64.length <= 920000) {
+                    storageMode = 'firestore_inline';
+                    inlineBase64 = b64;
+                  } else {
+                    throw storageErr;
+                  }
+                } else {
+                  throw storageErr;
+                }
+              }
+            } else {
+              // Demo sandbox supports larger simulated inline or fallback check
+              if (canInline) {
+                storageMode = 'firestore_inline';
+                inlineBase64 = await fileToBase64(params.file);
+              } else {
+                storageMode = 'firebase_storage';
+                downloadUrl = trimmedUrl || `demo://storage/course_materials/${courseObj.id}/${lessonObj.id}_${params.file.name}`;
+                storagePath = `course_materials/${courseObj.id}/${lessonObj.id}_${params.file.name}`;
+              }
+            }
+          }
+        } else if (trimmedUrl) {
+          storageMode = 'external_link';
+          externalUrl = trimmedUrl;
+          downloadUrl = trimmedUrl;
+          if (!params.materialType) resolvedType = 'link';
+        }
+
+        const record: LessonMaterialDoc = {
+          id: docId,
+          courseId: courseObj.id,
+          courseCode: courseObj.code,
+          lessonId: lessonObj.id,
+          lessonOrder: lessonIdx + 1,
+          lessonTitleVi: lessonObj.titleVi,
+          lessonTitleEn: lessonObj.titleEn,
+          titleVi: titleVi.slice(0, 300),
+          titleEn: titleEn.slice(0, 300),
+          descriptionVi: params.descriptionVi?.trim() ? params.descriptionVi.trim().slice(0, 2000) : undefined,
+          descriptionEn: params.descriptionEn?.trim() ? params.descriptionEn.trim().slice(0, 2000) : undefined,
+          materialType: resolvedType,
+          storageMode,
+          fileName,
+          mimeType,
+          fileSizeBytes,
+          fileSizeLabel,
+          inlineBase64,
+          downloadUrl,
+          storagePath,
+          externalUrl,
+          isRequired: Boolean(params.isRequired),
+          uploadedByUid: useFirestore && auth.currentUser ? auth.currentUser.uid : currentUser.id,
+          uploadedByName: (useFirestore ? officialAuthUser?.name : currentUser.name) || currentUser.name,
+          uploadedByEmail: (useFirestore ? auth.currentUser?.email || currentUser.email : currentUser.email) || undefined,
+          uploadedByRole: currentUser.role,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        if (useFirestore) {
+          const saved = await saveLessonMaterialToFirestore(record);
+          setLessonMaterials((prev) => [saved, ...prev.filter((m) => m.id !== saved.id)]);
+          setProductionCounts((prev) => ({
+            ...prev,
+            lessonMaterials: (prev.lessonMaterials || 0) + 1,
+          }));
+          showToast(
+            language === 'vi'
+              ? `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}) lên Firestore!`
+              : `Saved "${saved.titleEn}" to Lesson ${saved.lessonOrder} (${saved.courseCode}) in Firestore!`,
+            'success'
+          );
+          return saved;
+        } else {
+          const res = await fetch('/api/lesson-materials', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify(record),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            showToast(data.error || 'Failed to save lesson material', 'error');
+            return null;
+          }
+          const saved: LessonMaterialDoc = data.material;
+          setLessonMaterials((prev) => [saved, ...prev.filter((m) => m.id !== saved.id)]);
+          refreshAuditLogs();
+          showToast(
+            language === 'vi'
+              ? `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}).`
+              : `Saved "${saved.titleEn}" to Lesson ${saved.lessonOrder} (${saved.courseCode}).`,
+            'success'
+          );
+          return saved;
+        }
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to upload lesson learning material.', 'error');
+        return null;
+      }
+    },
+    [
+      authHeaders,
+      courses,
+      currentUser.email,
+      currentUser.id,
+      currentUser.name,
+      currentUser.role,
+      isLiveFirestoreMode,
+      language,
+      officialAuthUser?.name,
+      refreshAuditLogs,
+      showToast,
+    ]
+  );
+
+  const deleteLessonMaterial = useCallback(
+    async (materialId: string): Promise<boolean> => {
+      try {
+        const useFirestore = isLiveFirestoreMode() && Boolean(auth.currentUser?.emailVerified);
+        if (useFirestore) {
+          await deleteLessonMaterialFromFirestore(materialId);
+          setLessonMaterials((prev) => prev.filter((m) => m.id !== materialId));
+          setProductionCounts((prev) => ({
+            ...prev,
+            lessonMaterials: Math.max(0, (prev.lessonMaterials || 1) - 1),
+          }));
+        } else {
+          const res = await fetch(`/api/lesson-materials/${materialId}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          });
+          if (!res.ok) {
+            if (res.status === 404 && auth.currentUser?.emailVerified) {
+              await deleteLessonMaterialFromFirestore(materialId);
+              setLessonMaterials((prev) => prev.filter((m) => m.id !== materialId));
+              setProductionCounts((prev) => ({
+                ...prev,
+                lessonMaterials: Math.max(0, (prev.lessonMaterials || 1) - 1),
+              }));
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              showToast(errData.error || 'Failed to delete lesson material', 'error');
+              return false;
+            }
+          } else {
+            setLessonMaterials((prev) => prev.filter((m) => m.id !== materialId));
+            refreshAuditLogs();
+          }
+        }
+        showToast(
+          language === 'vi' ? 'Đã xóa học liệu bài học.' : 'Removed lesson material.',
+          'info'
+        );
+        return true;
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to delete lesson material.', 'error');
+        return false;
+      }
+    },
+    [authHeaders, isLiveFirestoreMode, language, refreshAuditLogs, showToast]
+  );
 
   const t = translations[language];
 
@@ -1935,7 +3546,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courses,
         enrollments,
         quizAttempts,
-        ojtAssignments: OJT_ASSIGNMENTS,
+        ojtAssignments,
         submissions,
         learningPaths,
         assessments,
@@ -1992,6 +3603,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitCareerReadinessReview,
         firebaseUser,
         firebaseProfile,
+        officialAuthUser,
+        isPreviewingRole: Boolean(
+          officialAuthUser && currentUser.id !== officialAuthUser.id
+        ),
+        useOfficialAccountIdentity,
+        signOutOfficialAccount,
+        authModalTab,
+        openAuthModal,
+        closeAuthModal,
+        syncAllExperienceRolesToFirestore,
         dataSourceMode,
         setDataSourceMode,
         productionCounts,
@@ -2017,6 +3638,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         upsertSimulatorScenario,
         upsertHotelProfile,
         launchSimulationWorkspace,
+        rolePermissions,
+        rolePermissionMeta,
+        hasPermission,
+        canAccessRoute,
+        saveRolePermissionPolicy,
+        saveAllRolePermissions,
+        resetRolePermissions,
+        lessonMaterials,
+        refreshLessonMaterials,
+        uploadLessonMaterial,
+        deleteLessonMaterial,
       }}
     >
       {children}

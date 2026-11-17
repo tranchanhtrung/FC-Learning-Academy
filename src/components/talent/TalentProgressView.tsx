@@ -33,13 +33,12 @@ export const TalentProgressView: React.FC = () => {
     submitTalentReassessment,
     showToast,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
+  const isLearner = !hasPermission('view_all_learners_data');
   const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
-  const canReassess = ['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(
-    currentUser.role
-  );
+  const canReassess = hasPermission('assess_team_members');
 
   const employeeIdps = useMemo(
     () =>
@@ -299,7 +298,9 @@ export const TalentProgressView: React.FC = () => {
                       </p>
                     )}
 
-                    {obj.category !== 'A_Formal_Learning' && !detail?.strictCompleted && (
+                    {obj.category !== 'A_Formal_Learning' &&
+                      !detail?.strictCompleted &&
+                      activeIdp?.status !== 'closed' && (
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1">
                         <input
                           type="text"
@@ -406,22 +407,22 @@ export const TalentProgressView: React.FC = () => {
         </div>
       </div>
 
-      {/* Reassessment Execution Panel */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              {language === 'vi'
-                ? 'Thực hiện Tái Đánh giá Năng lực Sau IDP (Tạo Phiên bản Mới Bất biến)'
-                : 'Conduct Post-IDP Competency Reassessment (Creates Versioned Approved Assessment)'}
-            </h2>
-            <p className="text-xs text-slate-500">
-              {language === 'vi'
-                ? 'Dữ liệu đánh giá gốc được giữ nguyên; hệ thống tạo phiên bản đánh giá mới và tính chênh lệch Trước/Sau.'
-                : 'Original baseline assessment remains untouched; records a new approved version and Before vs After delta.'}
-            </p>
-          </div>
-          {canReassess && (
+      {/* Reassessment Execution Panel (Authorized Assessors Only) */}
+      {canReassess && (
+        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">
+                {language === 'vi'
+                  ? 'Thực hiện Tái Đánh giá Năng lực Sau IDP (Tạo Phiên bản Mới Bất biến)'
+                  : 'Conduct Post-IDP Competency Reassessment (Creates Versioned Approved Assessment)'}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {language === 'vi'
+                  ? 'Dữ liệu đánh giá gốc được giữ nguyên; hệ thống tạo phiên bản đánh giá mới và tính chênh lệch Trước/Sau.'
+                  : 'Original baseline assessment remains untouched; records a new approved version and Before vs After delta.'}
+              </p>
+            </div>
             <button
               onClick={handleSubmitReassessment}
               disabled={submittingReassess || !gapSummary.hasApprovedAssessment}
@@ -436,90 +437,88 @@ export const TalentProgressView: React.FC = () => {
                   : 'Submit Validated Reassessment'}
               </span>
             </button>
-          )}
-        </div>
+          </div>
 
-        <div className="p-5 space-y-4">
-          <input
-            type="text"
-            disabled={!canReassess}
-            value={reassessSummary}
-            onChange={(e) => setReassessSummary(e.target.value)}
-            placeholder={
-              language === 'vi'
-                ? 'Nhận xét tiến bộ năng lực sau quá trình thực hiện IDP và bằng chứng thực tế...'
-                : 'Summary feedback on demonstrated proficiency uplift and evidence review...'
-            }
-            className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg disabled:bg-slate-50"
-          />
+          <div className="p-5 space-y-4">
+            <input
+              type="text"
+              value={reassessSummary}
+              onChange={(e) => setReassessSummary(e.target.value)}
+              placeholder={
+                language === 'vi'
+                  ? 'Nhận xét tiến bộ năng lực sau quá trình thực hiện IDP và bằng chứng thực tế...'
+                  : 'Summary feedback on demonstrated proficiency uplift and evidence review...'
+              }
+              className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+            />
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-600">
-                  <th className="py-2 pr-3 font-semibold">Competency</th>
-                  <th className="py-2 px-3 font-semibold text-center">Baseline</th>
-                  <th className="py-2 px-3 font-semibold text-center">Target</th>
-                  <th className="py-2 px-3 font-semibold text-center">New Level (Post-IDP)</th>
-                  <th className="py-2 pl-3 font-semibold text-right">Delta</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {focusReassessRows.map((row) => {
-                  const before = row.currentLevel || 1;
-                  const after = reassessLevels[row.competencyCode] ?? before;
-                  const delta = after - before;
-                  return (
-                    <tr key={row.competencyCode}>
-                      <td className="py-2.5 pr-3">
-                        <span className="font-mono font-bold text-slate-900 mr-1.5">
-                          {row.competencyCode}
-                        </span>
-                        <span className="text-slate-700">
-                          {language === 'vi' ? row.nameVi : row.nameEn}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-mono tabular-nums">L{before}</td>
-                      <td className="py-2.5 px-3 text-center font-mono tabular-nums font-semibold">
-                        L{row.targetLevel}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center justify-center gap-1">
-                          {[1, 2, 3, 4].map((lvl) => (
-                            <button
-                              key={lvl}
-                              type="button"
-                              disabled={!canReassess}
-                              onClick={() =>
-                                setReassessLevels((p) => ({
-                                  ...p,
-                                  [row.competencyCode]: lvl as ProficiencyLevel,
-                                }))
-                              }
-                              className={`w-7 h-7 rounded border font-mono text-xs font-bold cursor-pointer disabled:opacity-60 ${
-                                after === lvl
-                                  ? 'bg-amber-500 text-slate-950 border-amber-500'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                              }`}
-                            >
-                              L{lvl}
-                            </button>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="py-2.5 pl-3 text-right font-mono font-bold tabular-nums">
-                        <span className={delta > 0 ? 'text-emerald-700' : 'text-slate-500'}>
-                          {delta > 0 ? `+${delta}` : delta}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-600">
+                    <th className="py-2 pr-3 font-semibold">Competency</th>
+                    <th className="py-2 px-3 font-semibold text-center">Baseline</th>
+                    <th className="py-2 px-3 font-semibold text-center">Target</th>
+                    <th className="py-2 px-3 font-semibold text-center">New Level (Post-IDP)</th>
+                    <th className="py-2 pl-3 font-semibold text-right">Delta</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {focusReassessRows.map((row) => {
+                    const before = row.currentLevel || 1;
+                    const after = reassessLevels[row.competencyCode] ?? before;
+                    const delta = after - before;
+                    return (
+                      <tr key={row.competencyCode}>
+                        <td className="py-2.5 pr-3">
+                          <span className="font-mono font-bold text-slate-900 mr-1.5">
+                            {row.competencyCode}
+                          </span>
+                          <span className="text-slate-700">
+                            {language === 'vi' ? row.nameVi : row.nameEn}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono tabular-nums">L{before}</td>
+                        <td className="py-2.5 px-3 text-center font-mono tabular-nums font-semibold">
+                          L{row.targetLevel}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center justify-center gap-1">
+                            {[1, 2, 3, 4].map((lvl) => (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() =>
+                                  setReassessLevels((p) => ({
+                                    ...p,
+                                    [row.competencyCode]: lvl as ProficiencyLevel,
+                                  }))
+                                }
+                                className={`w-7 h-7 rounded border font-mono text-xs font-bold cursor-pointer ${
+                                  after === lvl
+                                    ? 'bg-amber-500 text-slate-950 border-amber-500'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                L{lvl}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-2.5 pl-3 text-right font-mono font-bold tabular-nums">
+                          <span className={delta > 0 ? 'text-emerald-700' : 'text-slate-500'}>
+                            {delta > 0 ? `+${delta}` : delta}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

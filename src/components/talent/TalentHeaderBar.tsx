@@ -39,13 +39,14 @@ export const TalentHeaderBar: React.FC<TalentHeaderBarProps> = ({
     setSelectedTalentEmployeeId,
     selectedTalentTargetPosition,
     setSelectedTalentTargetPosition,
+    hasPermission,
   } = useApp();
 
   const [coachOpen, setCoachOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
 
-  const isLearner = currentUser.role === 'learner';
-  const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
+  const isLearner = !hasPermission('view_all_learners_data');
+  const isAdminOrLnd = hasPermission('manage_team_idp');
 
   const cohortUsers = users.filter((u) =>
     ['learner', 'financial_controller'].includes(u.role) || u.id === selectedTalentEmployeeId

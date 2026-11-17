@@ -10,22 +10,23 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { auth, fetchScenarioImportErrorsFromFirestore } from '../../lib/firebase';
 import type { ScenarioImportErrorDoc, ScenarioVersionDoc } from '../../types';
 
 export const ScenarioVersionHistoryTab: React.FC = () => {
   const {
     currentUser,
     language,
+    dataSourceMode,
     scenarioVersions,
     scenarioImportJobs,
     simulatorData,
     refreshScenarioGovernance,
     setActiveTab,
+    hasPermission,
   } = useApp();
 
-  const canAccess = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const canAccess = hasPermission('manage_sim_admin');
 
   const [search, setSearch] = useState('');
   const [scenarioFilter, setScenarioFilter] = useState<string>('ALL');
@@ -73,6 +74,15 @@ export const ScenarioVersionHistoryTab: React.FC = () => {
     if (inspectedJobErrors?.jobId === jobId) {
       setInspectedJobErrors(null);
       return;
+    }
+    if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
+      try {
+        const fsErrors = await fetchScenarioImportErrorsFromFirestore(jobId);
+        setInspectedJobErrors({ jobId, errors: fsErrors as ScenarioImportErrorDoc[] });
+        return;
+      } catch {
+        // fallback to API if needed
+      }
     }
     const res = await fetch(`/api/simulator/import-jobs/${encodeURIComponent(jobId)}/errors`, {
       headers: { 'x-user-id': currentUser.id, 'x-user-role': currentUser.role },
@@ -139,7 +149,7 @@ export const ScenarioVersionHistoryTab: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             <span>{language === 'vi' ? 'Làm Mới' : 'Refresh'}</span>
           </button>
-          {['super_admin', 'lnd_manager'].includes(currentUser.role) && (
+          {hasPermission('access_sim_import_center') && (
             <button
               onClick={() => setActiveTab('simImportCenter')}
               className="px-3.5 py-2 rounded-lg bg-[#0A192F] text-white font-semibold hover:bg-slate-800 whitespace-nowrap shrink-0 cursor-pointer"

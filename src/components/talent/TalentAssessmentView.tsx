@@ -32,10 +32,13 @@ export const TalentAssessmentView: React.FC = () => {
     transitionTalentAssessment,
     showToast,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
-  const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
+  const canViewAll = hasPermission('view_all_learners_data');
+  const canAssessTeam = hasPermission('assess_team_members');
+  const isLearner = !canViewAll && !canAssessTeam;
+  const employeeId = !canViewAll ? currentUser.id : selectedTalentEmployeeId;
   const employee = users.find((u) => u.id === employeeId) || currentUser;
 
   const employeeAssessments = useMemo(
@@ -104,7 +107,7 @@ export const TalentAssessmentView: React.FC = () => {
   }, [activeAssessment?.id, employeeId, competencies.length]);
 
   const isLockedApproved = activeAssessment?.status === 'approved';
-  const canApprove = !isLearner && currentUser.id !== employeeId;
+  const canApprove = canAssessTeam && currentUser.id !== employeeId;
 
   const setLevel = (code: string, level: ProficiencyLevel | null) => {
     if (isLockedApproved) return;
@@ -196,10 +199,18 @@ export const TalentAssessmentView: React.FC = () => {
   return (
     <div className="space-y-6">
       <TalentHeaderBar
-        titleEn="Multi-Assessor Competency Assessment"
-        titleVi="Đánh giá Năng lực Đa chiều & Phiên bản Lịch sử"
-        subtitleEn="Conduct self, supervisor, FC, or HR/L&D assessments across 30 hospitality finance competencies with immutable approval history."
-        subtitleVi="Thực hiện tự đánh giá, quản lý trực tiếp, FC và HR/L&D trên 30 năng lực tài chính khách sạn với lịch sử phê duyệt bất biến."
+        titleEn={isLearner ? 'Self-Assessment & Competency Tracking' : 'Multi-Assessor Competency Assessment'}
+        titleVi={isLearner ? 'Tự Đánh Giá Năng Lực & Theo Dõi Phê Duyệt' : 'Đánh giá Năng lực Đa chiều & Phiên bản Lịch sử'}
+        subtitleEn={
+          isLearner
+            ? 'Evaluate your current proficiency across 30 hospitality finance competencies and submit to your Financial Controller for validation.'
+            : 'Conduct self, supervisor, FC, or HR/L&D assessments across 30 hospitality finance competencies with immutable approval history.'
+        }
+        subtitleVi={
+          isLearner
+            ? 'Tự đánh giá mức độ thành thạo trên 30 năng lực tài chính khách sạn và gửi Cấp trên (FC) thẩm định.'
+            : 'Thực hiện tự đánh giá, quản lý trực tiếp, FC và HR/L&D trên 30 năng lực tài chính khách sạn với lịch sử phê duyệt bất biến.'
+        }
         defaultCoachMode="explain_gaps"
       />
 
@@ -319,20 +330,26 @@ export const TalentAssessmentView: React.FC = () => {
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                   {language === 'vi' ? 'Vai trò đánh giá' : 'Assessor Type'}
                 </label>
-                <select
-                  disabled={isLockedApproved || isLearner}
-                  value={assessorType}
-                  onChange={(e) => setAssessorType(e.target.value as AssessorType)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg disabled:bg-slate-100"
-                >
-                  <option value="self">
+                {isLearner ? (
+                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800">
                     {language === 'vi' ? 'Tự đánh giá (Self Assessment)' : 'Self Assessment'}
-                  </option>
-                  <option value="supervisor">Supervisor Review</option>
-                  <option value="financial_controller">Financial Controller Validation</option>
-                  <option value="hr_lnd">HR / L&D Calibration</option>
-                  <option value="final_validated">Final Validated Score</option>
-                </select>
+                  </div>
+                ) : (
+                  <select
+                    disabled={isLockedApproved}
+                    value={assessorType}
+                    onChange={(e) => setAssessorType(e.target.value as AssessorType)}
+                    className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg disabled:bg-slate-100"
+                  >
+                    <option value="self">
+                      {language === 'vi' ? 'Tự đánh giá (Self Assessment)' : 'Self Assessment'}
+                    </option>
+                    <option value="supervisor">Supervisor Review</option>
+                    <option value="financial_controller">Financial Controller Validation</option>
+                    <option value="hr_lnd">HR / L&D Calibration</option>
+                    <option value="final_validated">Final Validated Score</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -347,7 +364,13 @@ export const TalentAssessmentView: React.FC = () => {
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                {language === 'vi' ? 'Nhận xét tổng thể của người đánh giá' : 'Overall Assessor Comments'}
+                {isLearner
+                  ? language === 'vi'
+                    ? 'Tự nhận xét & dẫn chứng của bạn'
+                    : 'Your Self-Assessment Reflection'
+                  : language === 'vi'
+                  ? 'Nhận xét tổng thể của người đánh giá'
+                  : 'Overall Assessor Comments'}
               </label>
               <textarea
                 rows={2}
@@ -356,8 +379,8 @@ export const TalentAssessmentView: React.FC = () => {
                 onChange={(e) => setOverallComments(e.target.value)}
                 placeholder={
                   language === 'vi'
-                    ? 'Tóm tắt điểm mạnh, rủi ro kiểm soát và định hướng phát triển...'
-                    : 'Summarize key strengths, control gaps, and promotion readiness context...'
+                    ? 'Tóm tắt điểm mạnh, kết quả công việc thực tế và mục tiêu phát triển...'
+                    : 'Summarize key strengths, practical achievements, and development context...'
                 }
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg disabled:bg-slate-100"
               />

@@ -88,11 +88,10 @@ export const SimulationWorkspaceTab: React.FC = () => {
     evaluateSimulationSession,
     setActiveTab,
     showToast,
+    hasPermission,
   } = useApp();
 
-  const isSupervisorOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const isSupervisorOrAdmin = hasPermission('preview_draft_scenarios');
 
   const visibleScenarios = useMemo(
     () => simulatorData.simulationScenarios.filter((s) => isSupervisorOrAdmin || s.status === 'Published'),

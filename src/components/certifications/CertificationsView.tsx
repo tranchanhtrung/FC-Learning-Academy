@@ -28,22 +28,21 @@ export const CertificationsView: React.FC = () => {
     language,
     t,
     showToast,
+    hasPermission,
   } = useApp();
 
-  const isAuthorizedIssuer =
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'lnd_manager' ||
-    currentUser.role === 'financial_controller';
+  const isAuthorizedIssuer = hasPermission('issue_certificates');
+  const canSelectCandidate = isAuthorizedIssuer || hasPermission('view_all_learners_data');
 
   const [selectedUserId, setSelectedUserId] = useState<string>(() =>
-    currentUser.role === 'learner' ? currentUser.id : 'user_learner1'
+    !canSelectCandidate ? currentUser.id : 'user_learner1'
   );
 
   React.useEffect(() => {
-    if (currentUser.role === 'learner') {
+    if (!canSelectCandidate) {
       setSelectedUserId(currentUser.id);
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, canSelectCandidate]);
 
   const targetUser = users.find((u) => u.id === selectedUserId) || currentUser;
 
@@ -131,7 +130,7 @@ export const CertificationsView: React.FC = () => {
           </p>
         </div>
 
-        {isAuthorizedIssuer ? (
+        {canSelectCandidate ? (
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
             <span className="font-bold text-slate-700 shrink-0">
               {language === 'vi' ? 'Hồ sơ cấp chứng chỉ:' : 'Candidate:'}
@@ -263,7 +262,7 @@ export const CertificationsView: React.FC = () => {
             completedCourseCount === lvl.requiredCourses.length &&
             approvedOjtCount === lvl.requiredOjt.length;
           const isUnlocked = targetUser.currentLevel >= lvl.level || allRequirementsMet;
-          const canIssueNow = !userHasCert && (isUnlocked || isAuthorizedIssuer);
+          const canIssueNow = !userHasCert && isAuthorizedIssuer;
 
           const handleIssue = async () => {
             setIssuingLevel(lvl.level);
@@ -360,6 +359,15 @@ export const CertificationsView: React.FC = () => {
                         : language === 'vi' ? `Cấp chứng chỉ Level ${lvl.level}` : `Issue Level ${lvl.level}`}
                     </span>
                   </button>
+                ) : isUnlocked ? (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-semibold px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>
+                      {language === 'vi'
+                        ? 'Đủ điều kiện · Chờ Hội đồng FC/L&D cấp chứng chỉ'
+                        : 'Eligible · Pending Official Issuance'}
+                    </span>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-xs text-slate-400 font-semibold px-3 py-2 bg-slate-100 rounded-xl">
                     <Lock className="w-3.5 h-3.5" />

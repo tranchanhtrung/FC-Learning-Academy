@@ -58,13 +58,12 @@ export const TalentReadinessView: React.FC = () => {
     submitCareerReadinessReview,
     showToast,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
+  const isLearner = !hasPermission('view_all_learners_data');
   const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
-  const canSignOff = ['financial_controller', 'lnd_manager', 'super_admin', 'general_manager'].includes(
-    currentUser.role
-  );
+  const canSignOff = hasPermission('manage_team_idp') || hasPermission('assess_team_members');
 
   const activeIdp = useMemo(
     () => talentIdps.find((i) => i.employeeId === employeeId) || null,
@@ -107,6 +106,30 @@ export const TalentReadinessView: React.FC = () => {
 
   const [selectedReport, setSelectedReport] = useState<TalentReportType>('competency_gap_summary');
   const [exporting, setExporting] = useState(false);
+
+  const visibleReports = useMemo(
+    () =>
+      isLearner
+        ? REPORT_CATALOG.filter(
+            (r) =>
+              r.id !== 'department_gap_heatmap' && r.id !== 'career_readiness_pipeline'
+          )
+        : REPORT_CATALOG,
+    [isLearner]
+  );
+
+  React.useEffect(() => {
+    if (!visibleReports.some((r) => r.id === selectedReport)) {
+      setSelectedReport(visibleReports[0]?.id || 'competency_gap_summary');
+    }
+  }, [visibleReports, selectedReport]);
+
+  const empReviews = useMemo(
+    () => careerReadinessReviews.filter((r) => r.employeeId === employeeId),
+    [careerReadinessReviews, employeeId]
+  );
+  const canSubmitSignOffPanel = canSignOff && currentUser.id !== employeeId;
+  const showRightSignOffCard = canSubmitSignOffPanel || empReviews.length > 0;
 
   const handleSubmitSignOff = async () => {
     setSubmittingReview(true);
@@ -169,11 +192,6 @@ export const TalentReadinessView: React.FC = () => {
       setExporting(false);
     }
   };
-
-  const empReviews = useMemo(
-    () => careerReadinessReviews.filter((r) => r.employeeId === employeeId),
-    [careerReadinessReviews, employeeId]
-  );
 
   // Live preview rows for selected report
   const previewRows = useMemo(() => {
@@ -283,16 +301,36 @@ export const TalentReadinessView: React.FC = () => {
   return (
     <div className="space-y-6">
       <TalentHeaderBar
-        titleEn="Career Readiness Evaluation & Management Reports"
-        titleVi="Đánh giá Sẵn sàng Thăng tiến & Trung tâm Báo cáo (8 Báo cáo Excel/PDF)"
-        subtitleEn="Automated promotion readiness gate with mandatory critical competency blockers, executive sign-off, and multi-sheet Excel exports."
-        subtitleVi="Cổng kiểm soát năng lực cốt lõi trước khi xét bổ nhiệm, ký duyệt đa cấp và xuất 8 báo cáo quản trị Excel/PDF."
+        titleEn={
+          isLearner
+            ? 'Career Readiness & Competency Reports'
+            : 'Career Readiness Evaluation & Management Reports'
+        }
+        titleVi={
+          isLearner
+            ? `Đánh giá Sẵn sàng & Báo cáo Cá nhân (${visibleReports.length} Báo cáo Excel/PDF)`
+            : `Đánh giá Sẵn sàng Thăng tiến & Trung tâm Báo cáo (${visibleReports.length} Báo cáo Excel/PDF)`
+        }
+        subtitleEn={
+          isLearner
+            ? 'Track your promotion readiness verdict, critical competency gates, and export personal competency & IDP reports.'
+            : 'Automated promotion readiness gate with mandatory critical competency blockers, executive sign-off, and multi-sheet Excel exports.'
+        }
+        subtitleVi={
+          isLearner
+            ? 'Theo dõi mức độ sẵn sàng thăng tiến, cổng kiểm soát năng lực cốt lõi và xuất báo cáo năng lực/IDP cá nhân.'
+            : 'Cổng kiểm soát năng lực cốt lõi trước khi xét bổ nhiệm, ký duyệt đa cấp và xuất 8 báo cáo quản trị Excel/PDF.'
+        }
         defaultCoachMode="career_report"
       />
 
       {/* Readiness Verdict & Critical Gate */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className={`lg:col-span-5 rounded-xl border p-6 space-y-4 ${statusTone}`}>
+        <div
+          className={`${
+            showRightSignOffCard ? 'lg:col-span-5' : 'lg:col-span-12'
+          } rounded-xl border p-6 space-y-4 ${statusTone}`}
+        >
           <div className="flex items-center justify-between text-xs opacity-80">
             <span>Career Readiness Verdict</span>
             <span className="font-mono">{selectedTalentTargetPosition}</span>
@@ -341,89 +379,89 @@ export const TalentReadinessView: React.FC = () => {
           )}
         </div>
 
-        {/* Sign-off & History */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900">
-            {language === 'vi'
-              ? 'Xác nhận Sẵn sàng Bổ nhiệm (Promotion Panel Sign-Off)'
-              : 'Formal Promotion Panel Readiness Sign-Off'}
-          </h3>
+        {/* Sign-off & History (Only shown if reviewer can sign off OR historical panel reviews exist) */}
+        {showRightSignOffCard && (
+          <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900">
+              {canSubmitSignOffPanel
+                ? language === 'vi'
+                  ? 'Xác nhận Sẵn sàng Bổ nhiệm (Promotion Panel Sign-Off)'
+                  : 'Formal Promotion Panel Readiness Sign-Off'
+                : language === 'vi'
+                ? 'Lịch sử Đánh giá từ Hội đồng Thăng tiến'
+                : 'Promotion Panel Review History'}
+            </h3>
 
-          {canSignOff && currentUser.id !== employeeId ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Proposed Verdict</label>
-                  <select
-                    value={requestedStatus}
-                    onChange={(e) => setRequestedStatus(e.target.value as CareerReadinessStatus)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  >
-                    <option value="Not Ready">Not Ready</option>
-                    <option value="Developing">Developing</option>
-                    <option value="Nearly Ready">Nearly Ready</option>
-                    <option value="Ready for Review">Ready for Review</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Panel Reviewer</label>
-                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium">
-                    {currentUser.name} ({currentUser.role})
+            {canSubmitSignOffPanel && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Proposed Verdict</label>
+                    <select
+                      value={requestedStatus}
+                      onChange={(e) => setRequestedStatus(e.target.value as CareerReadinessStatus)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="Not Ready">Not Ready</option>
+                      <option value="Developing">Developing</option>
+                      <option value="Nearly Ready">Nearly Ready</option>
+                      <option value="Ready for Review">Ready for Review</option>
+                    </select>
                   </div>
-                </div>
-              </div>
-              <textarea
-                rows={2}
-                value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
-                placeholder={
-                  language === 'vi'
-                    ? 'Nhận xét của FC / L&D / General Manager về mức độ sẵn sàng thăng tiến...'
-                    : 'Panel notes, executive risk commentary, or promotion conditions...'
-                }
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
-              />
-              <button
-                onClick={handleSubmitSignOff}
-                disabled={submittingReview}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>{submittingReview ? 'Saving...' : 'Record Readiness Sign-Off'}</span>
-              </button>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-500">
-              {language === 'vi'
-                ? 'Chỉ Financial Controller, L&D Manager, General Manager hoặc Super Admin mới có quyền ký duyệt Readiness.'
-                : 'Readiness panel sign-off is restricted to Financial Controllers, L&D Managers, General Managers, and Admins.'}
-            </p>
-          )}
-
-          {empReviews.length > 0 && (
-            <div className="pt-3 border-t border-slate-200 space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Historical Readiness Reviews
-              </p>
-              <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
-                {empReviews.map((rev) => (
-                  <div key={rev.id} className="py-2 text-xs">
-                    <div className="flex justify-between font-semibold text-slate-900">
-                      <span>
-                        {rev.targetPosition} · {rev.finalStatus}
-                      </span>
-                      <span className="font-mono text-slate-500">{rev.reviewedAt.split('T')[0]}</span>
+                  <div>
+                    <label className="block font-semibold text-slate-600 mb-1">Panel Reviewer</label>
+                    <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 font-medium">
+                      {currentUser.name} ({currentUser.role})
                     </div>
-                    <p className="text-slate-600">{rev.reviewNotes}</p>
                   </div>
-                ))}
+                </div>
+                <textarea
+                  rows={2}
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder={
+                    language === 'vi'
+                      ? 'Nhận xét của FC / L&D / General Manager về mức độ sẵn sàng thăng tiến...'
+                      : 'Panel notes, executive risk commentary, or promotion conditions...'
+                  }
+                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg"
+                />
+                <button
+                  onClick={handleSubmitSignOff}
+                  disabled={submittingReview}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{submittingReview ? 'Saving...' : 'Record Readiness Sign-Off'}</span>
+                </button>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+
+            {empReviews.length > 0 && (
+              <div className={`${canSubmitSignOffPanel ? 'pt-3 border-t border-slate-200' : ''} space-y-2`}>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Historical Readiness Reviews
+                </p>
+                <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                  {empReviews.map((rev) => (
+                    <div key={rev.id} className="py-2 text-xs">
+                      <div className="flex justify-between font-semibold text-slate-900">
+                        <span>
+                          {rev.targetPosition} · {rev.finalStatus}
+                        </span>
+                        <span className="font-mono text-slate-500">{rev.reviewedAt.split('T')[0]}</span>
+                      </div>
+                      <p className="text-slate-600">{rev.reviewNotes}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 8-Report Management Export Center */}
+      {/* Report Management Export Center */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -431,8 +469,8 @@ export const TalentReadinessView: React.FC = () => {
             <div>
               <h2 className="text-sm font-bold text-slate-900">
                 {language === 'vi'
-                  ? 'Trung tâm 8 Báo cáo Quản trị Năng lực & IDP'
-                  : 'Talent & IDP Management Reports Center (8 Reports)'}
+                  ? `Trung tâm ${visibleReports.length} Báo cáo Năng lực & IDP`
+                  : `Talent & IDP Reports Center (${visibleReports.length} Reports)`}
               </h2>
               <p className="text-xs text-slate-500">
                 {language === 'vi'
@@ -462,9 +500,9 @@ export const TalentReadinessView: React.FC = () => {
         </div>
 
         <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* 8 Report Selector Buttons */}
+          {/* Report Selector Buttons */}
           <div className="lg:col-span-4 space-y-1.5">
-            {REPORT_CATALOG.map((rep) => (
+            {visibleReports.map((rep) => (
               <button
                 key={rep.id}
                 onClick={() => setSelectedReport(rep.id)}
@@ -484,8 +522,8 @@ export const TalentReadinessView: React.FC = () => {
             <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
               <span className="font-bold text-slate-700">
                 {language === 'vi'
-                  ? REPORT_CATALOG.find((r) => r.id === selectedReport)?.titleVi
-                  : REPORT_CATALOG.find((r) => r.id === selectedReport)?.titleEn}
+                  ? visibleReports.find((r) => r.id === selectedReport)?.titleVi
+                  : visibleReports.find((r) => r.id === selectedReport)?.titleEn}
               </span>
               <span className="font-mono text-slate-500 tabular-nums">{previewRows.length} preview rows</span>
             </div>

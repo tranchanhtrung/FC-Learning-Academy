@@ -50,26 +50,26 @@ export const AssessmentView: React.FC = () => {
     language,
     t,
     showToast,
+    hasPermission,
   } = useApp();
 
-  const isSupervisor =
-    currentUser.role === 'financial_controller' ||
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'lnd_manager';
+  const canViewAllLearners = hasPermission('view_all_learners_data');
+  const isSupervisor = hasPermission('assess_team_members');
+  const canInspectTeam = canViewAllLearners || isSupervisor;
 
   // Target learner selection
   const [selectedLearnerId, setSelectedLearnerId] = useState<string>(() => {
-    if (currentUser.role === 'learner') return currentUser.id;
+    if (!canInspectTeam) return currentUser.id;
     return 'user_learner1'; // Default: Nguyễn Minh Thư
   });
 
-  // Sync selectedLearnerId if user switches persona to learner
+  // Sync selectedLearnerId if user loses cohort visibility
   React.useEffect(() => {
-    if (currentUser.role === 'learner') {
+    if (!canInspectTeam) {
       setSelectedLearnerId(currentUser.id);
       setSelectedCycleId('');
     }
-  }, [currentUser.id, currentUser.role]);
+  }, [currentUser.id, canInspectTeam]);
 
   const activeLearner = users.find((u) => u.id === selectedLearnerId) || currentUser;
 
@@ -262,7 +262,7 @@ export const AssessmentView: React.FC = () => {
       id: currentAssessment?.id || `asmt_${Date.now()}`,
       learnerId: selectedLearnerId,
       supervisorId:
-        currentUser.role === 'learner'
+        !isSupervisor
           ? currentAssessment?.supervisorId || activeLearner.supervisorId || 'user_fc1'
           : currentUser.id,
       cycle: currentAssessment?.cycle || '2026 Q2 Competency Evaluation',
@@ -299,7 +299,7 @@ export const AssessmentView: React.FC = () => {
     await generateIDPFromGap(
       selectedLearnerId,
       'Assistant Financial Controller (AFC)',
-      currentUser.role === 'learner' ? 'David Tran (Cluster FC)' : currentUser.name,
+      !isSupervisor ? 'David Tran (Cluster FC)' : currentUser.name,
       currentAssessment?.id
     );
     setActiveTabSub('idp');
@@ -439,8 +439,8 @@ export const AssessmentView: React.FC = () => {
 
         {/* Learner & Cycle Selectors */}
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-          {/* Learner selector (available to Supervisor or Executive) */}
-          {isSupervisor ? (
+          {/* Learner selector (available when user can view cohort or assess team members) */}
+          {canInspectTeam ? (
             <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 grow xl:grow-0">
               <span className="text-xs font-bold text-slate-600 pl-1 shrink-0">
                 {language === 'vi' ? 'Nhân sự:' : 'Learner:'}
@@ -698,13 +698,15 @@ export const AssessmentView: React.FC = () => {
                 </div>
 
                 {/* 1-Click IDP Trigger */}
-                <button
-                  onClick={handleGenerateIDP}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Sparkles className="w-4 h-4 text-slate-950" />
-                  <span>{t.assessment.generateIDP}</span>
-                </button>
+                {(!activeIDP || hasPermission('manage_team_idp')) && (
+                  <button
+                    onClick={handleGenerateIDP}
+                    className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold rounded-xl text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-slate-950" />
+                    <span>{t.assessment.generateIDP}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -739,29 +741,37 @@ export const AssessmentView: React.FC = () => {
               </div>
 
               {/* Supervisor Feedback */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-700 block">
-                  {language === 'vi'
-                    ? 'Ý kiến & định hướng phát triển của Cấp Trên (FC):'
-                    : 'Supervisor (FC) Assessment & Coaching Guidance:'}
-                </label>
-                <textarea
-                  value={supervisorComments}
-                  onChange={(e) => setSupervisorComments(e.target.value)}
-                  disabled={!isSupervisor}
-                  placeholder={
-                    isSupervisor
-                      ? language === 'vi'
+              {isSupervisor ? (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-700 block">
+                    {language === 'vi'
+                      ? 'Ý kiến & định hướng phát triển của Cấp Trên (FC):'
+                      : 'Supervisor (FC) Assessment & Coaching Guidance:'}
+                  </label>
+                  <textarea
+                    value={supervisorComments}
+                    onChange={(e) => setSupervisorComments(e.target.value)}
+                    placeholder={
+                      language === 'vi'
                         ? 'Ghi nhận điểm mạnh chuyên môn, khuyến nghị các hoạt động OJT cụ thể, lộ trình chuẩn bị cho vị trí AFC/FC...'
                         : 'Document functional strengths, recommended OJT assignments, and AFC/FC readiness milestones...'
-                      : language === 'vi'
-                      ? 'Chỉ Giám đốc Tài chính / Quản lý thẩm định mới có quyền chỉnh sửa mục này'
-                      : 'Only Financial Controllers / Assessors may edit this section'
-                  }
-                  rows={3}
-                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800 disabled:opacity-60"
-                />
-              </div>
+                    }
+                    rows={3}
+                    className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-slate-800"
+                  />
+                </div>
+              ) : supervisorComments.trim() ? (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-700 block">
+                    {language === 'vi'
+                      ? 'Ý kiến & định hướng từ Cấp Trên (FC):'
+                      : 'Supervisor (FC) Coaching Guidance:'}
+                  </span>
+                  <div className="text-xs p-3 rounded-xl border border-amber-200 bg-amber-50/70 text-slate-800 leading-relaxed">
+                    {supervisorComments}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -790,7 +800,7 @@ export const AssessmentView: React.FC = () => {
                 )}
 
                 {/* Learner submits to supervisor */}
-                {currentUser.role === 'learner' && !isApprovedLockedForLearner && (
+                {(!isSupervisor || currentUser.id === selectedLearnerId) && !isApprovedLockedForLearner && (
                   <button
                     onClick={() => handleSaveAssessment('pending_supervisor')}
                     className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 cursor-pointer"
@@ -901,16 +911,23 @@ export const AssessmentView: React.FC = () => {
                     </div>
 
                     {/* Level Selectors (Self vs Supervisor) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                    <div className={`grid grid-cols-1 ${isSupervisor ? 'sm:grid-cols-2' : ''} gap-3 pt-2 border-t border-slate-200/60`}>
                       {/* Self Rating */}
                       <div className="p-2.5 bg-white rounded-lg border border-slate-200">
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="text-[10px] font-bold text-slate-600 uppercase">
                             {language === 'vi' ? '1. Học viên tự đánh giá:' : '1. Learner Self-Assessment:'}
                           </span>
-                          <span className="text-[11px] font-bold text-blue-700 font-mono">
-                            Level {scoreObj.selfLevel}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {!isSupervisor && currentAssessment?.status === 'approved' && (
+                              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-mono text-[10px] font-bold">
+                                {language === 'vi' ? 'FC Thẩm định:' : 'FC Verified:'} L{scoreObj.supervisorLevel}
+                              </span>
+                            )}
+                            <span className="text-[11px] font-bold text-blue-700 font-mono">
+                              Level {scoreObj.selfLevel}
+                            </span>
+                          </div>
                         </div>
                         <div className="grid grid-cols-4 gap-1">
                           {[1, 2, 3, 4].map((lvl) => (
@@ -933,40 +950,39 @@ export const AssessmentView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Supervisor Rating */}
-                      <div className="p-2.5 bg-white rounded-lg border border-slate-200">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-bold text-slate-600 uppercase">
-                            {language === 'vi' ? '2. Cấp trên (FC) thẩm định:' : '2. Supervisor (FC) Rating:'}
-                          </span>
-                          <span className="text-[11px] font-bold text-amber-700 font-mono">
-                            Level {scoreObj.supervisorLevel}
-                          </span>
+                      {/* Supervisor Rating (Assessors Only) */}
+                      {isSupervisor && (
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-bold text-slate-600 uppercase">
+                              {language === 'vi' ? '2. Cấp trên (FC) thẩm định:' : '2. Supervisor (FC) Rating:'}
+                            </span>
+                            <span className="text-[11px] font-bold text-amber-700 font-mono">
+                              Level {scoreObj.supervisorLevel}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[1, 2, 3, 4].map((lvl) => (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() => handleScoreChange(comp.code, 'supervisorLevel', lvl as ProficiencyLevel)}
+                                className={`py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                                  scoreObj.supervisorLevel === lvl
+                                    ? 'bg-[#0A192F] text-amber-400 ring-2 ring-amber-400/50 shadow-xs'
+                                    : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                L{lvl}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        <div className="grid grid-cols-4 gap-1">
-                          {[1, 2, 3, 4].map((lvl) => (
-                            <button
-                              key={lvl}
-                              type="button"
-                              disabled={!isSupervisor}
-                              onClick={() => handleScoreChange(comp.code, 'supervisorLevel', lvl as ProficiencyLevel)}
-                              className={`py-1 rounded-md text-xs font-bold transition-all ${
-                                !isSupervisor ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-                              } ${
-                                scoreObj.supervisorLevel === lvl
-                                  ? 'bg-[#0A192F] text-amber-400 ring-2 ring-amber-400/50 shadow-xs'
-                                  : 'bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              L{lvl}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     {/* Evidence & Coaching Notes Input */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div className={`grid grid-cols-1 ${isSupervisor ? 'sm:grid-cols-2' : ''} gap-2 text-[11px]`}>
                       <div>
                         <input
                           type="text"
@@ -981,30 +997,36 @@ export const AssessmentView: React.FC = () => {
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
                         />
                       </div>
-                      <div>
-                        <input
-                          type="text"
-                          value={
-                            language === 'vi'
-                              ? scoreObj.supervisorNotes || ''
-                              : scoreObj.supervisorNotesEn ?? scoreObj.supervisorNotes ?? ''
-                          }
-                          disabled={!isSupervisor}
-                          onChange={(e) =>
-                            handleNoteChange(
-                              comp.code,
-                              language === 'vi' ? 'supervisorNotes' : 'supervisorNotesEn',
-                              e.target.value
-                            )
-                          }
-                          placeholder={
-                            language === 'vi'
-                              ? 'Góp ý/Chỉ đạo của FC (ví dụ: cần tự lập báo cáo P&L Critique)...'
-                              : 'FC coaching notes (e.g., independently author monthly P&L critique)...'
-                          }
-                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none disabled:bg-slate-100"
-                        />
-                      </div>
+                      {isSupervisor ? (
+                        <div>
+                          <input
+                            type="text"
+                            value={
+                              language === 'vi'
+                                ? scoreObj.supervisorNotes || ''
+                                : scoreObj.supervisorNotesEn ?? scoreObj.supervisorNotes ?? ''
+                            }
+                            onChange={(e) =>
+                              handleNoteChange(
+                                comp.code,
+                                language === 'vi' ? 'supervisorNotes' : 'supervisorNotesEn',
+                                e.target.value
+                              )
+                            }
+                            placeholder={
+                              language === 'vi'
+                                ? 'Góp ý/Chỉ đạo của FC (ví dụ: cần tự lập báo cáo P&L Critique)...'
+                                : 'FC coaching notes (e.g., independently author monthly P&L critique)...'
+                            }
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-400 text-xs focus:outline-none"
+                          />
+                        </div>
+                      ) : (language === 'vi' ? scoreObj.supervisorNotes : scoreObj.supervisorNotesEn ?? scoreObj.supervisorNotes) ? (
+                        <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                          <span className="font-bold">{language === 'vi' ? 'Góp ý FC:' : 'FC Note:'}</span>{' '}
+                          {language === 'vi' ? scoreObj.supervisorNotes : scoreObj.supervisorNotesEn ?? scoreObj.supervisorNotes}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -1042,13 +1064,15 @@ export const AssessmentView: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleGenerateIDP}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all shadow-xs cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{language === 'vi' ? 'Cập Nhật Theo Gap Mới' : 'Regenerate from Gap'}</span>
-              </button>
+              {(!activeIDP || hasPermission('manage_team_idp')) && (
+                <button
+                  onClick={handleGenerateIDP}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all shadow-xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{language === 'vi' ? 'Cập Nhật Theo Gap Mới' : 'Regenerate from Gap'}</span>
+                </button>
+              )}
 
               <button
                 onClick={() => window.print()}

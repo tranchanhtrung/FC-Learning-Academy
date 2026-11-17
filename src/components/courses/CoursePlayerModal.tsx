@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Course, CourseModule } from '../../types';
+import { Course, CourseModule, LessonMaterialDoc } from '../../types';
 import { getCourseSyllabus, generateCourseSyllabusMarkdown } from '../../data/courseSyllabi';
+import { downloadLessonMaterial, canPreviewInline, getMaterialBlobUrl } from '../../lib/lessonMaterials';
+import { LessonMaterialsManager } from './LessonMaterialsManager';
 import {
   X,
   Play,
@@ -17,6 +19,10 @@ import {
   FileCheck,
   FileText,
   Target,
+  Upload,
+  Eye,
+  ExternalLink,
+  Paperclip,
 } from 'lucide-react';
 
 interface CoursePlayerModalProps {
@@ -30,20 +36,73 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
   onClose,
   onStartQuiz,
 }) => {
-  const { enrollments, updateCourseProgress, currentUser, language, t, setActiveTab, domains } = useApp();
+  const {
+    enrollments,
+    updateCourseProgress,
+    currentUser,
+    language,
+    t,
+    setActiveTab,
+    domains,
+    lessonMaterials,
+    hasPermission,
+    canAccessRoute,
+  } = useApp();
   const [activeTabSub, setActiveTabSub] = useState<'syllabus' | 'modules' | 'materials' | 'case_study' | 'assignment'>('modules');
   const [activeModuleIndex, setActiveModuleIndex] = useState<number>(0);
   const [thumbError, setThumbError] = useState<boolean>(false);
+  const [showLessonUploadDrawer, setShowLessonUploadDrawer] = useState<boolean>(false);
+  const [previewDoc, setPreviewDoc] = useState<LessonMaterialDoc | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewText, setPreviewText] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveModuleIndex(0);
     setActiveTabSub('modules');
     setThumbError(false);
+    setShowLessonUploadDrawer(false);
+    setPreviewDoc(null);
   }, [course?.id]);
+
+  useEffect(() => {
+    if (!previewDoc) {
+      setPreviewUrl(null);
+      setPreviewText(null);
+      return;
+    }
+    let revoked: string | null = null;
+    const url = getMaterialBlobUrl(previewDoc);
+    setPreviewUrl(url);
+    if (url && previewDoc.storageMode === 'firestore_inline') revoked = url;
+
+    const mime = (previewDoc.mimeType || '').toLowerCase();
+    const ext = (previewDoc.fileName || '').split('.').pop()?.toLowerCase() || '';
+    if (
+      previewDoc.storageMode === 'firestore_inline' &&
+      previewDoc.inlineBase64 &&
+      (mime.startsWith('text/') || ['txt', 'md', 'csv'].includes(ext))
+    ) {
+      try {
+        const bin = atob(previewDoc.inlineBase64);
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        setPreviewText(new TextDecoder('utf-8').decode(bytes));
+      } catch {
+        setPreviewText(null);
+      }
+    } else {
+      setPreviewText(null);
+    }
+
+    return () => {
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [previewDoc]);
 
   if (!course) return null;
 
   const isVi = language === 'vi';
+  const canManageLessonMaterials = hasPermission('manage_lesson_materials');
+  const courseLessonMaterials = lessonMaterials.filter((m) => m.courseId === course.id);
   const syllabus = getCourseSyllabus(course);
   const domainObj = domains.find((d) => d.id === course.domainId);
   const matchingSession =
@@ -68,6 +127,9 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
 
   const activeModule: CourseModule = course.modules[activeModuleIndex] || course.modules[0];
   const isModuleCompleted = enrollment?.completedModules.includes(activeModule?.id);
+  const activeLessonMaterials = courseLessonMaterials.filter(
+    (m) => m.lessonId === activeModule?.id
+  );
 
   const handleMarkCompleted = () => {
     if (activeModule) {
@@ -168,11 +230,9 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
             <span>{language === 'vi' ? 'Tài Liệu & File Excel Mẫu' : 'Working Materials & Excel'}</span>
-            {course.materials && (
-              <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px]">
-                {course.materials.length}
-              </span>
-            )}
+            <span className="font-mono text-[10px] text-emerald-800 bg-emerald-100 px-1.5 rounded-full tabular-nums">
+              {(course.materials?.length || 0) + courseLessonMaterials.length}
+            </span>
           </button>
 
           <button
@@ -322,6 +382,109 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                     </div>
                   )}
 
+                  {/* Per-Lesson Uploaded Materials (Firestore) */}
+                  <div className="pt-3 border-t border-slate-100 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Paperclip className="w-3.5 h-3.5 text-blue-700" />
+                        <span className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider">
+                          {isVi
+                            ? `Học Liệu Riêng Của Bài ${activeModuleIndex + 1} (${activeLessonMaterials.length})`
+                            : `Lesson ${activeModuleIndex + 1} Uploaded Materials (${activeLessonMaterials.length})`}
+                        </span>
+                      </div>
+                      {canManageLessonMaterials && activeModule && (
+                        <button
+                          type="button"
+                          onClick={() => setShowLessonUploadDrawer((prev) => !prev)}
+                          className="px-3 py-1.5 rounded-xl bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>
+                            {showLessonUploadDrawer
+                              ? isVi
+                                ? 'Thu gọn trình Upload'
+                                : 'Hide Upload Drawer'
+                              : isVi
+                              ? '+ Upload Học Liệu Cho Bài Này'
+                              : '+ Upload Material to This Lesson'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {showLessonUploadDrawer && activeModule ? (
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <LessonMaterialsManager
+                          initialCourseId={course.id}
+                          initialLessonId={activeModule.id}
+                          compact
+                          lockSelection
+                        />
+                      </div>
+                    ) : activeLessonMaterials.length === 0 ? (
+                      <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
+                        {isVi
+                          ? 'Bài học này chưa có học liệu đính kèm riêng trên Firestore.'
+                          : 'No custom per-lesson materials uploaded to Firestore for this lesson yet.'}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {activeLessonMaterials.map((mat) => (
+                          <div
+                            key={mat.id}
+                            className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                          >
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="font-bold text-xs text-slate-900 truncate">
+                                {isVi ? mat.titleVi : mat.titleEn}
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-500 flex flex-wrap items-center gap-x-2">
+                                <span className="uppercase font-bold text-blue-700">{mat.materialType}</span>
+                                <span>&middot;</span>
+                                <span>{mat.fileSizeLabel}</span>
+                                <span>&middot;</span>
+                                <span>{mat.storageMode}</span>
+                                {mat.isRequired && (
+                                  <>
+                                    <span>&middot;</span>
+                                    <span className="text-rose-700 font-bold">
+                                      {isVi ? 'Bắt buộc' : 'Required'}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {(canPreviewInline(mat) || Boolean(mat.downloadUrl)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc(mat)}
+                                  className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="w-3 h-3 text-blue-600" />
+                                  <span>{isVi ? 'Xem' : 'Preview'}</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => downloadLessonMaterial(mat)}
+                                className="px-3 py-1 rounded-lg bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                {mat.storageMode === 'external_link' ? (
+                                  <ExternalLink className="w-3 h-3" />
+                                ) : (
+                                  <Download className="w-3 h-3" />
+                                )}
+                                <span>{isVi ? 'Tải' : 'Get'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Learning Objectives Reminder */}
                   <div className="space-y-2">
                     <span className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider block">
@@ -354,6 +517,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   {course.modules.map((mod, idx) => {
                     const isSelected = activeModuleIndex === idx;
                     const isDone = enrollment?.completedModules.includes(mod.id);
+                    const modMatCount = courseLessonMaterials.filter((m) => m.lessonId === mod.id).length;
 
                     return (
                       <button
@@ -361,7 +525,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                         onClick={() => setActiveModuleIndex(idx)}
                         className={`w-full p-4 text-left transition-colors flex items-start gap-3 cursor-pointer ${
                           isSelected
-                            ? 'bg-amber-50/70 border-l-4 border-amber-500'
+                            ? 'bg-amber-50/80 ring-1 ring-inset ring-amber-300'
                             : 'hover:bg-slate-50'
                         }`}
                       >
@@ -378,8 +542,9 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                           <h5 className={`font-bold text-xs leading-snug ${isSelected ? 'text-slate-950 font-extrabold' : 'text-slate-700'}`}>
                             {language === 'vi' ? mod.titleVi : mod.titleEn}
                           </h5>
-                          <span className="text-[10px] text-slate-400 mt-1 block font-mono">
+                          <span className="text-[10px] text-slate-500 mt-1 block font-mono tabular-nums">
                             {mod.durationMinutes} {isVi ? 'phút' : 'min'} &bull; {mod.type}
+                            {modMatCount > 0 ? ` · ${modMatCount} ${isVi ? 'học liệu' : 'files'}` : ''}
                           </span>
                         </div>
                       </button>
@@ -517,53 +682,84 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
 
           {/* TAB 2: DOWNLOADABLE MATERIALS & EXCEL WORKING MODELS */}
           {activeTabSub === 'materials' && (
-            <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6">
-              <div>
-                <h3 className="text-lg font-extrabold text-slate-900">
-                  {isVi ? 'Tài Liệu Học Tập & File Excel Mẫu Thực Hành' : 'Learning Materials & Excel Working Models'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  {isVi
-                    ? 'Toàn bộ các biểu mẫu chuẩn USALI 11th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn để tải về máy và ứng dụng ngay tại khách sạn.'
-                    : 'USALI 11th & 12th Edition templates, month-end closing checklists, Flow-Through models, and CAPEX underwriting workbooks ready for immediate hotel deployment.'}
-                </p>
+            <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-8">
+              {/* Firestore Per-Lesson Materials Section */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="text-lg font-extrabold text-slate-900">
+                      {isVi
+                        ? `Học Liệu Theo Từng Bài Học (${courseLessonMaterials.length})`
+                        : `Per-Lesson Uploaded Materials (${courseLessonMaterials.length})`}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {hasPermission('manage_lesson_materials')
+                        ? isVi
+                          ? 'Tài liệu PDF, Excel, Slide và đường dẫn được upload riêng cho từng bài học trong khóa và lưu trên Firestore (/lessonMaterials).'
+                          : 'PDF, Excel, Slide, and resource links attached directly to specific lessons in Firestore (/lessonMaterials).'
+                        : isVi
+                        ? 'Tài liệu PDF, Excel, Slide và đường dẫn học tập đính kèm riêng cho từng bài học.'
+                        : 'PDF, Excel, Slide, and reference links attached to each lesson in this course.'}
+                    </p>
+                  </div>
+                </div>
+
+                <LessonMaterialsManager
+                  initialCourseId={course.id}
+                  initialLessonId={activeModule?.id}
+                  compact
+                />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {(course.materials || []).map((mat) => {
-                  const matTitle = isVi ? mat.title : mat.titleEn || mat.title;
-                  return (
-                    <div
-                      key={mat.id}
-                      className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between space-y-4 hover:border-amber-400 transition-all"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 font-mono">
-                            {mat.type.toUpperCase()}
-                          </span>
-                          <span className="text-xs text-slate-400 font-mono">{mat.fileSize}</span>
-                        </div>
-                        <h4 className="font-bold text-sm text-slate-900 leading-snug">
-                          {matTitle}
-                        </h4>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          {isVi
-                            ? mat.descriptionVi || mat.descriptionEn
-                            : mat.descriptionEn || mat.descriptionVi}
-                        </p>
-                      </div>
+              {/* Default Working Excel Templates */}
+              <div className="space-y-4 pt-2 border-t border-slate-200">
+                <div>
+                  <h3 className="text-lg font-extrabold text-slate-900">
+                    {isVi ? 'File Excel Mẫu & Biểu Mẫu Thực Hành Chuẩn Khóa Học' : 'Course Standard Working Templates & Excel Models'}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isVi
+                      ? 'Toàn bộ các biểu mẫu chuẩn USALI 11th & 12th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn.'
+                      : 'USALI 11th & 12th Edition templates, month-end closing checklists, Flow-Through models, and CAPEX underwriting workbooks ready for immediate hotel deployment.'}
+                  </p>
+                </div>
 
-                      <button
-                        onClick={() => handleDownloadExcel(matTitle)}
-                        className="w-full py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(course.materials || []).map((mat) => {
+                    const matTitle = isVi ? mat.title : mat.titleEn || mat.title;
+                    return (
+                      <div
+                        key={mat.id}
+                        className="p-5 rounded-2xl border border-slate-200 bg-white shadow-xs flex flex-col justify-between space-y-4 hover:border-amber-400 transition-all"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>{isVi ? 'Tải Về Máy Ngay' : 'Download Template'}</span>
-                      </button>
-                    </div>
-                  );
-                })}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 font-mono">
+                              {mat.type.toUpperCase()}
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono">{mat.fileSize}</span>
+                          </div>
+                          <h4 className="font-bold text-sm text-slate-900 leading-snug">
+                            {matTitle}
+                          </h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            {isVi
+                              ? mat.descriptionVi || mat.descriptionEn
+                              : mat.descriptionEn || mat.descriptionVi}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleDownloadExcel(matTitle)}
+                          className="w-full py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{isVi ? 'Tải Về Máy Ngay' : 'Download Template'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -687,22 +883,85 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                       ? 'Được đánh giá theo thang điểm 100 bởi Cluster Financial Controller'
                       : 'Graded on a 100-point rubric by the Cluster Financial Controller'}
                   </span>
-                  <button
-                    onClick={() => {
-                      onClose();
-                      setActiveTab('ojtProjects');
-                    }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <span>{isVi ? 'Mở Phân Hệ Nộp Bài OJT' : 'Open OJT Submission Hub'}</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                  {canAccessRoute('ojtProjects') && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        setActiveTab('ojtProjects');
+                      }}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                    >
+                      <span>{isVi ? 'Mở Phân Hệ Nộp Bài OJT' : 'Open OJT Submission Hub'}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Inline Preview Modal inside CoursePlayerModal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-3 sm:p-6">
+          <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3.5 bg-[#0A192F] text-white flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-mono text-amber-400">
+                  {previewDoc.courseCode} · {isVi ? `Bài ${previewDoc.lessonOrder}` : `Lesson ${previewDoc.lessonOrder}`} · {previewDoc.fileSizeLabel}
+                </div>
+                <h4 className="font-extrabold text-sm truncate">
+                  {isVi ? previewDoc.titleVi : previewDoc.titleEn}
+                </h4>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => downloadLessonMaterial(previewDoc)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isVi ? 'Tải xuống' : 'Download'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 bg-slate-100 overflow-auto p-4 flex items-center justify-center">
+              {previewText !== null ? (
+                <pre className="w-full h-full bg-white rounded-xl border border-slate-200 p-4 text-xs font-mono text-slate-800 overflow-auto whitespace-pre-wrap">
+                  {previewText}
+                </pre>
+              ) : previewUrl && (previewDoc.mimeType?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(previewDoc.fileName || '')) ? (
+                <img
+                  src={previewUrl}
+                  alt={isVi ? previewDoc.titleVi : previewDoc.titleEn}
+                  className="max-w-full max-h-full rounded-xl shadow-md object-contain"
+                />
+              ) : previewUrl ? (
+                <iframe
+                  src={previewUrl}
+                  title={isVi ? previewDoc.titleVi : previewDoc.titleEn}
+                  className="w-full h-full rounded-xl border border-slate-200 bg-white"
+                />
+              ) : (
+                <div className="text-xs text-slate-500">
+                  {isVi
+                    ? 'Định dạng tệp này không hỗ trợ xem trực tiếp. Vui lòng bấm Tải xuống.'
+                    : 'Inline preview is not supported for this file type. Please click Download.'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

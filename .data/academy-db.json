@@ -1356,6 +1356,54 @@
   ],
   "auditLogs": [
     {
+      "id": "log_1794905791717_923",
+      "action": "DELETE_LESSON_MATERIAL",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC-101 · Lesson 1",
+      "timestamp": "2026-11-17 08:56:31",
+      "details": "Removed \"Tài liệu kiểm thử Bài 1\""
+    },
+    {
+      "id": "log_1794905791701_9",
+      "action": "UPLOAD_LESSON_MATERIAL",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "FC-101 · Lesson 1",
+      "timestamp": "2026-11-17 08:56:31",
+      "details": "Uploaded \"Tài liệu kiểm thử Bài 1\" (firestore_inline)"
+    },
+    {
+      "id": "log_1794903292378_304",
+      "action": "UPDATE_TALENT_CONFIG",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Talent Engine Configuration",
+      "timestamp": "2026-11-17 08:14:52",
+      "details": "Weight mode: default_equal, 70-20-10: 70/20/10"
+    },
+    {
+      "id": "log_1794903292366_315",
+      "action": "RESET_ROLE_PERMISSIONS",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "ALL_ROLES",
+      "timestamp": "2026-11-17 08:14:52",
+      "details": "Reset all 5 role policies to defaults"
+    },
+    {
+      "id": "log_1794903292347_182",
+      "action": "UPDATE_ROLE_PERMISSIONS",
+      "actor": "Elena Rostova (super_admin)",
+      "target": "lnd_manager",
+      "timestamp": "2026-11-17 08:14:52",
+      "details": "Updated 20 permissions for role \"lnd_manager\""
+    },
+    {
+      "id": "log_1794903292342_730",
+      "action": "UPDATE_TALENT_CONFIG",
+      "actor": "Marcus Sterling (lnd_manager)",
+      "target": "Talent Engine Configuration",
+      "timestamp": "2026-11-17 08:14:52",
+      "details": "Weight mode: default_equal, 70-20-10: 70/20/10"
+    },
+    {
       "id": "log_1794663868162_933",
       "action": "DATA_IMPORT_DEMO",
       "actor": "Elena Rostova (super_admin)",
@@ -1664,7 +1712,7 @@
       "requireAllCriticalAtTarget": true
     },
     "updatedBy": "Marcus Sterling",
-    "updatedAt": "2026-11-13T06:52:22.872Z"
+    "updatedAt": "2026-11-17T08:14:52.378Z"
   },
   "competencyAssessments": [
     {
@@ -3879,5 +3927,115 @@
       "time": "2026-04-02",
       "read": false
     }
-  ]
+  ],
+  "rolePermissions": {
+    "super_admin": [
+      "view_dashboard",
+      "view_my_learning",
+      "view_learning_paths",
+      "view_courses",
+      "view_competency_framework",
+      "view_assessments",
+      "view_talent_suite",
+      "view_ojt_projects",
+      "view_ai_assistant",
+      "view_simulator",
+      "view_certifications",
+      "view_reports",
+      "view_administration",
+      "manage_users_rbac",
+      "configure_role_permissions",
+      "access_data_import_center",
+      "access_sim_import_center",
+      "manage_sim_admin",
+      "manage_competency_framework",
+      "manage_lesson_materials",
+      "switch_dashboard_perspective",
+      "view_all_learners_data",
+      "assess_team_members",
+      "manage_team_idp",
+      "grade_ojt_submissions",
+      "issue_certificates",
+      "preview_draft_scenarios"
+    ],
+    "lnd_manager": [
+      "view_dashboard",
+      "view_my_learning",
+      "view_learning_paths",
+      "view_courses",
+      "view_competency_framework",
+      "view_assessments",
+      "view_talent_suite",
+      "view_ojt_projects",
+      "view_ai_assistant",
+      "view_simulator",
+      "view_certifications",
+      "view_reports",
+      "view_administration",
+      "access_data_import_center",
+      "access_sim_import_center",
+      "manage_sim_admin",
+      "manage_competency_framework",
+      "switch_dashboard_perspective",
+      "view_all_learners_data",
+      "assess_team_members",
+      "manage_team_idp",
+      "grade_ojt_submissions",
+      "issue_certificates",
+      "preview_draft_scenarios"
+    ],
+    "financial_controller": [
+      "view_dashboard",
+      "view_my_learning",
+      "view_learning_paths",
+      "view_courses",
+      "view_competency_framework",
+      "view_assessments",
+      "view_talent_suite",
+      "view_ojt_projects",
+      "view_ai_assistant",
+      "view_simulator",
+      "view_certifications",
+      "view_reports",
+      "manage_sim_admin",
+      "switch_dashboard_perspective",
+      "view_all_learners_data",
+      "assess_team_members",
+      "manage_team_idp",
+      "grade_ojt_submissions",
+      "issue_certificates"
+    ],
+    "general_manager": [
+      "view_dashboard",
+      "view_learning_paths",
+      "view_courses",
+      "view_competency_framework",
+      "view_assessments",
+      "view_talent_suite",
+      "view_ojt_projects",
+      "view_ai_assistant",
+      "view_simulator",
+      "view_certifications",
+      "view_reports",
+      "manage_sim_admin",
+      "switch_dashboard_perspective",
+      "view_all_learners_data",
+      "assess_team_members",
+      "manage_team_idp"
+    ],
+    "learner": [
+      "view_dashboard",
+      "view_my_learning",
+      "view_learning_paths",
+      "view_courses",
+      "view_competency_framework",
+      "view_assessments",
+      "view_talent_suite",
+      "view_ojt_projects",
+      "view_ai_assistant",
+      "view_simulator",
+      "view_certifications"
+    ]
+  },
+  "lessonMaterials": []
 }

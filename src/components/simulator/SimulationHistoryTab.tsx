@@ -9,12 +9,11 @@ export const SimulationHistoryTab: React.FC = () => {
     users,
     simulatorData,
     launchSimulationWorkspace,
+    hasPermission,
   } = useApp();
 
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'completed' | 'in_progress'>('ALL');
-  const isSupervisorOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const isSupervisorOrAdmin = hasPermission('view_all_learners_data');
 
   const visibleSessions = useMemo(() => {
     return simulatorData.simulationSessions

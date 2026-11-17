@@ -234,20 +234,44 @@
     },
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User role binding and reporting hierarchy profile.",
+      "description": "User role binding, career progression, and reporting hierarchy profile.",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "employeeId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "name": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "email": { "type": "string", "maxLength": 200 },
         "role": { "type": "string", "enum": ["super_admin", "lnd_manager", "financial_controller", "learner", "general_manager"] },
+        "requestedRole": { "type": "string", "enum": ["super_admin", "lnd_manager", "financial_controller", "learner", "general_manager"] },
         "position": { "type": "string", "maxLength": 150 },
         "department": { "type": "string", "maxLength": 150 },
         "property": { "type": "string", "maxLength": 200 },
+        "avatar": { "type": "string", "maxLength": 1000 },
+        "supervisorId": { "type": "string", "maxLength": 128 },
         "supervisorUid": { "type": "string", "maxLength": 128 },
+        "currentLevel": { "type": "number" },
+        "targetLevel": { "type": "number" },
+        "careerPathId": { "type": "string", "maxLength": 128 },
+        "joinedDate": { "type": "string", "maxLength": 64 },
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["uid", "employeeId", "name", "role", "updatedAt"]
+    },
+    "RolePermissionPolicy": {
+      "title": "RolePermissionPolicy",
+      "description": "Dynamic role-based access control (RBAC) permission policy matrix per system role.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "enum": ["super_admin", "lnd_manager", "financial_controller", "general_manager", "learner"], "minLength": 1, "maxLength": 64 },
+        "role": { "type": "string", "enum": ["super_admin", "lnd_manager", "financial_controller", "general_manager", "learner"], "minLength": 1, "maxLength": 64 },
+        "permissions": { "type": "array", "description": "Array of granted PermissionKey strings." },
+        "descriptionEn": { "type": "string", "maxLength": 500 },
+        "descriptionVi": { "type": "string", "maxLength": 500 },
+        "updatedByUid": { "type": "string", "maxLength": 128 },
+        "updatedByName": { "type": "string", "maxLength": 150 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "role", "permissions", "updatedAt"]
     },
     "CompetencyAssessment": {
       "title": "CompetencyAssessment",
@@ -949,6 +973,48 @@
         "verifiedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["id", "workbookCompetencyId", "targetCompetencyId", "targetCompetencyCode", "domainId", "verifiedById", "verifiedByName", "verifiedAt"]
+    },
+    "LessonMaterial": {
+      "title": "LessonMaterial",
+      "description": "Uploaded learning materials, templates, slides, and resource links attached to a specific course lesson/module.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "courseCode": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "lessonId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "lessonOrder": { "type": "number" },
+        "lessonTitleVi": { "type": "string", "maxLength": 300 },
+        "lessonTitleEn": { "type": "string", "maxLength": 300 },
+        "titleVi": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "descriptionVi": { "type": "string", "maxLength": 2000 },
+        "descriptionEn": { "type": "string", "maxLength": 2000 },
+        "materialType": { "type": "string", "enum": ["pdf", "excel", "slide", "docx", "video", "checklist", "link", "other"] },
+        "storageMode": { "type": "string", "enum": ["firestore_inline", "firebase_storage", "external_link"] },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "mimeType": { "type": "string", "maxLength": 150 },
+        "fileSizeBytes": { "type": "number" },
+        "fileSizeLabel": { "type": "string", "maxLength": 40 },
+        "inlineBase64": { "type": "string", "maxLength": 920000 },
+        "downloadUrl": { "type": "string", "maxLength": 2000 },
+        "storagePath": { "type": "string", "maxLength": 500 },
+        "externalUrl": { "type": "string", "maxLength": 2000 },
+        "isRequired": { "type": "boolean" },
+        "uploadedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "uploadedByName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "uploadedByEmail": { "type": "string", "maxLength": 200 },
+        "uploadedByRole": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": [
+        "id", "courseId", "courseCode", "lessonId", "lessonOrder",
+        "lessonTitleVi", "lessonTitleEn", "titleVi", "titleEn",
+        "materialType", "storageMode", "fileSizeLabel", "isRequired",
+        "uploadedByUid", "uploadedByName", "uploadedByRole",
+        "createdAt", "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -999,6 +1065,10 @@
     "/userProfiles/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
       "description": "Employee profile and reporting line bindings"
+    },
+    "/rolePermissions/{roleId}": {
+      "schema": { "$ref": "#/entities/RolePermissionPolicy" },
+      "description": "Dynamic RBAC permission matrix per system role"
     },
     "/competencyAssessments/{assessmentId}": {
       "schema": { "$ref": "#/entities/CompetencyAssessment" },
@@ -1127,6 +1197,10 @@
     "/scenarioCompetencyMappings/{mappingId}": {
       "schema": { "$ref": "#/entities/ScenarioCompetencyMapping" },
       "description": "Approved workbook competency mappings"
+    },
+    "/lessonMaterials/{materialId}": {
+      "schema": { "$ref": "#/entities/LessonMaterial" },
+      "description": "Per-lesson learning materials uploaded directly to Firestore or linked via Firebase Storage"
     }
   }
 }

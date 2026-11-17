@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole, ProficiencyLevel } from '../../types';
 import { DataImportCenterView } from './DataImportCenterView';
+import { RolePermissionsControlPanel } from './RolePermissionsControlPanel';
+import { LessonMaterialsManager } from '../courses/LessonMaterialsManager';
 import {
   Settings,
   Database,
   Plus,
   Edit2,
   X,
+  RefreshCw,
+  ShieldCheck,
+  Shield,
+  Paperclip,
 } from 'lucide-react';
 
 const PROPERTIES_META = [
@@ -46,9 +52,25 @@ const PROPERTIES_META = [
 ];
 
 export const AdminManagementView: React.FC = () => {
-  const { users, currentUser, auditLogs, addUser, updateUser, showToast, language, t } = useApp();
+  const {
+    users,
+    currentUser,
+    auditLogs,
+    addUser,
+    updateUser,
+    showToast,
+    language,
+    t,
+    firebaseProfile,
+    officialAuthUser,
+    dataSourceMode,
+    syncAllExperienceRolesToFirestore,
+    hasPermission,
+  } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'properties' | 'system' | 'dataImport'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'permissions' | 'lessonMaterials' | 'properties' | 'system' | 'dataImport'>('users');
+  const canManageLessonMaterials = hasPermission('manage_lesson_materials');
+  const [syncingRoles, setSyncingRoles] = useState<boolean>(false);
   const [userModalOpen, setUserModalOpen] = useState<boolean>(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState<{
@@ -71,7 +93,28 @@ export const AdminManagementView: React.FC = () => {
     targetLevel: 4,
   });
 
-  const isSuperAdmin = currentUser.role === 'super_admin';
+  const canManageUsers = hasPermission('manage_users_rbac');
+  const canConfigurePermissions = hasPermission('configure_role_permissions');
+  const canAccessDataImport = hasPermission('access_data_import_center');
+  const canViewSystemAudit =
+    canManageUsers || canConfigurePermissions || canAccessDataImport;
+
+  const allowedAdminTabs = useMemo(() => {
+    const list: Array<'users' | 'permissions' | 'lessonMaterials' | 'properties' | 'system' | 'dataImport'> = [];
+    if (canManageUsers) list.push('users');
+    if (canConfigurePermissions) list.push('permissions');
+    list.push('properties');
+    if (canViewSystemAudit) list.push('system');
+    if (canManageLessonMaterials) list.push('lessonMaterials');
+    if (canAccessDataImport) list.push('dataImport');
+    return list;
+  }, [canManageUsers, canConfigurePermissions, canViewSystemAudit, canManageLessonMaterials, canAccessDataImport]);
+
+  useEffect(() => {
+    if (!allowedAdminTabs.includes(activeAdminTab)) {
+      setActiveAdminTab(allowedAdminTabs[0] || 'properties');
+    }
+  }, [allowedAdminTabs, activeAdminTab]);
 
   const openAddModal = () => {
     setEditingUserId(null);
@@ -157,16 +200,31 @@ export const AdminManagementView: React.FC = () => {
 
       {/* Admin Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold overflow-x-auto">
-        <button
-          onClick={() => setActiveAdminTab('users')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeAdminTab === 'users'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {language === 'vi' ? 'Quản Lý Người Dùng & Phân Quyền' : 'Users & Roles (RBAC)'}
-        </button>
+        {canManageUsers && (
+          <button
+            onClick={() => setActiveAdminTab('users')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+              activeAdminTab === 'users'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {language === 'vi' ? 'Quản Lý Người Dùng & Tài Khoản' : 'Users & Accounts'}
+          </button>
+        )}
+        {canConfigurePermissions && (
+          <button
+            onClick={() => setActiveAdminTab('permissions')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+              activeAdminTab === 'permissions'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>{language === 'vi' ? 'Bảng Phân Quyền Vai Trò (RBAC)' : 'Role Permissions Matrix'}</span>
+          </button>
+        )}
         <button
           onClick={() => setActiveAdminTab('properties')}
           className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
@@ -177,53 +235,113 @@ export const AdminManagementView: React.FC = () => {
         >
           {language === 'vi' ? 'Khách Sạn & Đơn Vị Thành Viên' : 'Properties & Locations'}
         </button>
-        <button
-          onClick={() => setActiveAdminTab('system')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeAdminTab === 'system'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {language === 'vi' ? 'Kiến Trúc & Nhật Ký Kiểm Toán' : 'Architecture & Audit Logs'}
-        </button>
-        <button
-          onClick={() => setActiveAdminTab('dataImport')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-            activeAdminTab === 'dataImport'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>
-            {language === 'vi'
-              ? 'Quản Lý Dữ Liệu → Trung Tâm Nhập Dữ Liệu'
-              : 'Data Management → Data Import Center'}
-          </span>
-        </button>
+        {canViewSystemAudit && (
+          <button
+            onClick={() => setActiveAdminTab('system')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
+              activeAdminTab === 'system'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {language === 'vi' ? 'Kiến Trúc & Nhật Ký Kiểm Toán' : 'Architecture & Audit Logs'}
+          </button>
+        )}
+        {canManageLessonMaterials && (
+          <button
+            onClick={() => setActiveAdminTab('lessonMaterials')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+              activeAdminTab === 'lessonMaterials'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Paperclip className="w-3.5 h-3.5" />
+            <span>
+              {language === 'vi'
+                ? 'Upload Học Liệu Bài Học (Firestore)'
+                : 'Lesson Materials (Firestore)'}
+            </span>
+          </button>
+        )}
+        {canAccessDataImport && (
+          <button
+            onClick={() => setActiveAdminTab('dataImport')}
+            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+              activeAdminTab === 'dataImport'
+                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>
+              {language === 'vi'
+                ? 'Quản Lý Dữ Liệu → Trung Tâm Nhập Dữ Liệu'
+                : 'Data Management → Data Import Center'}
+            </span>
+          </button>
+        )}
       </div>
 
-      {activeAdminTab === 'dataImport' && <DataImportCenterView />}
+      {activeAdminTab === 'permissions' && canConfigurePermissions && <RolePermissionsControlPanel />}
+      {activeAdminTab === 'lessonMaterials' && canManageLessonMaterials && <LessonMaterialsManager />}
+      {activeAdminTab === 'dataImport' && canAccessDataImport && <DataImportCenterView />}
 
       {/* Users Tab */}
-      {activeAdminTab === 'users' && (
+      {activeAdminTab === 'users' && canManageUsers && (
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-bold text-base text-slate-900">
-              {language === 'vi'
-                ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${users.length})`
-                : `System Users & Role Permissions (${users.length})`}
-            </h3>
-            {isSuperAdmin && (
-              <button
-                onClick={openAddModal}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{language === 'vi' ? 'Tạo tài khoản mới' : 'Add User'}</span>
-              </button>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <span>
+                  {language === 'vi'
+                    ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${users.length})`
+                    : `System Users & Role Permissions (${users.length})`}
+                </span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    dataSourceMode === 'firestore'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {dataSourceMode === 'firestore' ? 'Firestore /userProfiles' : 'Demo Sandbox'}
+                </span>
+              </h3>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {firebaseProfile?.isAdmin && (
+                <button
+                  type="button"
+                  disabled={syncingRoles}
+                  onClick={async () => {
+                    setSyncingRoles(true);
+                    try {
+                      await syncAllExperienceRolesToFirestore(false);
+                    } finally {
+                      setSyncingRoles(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold text-xs rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${syncingRoles ? 'animate-spin' : ''}`} />
+                  <span>
+                    {language === 'vi'
+                      ? 'Khai Báo Vai Trò Lên Firestore'
+                      : 'Sync Roles to Firestore'}
+                  </span>
+                </button>
+              )}
+              {canManageUsers && (
+                <button
+                  onClick={openAddModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{language === 'vi' ? 'Tạo tài khoản mới' : 'Add User'}</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -235,13 +353,15 @@ export const AdminManagementView: React.FC = () => {
                   <th className="py-2.5 px-3">{language === 'vi' ? 'Chức vụ chuyên môn' : 'Job Title'}</th>
                   <th className="py-2.5 px-3">{language === 'vi' ? 'Đơn vị công tác' : 'Property'}</th>
                   <th className="py-2.5 px-3 text-center">{language === 'vi' ? 'Cấp độ' : 'Level'}</th>
-                  {isSuperAdmin && (
+                  {canManageUsers && (
                     <th className="py-2.5 px-3 text-right">{language === 'vi' ? 'Thao tác' : 'Actions'}</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => (
+                {users.map((u) => {
+                  const isSignedInOwner = officialAuthUser?.id === u.id;
+                  return (
                   <tr key={u.id} className="hover:bg-slate-50/80">
                     <td className="py-3 px-3 font-bold text-slate-900 flex items-center gap-2.5">
                       <img
@@ -250,7 +370,15 @@ export const AdminManagementView: React.FC = () => {
                         className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200"
                       />
                       <div>
-                        <span>{u.name}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          {u.name}
+                          {isSignedInOwner && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                              <ShieldCheck className="w-2.5 h-2.5" />
+                              You
+                            </span>
+                          )}
+                        </span>
                         <span className="text-[10px] text-slate-400 block font-normal">{u.email}</span>
                       </div>
                     </td>
@@ -258,13 +386,19 @@ export const AdminManagementView: React.FC = () => {
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
                         {t.roles[u.role]}
                       </span>
+                      {u.requestedRole && u.requestedRole !== u.role && (
+                        <span className="block mt-1 text-[10px] font-semibold text-amber-700">
+                          {language === 'vi' ? 'Đề xuất: ' : 'Requested: '}
+                          {t.roles[u.requestedRole]}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-3 font-medium text-slate-700">{u.position}</td>
                     <td className="py-3 px-3 text-slate-500 truncate max-w-[200px]">{u.property}</td>
                     <td className="py-3 px-3 text-center font-bold text-slate-900 font-mono">
                       Level {u.currentLevel} / {u.targetLevel}
                     </td>
-                    {isSuperAdmin && (
+                    {canManageUsers && (
                       <td className="py-3 px-3 text-right">
                         <button
                           onClick={() => openEditModal(u)}
@@ -276,7 +410,8 @@ export const AdminManagementView: React.FC = () => {
                       </td>
                     )}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

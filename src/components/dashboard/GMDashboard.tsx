@@ -21,6 +21,7 @@ export const GMDashboard: React.FC = () => {
     users,
     language,
     setActiveTab,
+    canAccessRoute,
   } = useApp();
 
   const readyNowCandidates = successionCandidates.filter((c) => c.readiness === 'Ready Now');
@@ -65,20 +66,24 @@ export const GMDashboard: React.FC = () => {
           </p>
 
           <div className="pt-2 flex flex-wrap gap-3 text-xs font-bold">
-            <button
-              onClick={() => setActiveTab('aiAssistant')}
-              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{language === 'vi' ? 'Mở FC Business Partner Simulator' : 'Launch FC Business Partner Simulator'}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl transition-all cursor-pointer"
-            >
-              {language === 'vi' ? 'Báo cáo chỉ số kinh doanh' : 'View Executive Reports'}
-            </button>
+            {canAccessRoute('aiAssistant') && (
+              <button
+                onClick={() => setActiveTab('aiAssistant')}
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{language === 'vi' ? 'Mở FC Business Partner Simulator' : 'Launch FC Business Partner Simulator'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {canAccessRoute('reports') && (
+              <button
+                onClick={() => setActiveTab('reports')}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl transition-all cursor-pointer"
+              >
+                {language === 'vi' ? 'Báo cáo chỉ số kinh doanh' : 'View Executive Reports'}
+              </button>
+            )}
           </div>
         </div>
 

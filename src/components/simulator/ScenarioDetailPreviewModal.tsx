@@ -81,7 +81,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
   onTransitionStatus,
   onLaunchSimulation,
 }) => {
-  const { currentUser, language } = useApp();
+  const { currentUser, language, dataSourceMode, simulatorData, scenarioVersions, hasPermission } = useApp();
   const [activeTab, setActiveTab] = useState<ModalTab>('overview');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -89,14 +89,47 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  const isAdminOrLnd = ['super_admin', 'lnd_manager'].includes(currentUser.role);
-  const canManageLifecycle = isAdminOrLnd && Boolean(scenario?.id) && Boolean(onTransitionStatus);
+  const isAdminOrLnd = hasPermission('preview_draft_scenarios') || hasPermission('manage_sim_admin');
+  const canManageLifecycle =
+    hasPermission('manage_sim_admin') && Boolean(scenario?.id) && Boolean(onTransitionStatus);
+
+  useEffect(() => {
+    if (!isAdminOrLnd && activeTab === 'reference') {
+      setActiveTab('overview');
+    }
+  }, [isAdminOrLnd, activeTab]);
 
   useEffect(() => {
     if (!scenario?.id) {
       setLoaded(null);
       return;
     }
+
+    const buildFromContext = (): LoadedDetails => ({
+      scenario,
+      hotelProfile:
+        simulatorData.hotelSimulationProfiles.find((h) => h.id === scenario.hotelId) ||
+        initialHotelProfile ||
+        null,
+      financialData: simulatorData.simulationFinancialData.filter((f) => f.scenarioId === scenario.id),
+      operationalData: simulatorData.simulationOperationalData.filter((o) => o.scenarioId === scenario.id),
+      businessChallenges: simulatorData.simulationBusinessChallenges.filter((c) => c.scenarioId === scenario.id),
+      tasks: simulatorData.simulationTasks.filter((t) => t.scenarioId === scenario.id),
+      decisionOptions: simulatorData.simulationDecisionOptions.filter((o) => o.scenarioId === scenario.id),
+      roleplayPrompts: simulatorData.simulationRoleplayPrompts.filter((p) => p.scenarioId === scenario.id),
+      evaluationRubrics: simulatorData.simulationEvaluationRubrics.filter((r) => r.scenarioId === scenario.id),
+      competencyMappings: simulatorData.simulationCompetencyMappings.filter((m) => m.scenarioId === scenario.id),
+      referenceAnalysis: simulatorData.simulationReferenceAnalysis.filter((r) => r.scenarioId === scenario.id),
+      versions: scenarioVersions.filter((v) => v.scenarioId === scenario.id),
+    });
+
+    if (dataSourceMode === 'firestore') {
+      setErrorMsg(null);
+      setLoading(false);
+      setLoaded(buildFromContext());
+      return;
+    }
+
     let cancelled = false;
     setLoading(true);
     setErrorMsg(null);
@@ -120,7 +153,12 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
       })
       .catch((err) => {
         if (!cancelled) {
-          setErrorMsg(err?.message || 'Unable to load scenario details.');
+          const ctxFallback = buildFromContext();
+          if (ctxFallback.scenario) {
+            setLoaded(ctxFallback);
+          } else {
+            setErrorMsg(err?.message || 'Unable to load scenario details.');
+          }
         }
       })
       .finally(() => {
@@ -130,7 +168,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
     return () => {
       cancelled = true;
     };
-  }, [scenario?.id, currentUser.id, currentUser.role]);
+  }, [scenario, currentUser.id, currentUser.role, dataSourceMode, simulatorData, scenarioVersions, initialHotelProfile]);
 
   const activeScenario: Partial<SimulationScenarioDoc> | null = loaded?.scenario || scenario || (previewSummary
     ? {
@@ -189,7 +227,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
     { id: 'tasks', label: `${language === 'vi' ? 'Thách Thức & Nhiệm Vụ' : 'Challenges & Tasks'} (${challenges.length + tasks.length})` },
     { id: 'decision_gm', label: `${language === 'vi' ? 'Quyết Định & GM' : 'Decisions & GM'} (${decisionOptions.length + roleplayPrompts.length})` },
     { id: 'rubric', label: `Rubric & Comps (${rubrics.length})` },
-    ...(isAdminOrLnd || referenceAnalyses.length > 0
+    ...(isAdminOrLnd
       ? [{ id: 'reference' as ModalTab, label: `${language === 'vi' ? 'Đáp Án Tham Chiếu' : 'Reference Analysis'} (${referenceAnalyses.length})` }]
       : []),
   ];
@@ -508,15 +546,17 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
                     <div key={opt.id} className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1.5">
                       <div className="flex items-center justify-between font-mono text-[11px]">
                         <span className="font-bold text-slate-900">{opt.optionCode}</span>
-                        <span className={opt.isOptimal ? 'text-emerald-700 font-bold' : 'text-slate-500'}>
-                          {opt.isOptimal ? 'Optimal Reference · ' : ''}Risk: {opt.riskLevel}
+                        <span className={isAdminOrLnd && opt.isOptimal ? 'text-emerald-700 font-bold' : 'text-slate-500'}>
+                          {isAdminOrLnd && opt.isOptimal ? 'Optimal Reference · ' : ''}Risk: {opt.riskLevel}
                         </span>
                       </div>
                       <div className="font-bold text-slate-900">{language === 'vi' ? opt.titleVi : opt.titleEn}</div>
                       <div className="font-mono text-[11px] tabular-nums text-amber-700">
                         Impact: {fmtCurrency(opt.financialImpactEstimate, currency)} · GOP +{opt.gopImpactPct}%
                       </div>
-                      <p className="text-slate-600 leading-relaxed">{language === 'vi' ? opt.rationaleVi : opt.rationaleEn}</p>
+                      {isAdminOrLnd && (
+                        <p className="text-slate-600 leading-relaxed">{language === 'vi' ? opt.rationaleVi : opt.rationaleEn}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -538,7 +578,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
                           <span>{rp.roleplayId || rp.id}</span>
                         </div>
                         <p className="text-slate-800 font-medium">{language === 'vi' ? rp.promptVi : rp.promptEn}</p>
-                        {rp.expectedFocusPoints && (
+                        {isAdminOrLnd && rp.expectedFocusPoints && (
                           <div className="text-[11px] text-slate-500">
                             Expected Focus: <span className="text-slate-700">{rp.expectedFocusPoints}</span>
                           </div>

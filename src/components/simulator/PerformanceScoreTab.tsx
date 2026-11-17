@@ -15,17 +15,18 @@ export const PerformanceScoreTab: React.FC = () => {
     reviewSimulationEvaluation,
     setActiveTab,
     showToast,
+    hasPermission,
+    canAccessRoute,
   } = useApp();
 
-  const canAssess = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const canViewAll = hasPermission('view_all_learners_data');
+  const canAssess = hasPermission('assess_team_members');
 
   const visibleEvaluations = useMemo(() => {
     return simulatorWorkspace.evaluations.filter((e) =>
-      canAssess ? true : e.learnerId === currentUser.id
+      canViewAll || canAssess ? true : e.learnerId === currentUser.id
     );
-  }, [simulatorWorkspace.evaluations, canAssess, currentUser.id]);
+  }, [simulatorWorkspace.evaluations, canViewAll, canAssess, currentUser.id]);
 
   const [selectedEvalId, setSelectedEvalId] = useState<string>('');
   const activeEval =
@@ -87,20 +88,24 @@ export const PerformanceScoreTab: React.FC = () => {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveTab('talentGapAnalysis')}
-            className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>{language === 'vi' ? 'Mở Competency Gap Engine' : 'Open Gap Engine'}</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => setActiveTab('talentIdp')}
-            className="px-3.5 py-2 rounded-xl bg-[#0A192F] text-white text-xs font-semibold hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>{language === 'vi' ? 'Mở Kế Hoạch IDP' : 'Open IDP Module'}</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" />
-          </button>
+          {canAccessRoute('talentGapAnalysis') && (
+            <button
+              onClick={() => setActiveTab('talentGapAnalysis')}
+              className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>{language === 'vi' ? 'Mở Competency Gap Engine' : 'Open Gap Engine'}</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {canAccessRoute('talentIdp') && (
+            <button
+              onClick={() => setActiveTab('talentIdp')}
+              className="px-3.5 py-2 rounded-xl bg-[#0A192F] text-white text-xs font-semibold hover:bg-slate-800 flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>{language === 'vi' ? 'Mở Kế Hoạch IDP' : 'Open IDP Module'}</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -145,7 +150,7 @@ export const PerformanceScoreTab: React.FC = () => {
       {/* Selected Evaluation Detailed Breakdown + Human Assessor Review */}
       {visibleEvaluations.length > 0 && activeEval && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <div className={`${canAssess ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white rounded-2xl border border-slate-200 p-5 space-y-4`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">
@@ -243,21 +248,15 @@ export const PerformanceScoreTab: React.FC = () => {
           </div>
 
           {/* Human Assessor Override Panel (Supervisors/Admins Only) */}
-          <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <FileEdit className="w-4 h-4 text-slate-700" />
-              <h3 className="text-sm font-bold text-slate-900">
-                {language === 'vi' ? 'Rà Soát & Hiệu Đính Điểm (Assessor)' : 'Human Assessor Review & Override'}
-              </h3>
-            </div>
-
-            {!canAssess ? (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                {language === 'vi'
-                  ? 'Chỉ Giám Đốc Tài Chính (FC), Quản Lý L&D, GM hoặc Admin mới được quyền điều chỉnh điểm mô phỏng.'
-                  : 'Only Financial Controllers, L&D Managers, GM, or Super Admins may review and adjust evaluation scores.'}
+          {canAssess && (
+            <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <FileEdit className="w-4 h-4 text-slate-700" />
+                <h3 className="text-sm font-bold text-slate-900">
+                  {language === 'vi' ? 'Rà Soát & Hiệu Đính Điểm (Assessor)' : 'Human Assessor Review & Override'}
+                </h3>
               </div>
-            ) : (
+
               <form onSubmit={handleSaveHumanReview} className="space-y-3 text-xs">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
@@ -319,8 +318,8 @@ export const PerformanceScoreTab: React.FC = () => {
                   </span>
                 </button>
               </form>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

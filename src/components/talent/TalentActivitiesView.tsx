@@ -40,12 +40,13 @@ export const TalentActivitiesView: React.FC = () => {
     setSelectedCourseForPlayer,
     showToast,
     language,
+    hasPermission,
   } = useApp();
 
-  const isLearner = currentUser.role === 'learner';
+  const isLearner = !hasPermission('view_all_learners_data');
   const employeeId = isLearner ? currentUser.id : selectedTalentEmployeeId;
-  const canCreateCustom = ['super_admin', 'lnd_manager', 'financial_controller'].includes(currentUser.role);
-  const canValidate = !isLearner && currentUser.id !== employeeId;
+  const canCreateCustom = hasPermission('manage_team_idp');
+  const canValidate = hasPermission('manage_team_idp') && currentUser.id !== employeeId;
 
   const gapSummary = useMemo(
     () =>
@@ -121,8 +122,12 @@ export const TalentActivitiesView: React.FC = () => {
     if (res) {
       showToast(
         language === 'vi'
-          ? `Đã giao hoạt động "${rec.titleVi}" cho nhân sự.`
-          : `Assigned "${rec.titleEn}".`,
+          ? canCreateCustom && currentUser.id !== employeeId
+            ? `Đã giao hoạt động "${rec.titleVi}" cho nhân sự.`
+            : `Đã thêm "${rec.titleVi}" vào kế hoạch phát triển.`
+          : canCreateCustom && currentUser.id !== employeeId
+          ? `Assigned "${rec.titleEn}".`
+          : `Added "${rec.titleEn}" to your plan.`,
         'success'
       );
     }
@@ -355,7 +360,13 @@ export const TalentActivitiesView: React.FC = () => {
                         onClick={() => handleAssignRecommendation(rec)}
                         className="flex-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg cursor-pointer"
                       >
-                        {language === 'vi' ? 'Giao cho nhân sự' : 'Assign Activity'}
+                        {canCreateCustom && currentUser.id !== employeeId
+                          ? language === 'vi'
+                            ? 'Giao cho nhân sự'
+                            : 'Assign Activity'
+                          : language === 'vi'
+                          ? 'Thêm vào lộ trình'
+                          : 'Add to My Plan'}
                       </button>
                       {linkedCourse && (
                         <button
@@ -491,12 +502,17 @@ export const TalentActivitiesView: React.FC = () => {
                             <FileUp className="w-3.5 h-3.5 text-amber-400" />
                             <span>{language === 'vi' ? 'Nộp minh chứng' : 'Submit Evidence'}</span>
                           </button>
-                          <button
-                            onClick={() => handleAttemptComplete(act.id)}
-                            className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg cursor-pointer"
-                          >
-                            {language === 'vi' ? 'Đánh dấu hoàn tất' : 'Mark Completed'}
-                          </button>
+                          {(act.category === 'A_Formal_Learning' ||
+                            !act.evidenceRequired ||
+                            act.validationStatus === 'approved' ||
+                            canValidate) && (
+                            <button
+                              onClick={() => handleAttemptComplete(act.id)}
+                              className="px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg cursor-pointer"
+                            >
+                              {language === 'vi' ? 'Đánh dấu hoàn tất' : 'Mark Completed'}
+                            </button>
+                          )}
                         </>
                       )}
                       {canValidate && act.validationStatus !== 'approved' && (

@@ -50,33 +50,28 @@ const MainAppContent: React.FC = () => {
     setSelectedCertificateForView,
     toasts,
     dismissToast,
+    canAccessRoute,
+    rolePermissions,
   } = useApp();
 
   const [activeQuizCourse, setActiveQuizCourse] = useState<Course | null>(null);
   const [quizModalOpen, setQuizModalOpen] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
-  // Enforce RBAC route guard whenever persona or activeTab changes
+  // Enforce dynamic RBAC route guard whenever persona, policy, or activeTab changes
   useEffect(() => {
-    const isAdminOrLnd = currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager';
-    const isLearner = currentUser.role === 'learner';
-    const canAccessSimAdmin = [
-      'super_admin',
-      'lnd_manager',
-      'financial_controller',
-      'general_manager',
-    ].includes(currentUser.role);
-
-    if ((activeTab === 'administration' || activeTab === 'dataImportCenter') && !isAdminOrLnd) {
-      setActiveTab('dashboard');
-    } else if (activeTab === 'simImportCenter' && !isAdminOrLnd) {
-      setActiveTab('simDashboard');
-    } else if (activeTab === 'reports' && isLearner) {
-      setActiveTab('dashboard');
-    } else if ((activeTab === 'simAdmin' || activeTab === 'simVersionHistory') && !canAccessSimAdmin) {
-      setActiveTab('simDashboard');
+    if (!canAccessRoute(activeTab)) {
+      if (activeTab.startsWith('sim') && canAccessRoute('simDashboard')) {
+        setActiveTab('simDashboard');
+      } else if (canAccessRoute('dashboard')) {
+        setActiveTab('dashboard');
+      } else {
+        const fallbackOrder = ['courses', 'myLearning', 'competencyFramework', 'learningPaths'];
+        const nextAllowed = fallbackOrder.find((tab) => canAccessRoute(tab)) || 'dashboard';
+        setActiveTab(nextAllowed);
+      }
     }
-  }, [activeTab, currentUser.role, setActiveTab]);
+  }, [activeTab, currentUser.role, rolePermissions, canAccessRoute, setActiveTab]);
 
   const handleStartQuiz = (course: Course) => {
     setActiveQuizCourse(course);
@@ -110,48 +105,33 @@ const MainAppContent: React.FC = () => {
 
         {/* Dynamic Workspace Container */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {activeTab === 'dashboard' && <DashboardContainer />}
-          {activeTab === 'myLearning' && <CourseCatalogView />}
-          {activeTab === 'learningPaths' && <LearningPathsView />}
-          {activeTab === 'courses' && <CourseCatalogView />}
-          {activeTab === 'competencyFramework' && <CompetencyFrameworkView />}
-          {activeTab === 'assessments' && <AssessmentView />}
-          {activeTab === 'talentAssessment' && <TalentAssessmentView />}
-          {activeTab === 'talentGapAnalysis' && <TalentGapAnalysisView />}
-          {activeTab === 'talentActivities' && <TalentActivitiesView />}
-          {activeTab === 'talentIdp' && <TalentIdpView />}
-          {activeTab === 'talentProgress' && <TalentProgressView />}
-          {activeTab === 'talentReadiness' && <TalentReadinessView />}
-          {activeTab === 'ojtProjects' && <OJTProjectsView />}
-          {activeTab === 'aiAssistant' && <AIAssistantView />}
-          {activeTab === 'simDashboard' && <SimulationDashboardTab />}
-          {activeTab === 'simLibrary' && <ScenarioLibraryTab />}
-          {activeTab === 'simWorkspace' && <SimulationWorkspaceTab />}
-          {activeTab === 'simMeeting' && <ExecutiveMeetingTab />}
-          {activeTab === 'simHistory' && <SimulationHistoryTab />}
-          {activeTab === 'simPerformance' && <PerformanceScoreTab />}
-          {activeTab === 'simImportCenter' &&
-            (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
-              <ScenarioImportCenterTab />
-            )}
-          {activeTab === 'simAdmin' &&
-            ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-              currentUser.role
-            ) && <SimulationAdminTab />}
-          {activeTab === 'simVersionHistory' &&
-            ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-              currentUser.role
-            ) && <ScenarioVersionHistoryTab />}
-          {activeTab === 'certifications' && <CertificationsView />}
-          {activeTab === 'reports' && currentUser.role !== 'learner' && <ReportsView />}
-          {activeTab === 'administration' &&
-            (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
-              <AdminManagementView />
-            )}
-          {activeTab === 'dataImportCenter' &&
-            (currentUser.role === 'super_admin' || currentUser.role === 'lnd_manager') && (
-              <DataImportCenterView />
-            )}
+          {activeTab === 'dashboard' && canAccessRoute('dashboard') && <DashboardContainer />}
+          {activeTab === 'myLearning' && canAccessRoute('myLearning') && <CourseCatalogView />}
+          {activeTab === 'learningPaths' && canAccessRoute('learningPaths') && <LearningPathsView />}
+          {activeTab === 'courses' && canAccessRoute('courses') && <CourseCatalogView />}
+          {activeTab === 'competencyFramework' && canAccessRoute('competencyFramework') && <CompetencyFrameworkView />}
+          {activeTab === 'assessments' && canAccessRoute('assessments') && <AssessmentView />}
+          {activeTab === 'talentAssessment' && canAccessRoute('talentAssessment') && <TalentAssessmentView />}
+          {activeTab === 'talentGapAnalysis' && canAccessRoute('talentGapAnalysis') && <TalentGapAnalysisView />}
+          {activeTab === 'talentActivities' && canAccessRoute('talentActivities') && <TalentActivitiesView />}
+          {activeTab === 'talentIdp' && canAccessRoute('talentIdp') && <TalentIdpView />}
+          {activeTab === 'talentProgress' && canAccessRoute('talentProgress') && <TalentProgressView />}
+          {activeTab === 'talentReadiness' && canAccessRoute('talentReadiness') && <TalentReadinessView />}
+          {activeTab === 'ojtProjects' && canAccessRoute('ojtProjects') && <OJTProjectsView />}
+          {activeTab === 'aiAssistant' && canAccessRoute('aiAssistant') && <AIAssistantView />}
+          {activeTab === 'simDashboard' && canAccessRoute('simDashboard') && <SimulationDashboardTab />}
+          {activeTab === 'simLibrary' && canAccessRoute('simLibrary') && <ScenarioLibraryTab />}
+          {activeTab === 'simWorkspace' && canAccessRoute('simWorkspace') && <SimulationWorkspaceTab />}
+          {activeTab === 'simMeeting' && canAccessRoute('simMeeting') && <ExecutiveMeetingTab />}
+          {activeTab === 'simHistory' && canAccessRoute('simHistory') && <SimulationHistoryTab />}
+          {activeTab === 'simPerformance' && canAccessRoute('simPerformance') && <PerformanceScoreTab />}
+          {activeTab === 'simImportCenter' && canAccessRoute('simImportCenter') && <ScenarioImportCenterTab />}
+          {activeTab === 'simAdmin' && canAccessRoute('simAdmin') && <SimulationAdminTab />}
+          {activeTab === 'simVersionHistory' && canAccessRoute('simVersionHistory') && <ScenarioVersionHistoryTab />}
+          {activeTab === 'certifications' && canAccessRoute('certifications') && <CertificationsView />}
+          {activeTab === 'reports' && canAccessRoute('reports') && <ReportsView />}
+          {activeTab === 'administration' && canAccessRoute('administration') && <AdminManagementView />}
+          {activeTab === 'dataImportCenter' && canAccessRoute('dataImportCenter') && <DataImportCenterView />}
         </main>
       </div>
 

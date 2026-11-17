@@ -23,6 +23,7 @@ export const ScenarioLibraryTab: React.FC = () => {
     simulatorData,
     simulatorWorkspace,
     launchSimulationWorkspace,
+    hasPermission,
   } = useApp();
 
   const [search, setSearch] = useState('');
@@ -31,9 +32,7 @@ export const ScenarioLibraryTab: React.FC = () => {
   const [selectedHotelId, setSelectedHotelId] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const isSupervisorOrAdmin = ['super_admin', 'lnd_manager', 'financial_controller', 'general_manager'].includes(
-    currentUser.role
-  );
+  const isSupervisorOrAdmin = hasPermission('preview_draft_scenarios');
 
   const filteredScenarios = useMemo(() => {
     return simulatorData.simulationScenarios.filter((s) => {
