@@ -1356,6 +1356,38 @@
   ],
   "auditLogs": [
     {
+      "id": "log_1794986773759_181",
+      "action": "DELETE_LESSON_MATERIAL",
+      "actor": "Verified Member (super_admin)",
+      "target": "HFC-101 · Lesson 1",
+      "timestamp": "2026-11-18 07:26:13",
+      "details": "Removed \"Test Material\""
+    },
+    {
+      "id": "log_1794986773679_811",
+      "action": "UPLOAD_LESSON_MATERIAL",
+      "actor": "Verified Member (super_admin)",
+      "target": "HFC-101 · Lesson 1",
+      "timestamp": "2026-11-18 07:26:13",
+      "details": "Uploaded \"Test Material\" (inline)"
+    },
+    {
+      "id": "log_1794986583355_433",
+      "action": "DELETE_LESSON_MATERIAL",
+      "actor": "System Admin",
+      "target": "CRS-01 · Lesson 1",
+      "timestamp": "2026-11-18 07:23:03",
+      "details": "Removed \"Test\""
+    },
+    {
+      "id": "log_1794986551357_755",
+      "action": "UPLOAD_LESSON_MATERIAL",
+      "actor": "System Admin",
+      "target": "CRS-01 · Lesson 1",
+      "timestamp": "2026-11-18 07:22:31",
+      "details": "Uploaded \"Test\" (firestore_inline)"
+    },
+    {
       "id": "log_1794905791717_923",
       "action": "DELETE_LESSON_MATERIAL",
       "actor": "Elena Rostova (super_admin)",

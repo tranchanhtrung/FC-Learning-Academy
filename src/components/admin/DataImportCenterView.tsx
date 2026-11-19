@@ -178,7 +178,7 @@ const DEFAULT_ACADEMY_SPECS: SheetSpec[] = [
   { order: 6, stage: 1, sheetName: 'Question_Bank', collectionName: 'questionBank', expectedCount: 60, labelEn: 'Question Bank', labelVi: 'Ngân Hàng Câu Hỏi', dependencies: ['courses', 'competencies'] },
   { order: 7, stage: 1, sheetName: 'Practical_Assignments', collectionName: 'practicalAssignments', expectedCount: 6, labelEn: 'Practical Assignments', labelVi: 'Bài Tập Thực Hành OJT', dependencies: ['courses', 'competencies'] },
   { order: 8, stage: 1, sheetName: 'Training_Matrix_2027', collectionName: 'annualTrainingMatrix', expectedCount: 12, labelEn: 'Training Matrix 2027', labelVi: 'Ma Trận Đào Tạo 2027', dependencies: ['competencyDomains', 'courses', 'competencies'] },
-  { order: 9, stage: 1, sheetName: 'Career_Paths', collectionName: 'careerPaths', expectedCount: 3, labelEn: 'Career Paths', labelVi: 'Lộ Trình Nghề Nghiệp', dependencies: ['courses', 'competencies', 'practicalAssignments'] },
+  { order: 9, stage: 1, sheetName: 'Career_Paths', collectionName: 'careerPaths', expectedCount: 5, labelEn: 'Career Paths', labelVi: 'Lộ Trình Nghề Nghiệp', dependencies: ['courses', 'competencies', 'practicalAssignments'] },
 ];
 
 const DEFAULT_SIMULATOR_SPECS: SheetSpec[] = [
@@ -313,8 +313,12 @@ export const DataImportCenterView: React.FC = () => {
     try {
       const [ping, statusRes, logsRes] = await Promise.all([
         testFirestoreConnection(),
-        fetch('/api/import/status', { headers: { 'x-user-id': effectiveApiUserId } }),
-        fetch('/api/import/logs', { headers: { 'x-user-id': effectiveApiUserId } }),
+        fetch('/api/import/status', {
+          headers: { 'x-user-id': effectiveApiUserId, 'x-user-role': effectiveApiRole },
+        }),
+        fetch('/api/import/logs', {
+          headers: { 'x-user-id': effectiveApiUserId, 'x-user-role': effectiveApiRole },
+        }),
       ]);
       setFirestorePing(ping);
       if (statusRes.ok) {
@@ -350,7 +354,7 @@ export const DataImportCenterView: React.FC = () => {
     } catch (err) {
       console.warn('Could not load import status:', err);
     }
-  }, [effectiveApiUserId, hasFirestoreAdminAccess, isAuthorized]);
+  }, [effectiveApiRole, effectiveApiUserId, hasFirestoreAdminAccess, isAuthorized]);
 
   useEffect(() => {
     loadImportStatusAndLogs();
@@ -579,7 +583,7 @@ export const DataImportCenterView: React.FC = () => {
     try {
       const urlPath = ds === 'simulator_starter' ? '/api/import/template?dataset=simulator' : '/api/import/template';
       const res = await fetch(urlPath, {
-        headers: { 'x-user-id': currentUser.id },
+        headers: { 'x-user-id': effectiveApiUserId, 'x-user-role': effectiveApiRole },
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -615,7 +619,7 @@ export const DataImportCenterView: React.FC = () => {
       setSelectedDataset(ds);
       const urlPath = ds === 'simulator_starter' ? '/api/import/template?dataset=simulator' : '/api/import/template';
       const res = await fetch(urlPath, {
-        headers: { 'x-user-id': currentUser.id },
+        headers: { 'x-user-id': effectiveApiUserId, 'x-user-role': effectiveApiRole },
       });
       if (!res.ok) {
         showToast('Unable to load official dataset template.', 'error');

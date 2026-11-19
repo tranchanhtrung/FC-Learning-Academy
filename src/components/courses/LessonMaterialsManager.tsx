@@ -1,19 +1,24 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
+import { COURSES } from '../../data/initialData';
 import {
   LessonMaterialDoc,
   LessonMaterialStorageMode,
   LessonMaterialType,
 } from '../../types';
 import {
+  findCourseMatch,
+  doesMaterialMatchCourse,
   FIRESTORE_INLINE_MAX_BYTES,
   FIREBASE_STORAGE_MAX_BYTES,
   formatFileSizeLabel,
   inferMaterialTypeFromFile,
-  getMaterialBlobUrl,
   downloadLessonMaterial,
   canPreviewInline,
+  sortLessonMaterialsAsc,
+  resolveMaterialLessonInfo,
 } from '../../lib/lessonMaterials';
+import { LessonMaterialPreviewModal } from './LessonMaterialPreviewModal';
 import {
   Upload,
   FileSpreadsheet,
@@ -35,6 +40,7 @@ import {
   Plus,
   ExternalLink,
   Cloud,
+  BookOpen,
 } from 'lucide-react';
 
 interface LessonMaterialsManagerProps {
@@ -100,6 +106,8 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
     dataSourceMode,
     firebaseUser,
     openAuthModal,
+    setSelectedCourseForPlayer,
+    setSelectedLessonIdForPlayer,
   } = useApp();
 
   const isVi = language === 'vi';
@@ -112,8 +120,20 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
     [courses]
   );
 
-  const [selectedCourseId, setSelectedCourseId] = useState<string>(
-    initialCourseId || sortedCourses[0]?.id || 'course_01'
+  const resolveCourseId = useCallback(
+    (candidateId?: string): string => {
+      if (!candidateId) return sortedCourses[0]?.id || 'course_01';
+      const matched = findCourseMatch(sortedCourses, candidateId, COURSES);
+      if (matched && sortedCourses.some((c) => c.id === matched.id)) {
+        return matched.id;
+      }
+      return sortedCourses[0]?.id || candidateId;
+    },
+    [sortedCourses]
+  );
+
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(() =>
+    resolveCourseId(initialCourseId)
   );
 
   const activeCourse = useMemo(
@@ -127,9 +147,11 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
 
   useEffect(() => {
     if (initialCourseId) {
-      setSelectedCourseId(initialCourseId);
+      setSelectedCourseId(resolveCourseId(initialCourseId));
+    } else if (!sortedCourses.some((c) => c.id === selectedCourseId) && sortedCourses[0]) {
+      setSelectedCourseId(sortedCourses[0].id);
     }
-  }, [initialCourseId]);
+  }, [initialCourseId, resolveCourseId, sortedCourses, selectedCourseId]);
 
   useEffect(() => {
     if (initialLessonId) {
@@ -153,9 +175,13 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
   const [descriptionVi, setDescriptionVi] = useState<string>('');
   const [descriptionEn, setDescriptionEn] = useState<string>('');
   const [isRequired, setIsRequired] = useState<boolean>(true);
-  const [forceFirestore, setForceFirestore] = useState<boolean>(true);
+  const [forceFirestore, setForceFirestore] = useState<boolean>(dataSourceMode === 'firestore');
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
+
+  useEffect(() => {
+    setForceFirestore(dataSourceMode === 'firestore');
+  }, [dataSourceMode]);
 
   // Filter & Preview & Confirm Delete State
   const [filterCourseId, setFilterCourseId] = useState<string>(initialCourseId || 'all');
@@ -164,48 +190,19 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<LessonMaterialDoc | null>(null);
-  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
-  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!previewMaterial) {
-      setPreviewBlobUrl(null);
-      setPreviewTextContent(null);
-      return;
-    }
-
-    let revokedUrl: string | null = null;
-    const url = getMaterialBlobUrl(previewMaterial);
-    setPreviewBlobUrl(url);
-    if (url && previewMaterial.storageMode === 'firestore_inline') {
-      revokedUrl = url;
-    }
-
-    const mime = (previewMaterial.mimeType || '').toLowerCase();
-    const ext = (previewMaterial.fileName || '').split('.').pop()?.toLowerCase() || '';
-    if (
-      previewMaterial.storageMode === 'firestore_inline' &&
-      previewMaterial.inlineBase64 &&
-      (mime.startsWith('text/') || ['txt', 'md', 'csv'].includes(ext))
-    ) {
-      try {
-        const binary = atob(previewMaterial.inlineBase64);
-        const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-        const decoded = new TextDecoder('utf-8').decode(bytes);
-        setPreviewTextContent(decoded);
-      } catch {
-        setPreviewTextContent(null);
-      }
-    } else {
-      setPreviewTextContent(null);
-    }
-
-    return () => {
-      if (revokedUrl) {
-        URL.revokeObjectURL(revokedUrl);
-      }
-    };
-  }, [previewMaterial]);
+  const handleJumpToLesson = useCallback(
+    (mat: LessonMaterialDoc) => {
+      const targetCourse =
+        findCourseMatch(sortedCourses, mat.courseId, COURSES) ||
+        findCourseMatch(sortedCourses, mat.courseCode, COURSES);
+      if (!targetCourse) return;
+      setPreviewMaterial(null);
+      setSelectedLessonIdForPlayer(mat.lessonId);
+      setSelectedCourseForPlayer(targetCourse);
+    },
+    [sortedCourses, setSelectedCourseForPlayer, setSelectedLessonIdForPlayer]
+  );
 
   const handleFileChosen = (file: File | null) => {
     if (!file) return;
@@ -275,30 +272,43 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
 
   const displayedMaterials = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    return lessonMaterials.filter((m) => {
+    const filtered = lessonMaterials.filter((m) => {
       if (compact && lockSelection) {
-        if (m.courseId !== selectedCourseId || m.lessonId !== selectedLessonId) return false;
-      } else {
-        if (filterCourseId !== 'all' && m.courseId !== filterCourseId) return false;
+        const matchesCourse = activeCourse
+          ? doesMaterialMatchCourse(m, activeCourse)
+          : m.courseId === selectedCourseId;
+        if (!matchesCourse || m.lessonId !== selectedLessonId) return false;
+      } else if (filterCourseId !== 'all') {
+        const filterCourseObj = sortedCourses.find((c) => c.id === filterCourseId);
+        const matchesFilter = filterCourseObj
+          ? doesMaterialMatchCourse(m, filterCourseObj)
+          : m.courseId === filterCourseId;
+        if (!matchesFilter) return false;
       }
       if (filterType !== 'all' && m.materialType !== filterType) return false;
       if (!q) return true;
+      const liveLesson = resolveMaterialLessonInfo(m, sortedCourses, COURSES);
       return (
         m.titleVi.toLowerCase().includes(q) ||
         m.titleEn.toLowerCase().includes(q) ||
         m.courseCode.toLowerCase().includes(q) ||
+        liveLesson.lessonTitleVi.toLowerCase().includes(q) ||
+        liveLesson.lessonTitleEn.toLowerCase().includes(q) ||
         m.lessonTitleVi.toLowerCase().includes(q) ||
         m.lessonTitleEn.toLowerCase().includes(q) ||
         (m.fileName || '').toLowerCase().includes(q)
       );
     });
+    return sortLessonMaterialsAsc(filtered);
   }, [
     lessonMaterials,
     compact,
     lockSelection,
+    activeCourse,
     selectedCourseId,
     selectedLessonId,
     filterCourseId,
+    sortedCourses,
     filterType,
     searchText,
   ]);
@@ -306,8 +316,14 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
   const materialCountByLesson = useMemo(() => {
     const map: Record<string, number> = {};
     lessonMaterials.forEach((m) => {
-      const key = `${m.courseId}::${m.lessonId}`;
-      map[key] = (map[key] || 0) + 1;
+      const keyById = `${m.courseId}::${m.lessonId}`;
+      map[keyById] = (map[keyById] || 0) + 1;
+      if (m.courseCode) {
+        const keyByCode = `${m.courseCode}::${m.lessonId}`;
+        if (keyByCode !== keyById) {
+          map[keyByCode] = (map[keyByCode] || 0) + 1;
+        }
+      }
     });
     return map;
   }, [lessonMaterials]);
@@ -444,7 +460,10 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                 className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-slate-300 bg-white text-slate-900 disabled:bg-slate-100 disabled:text-slate-600"
               >
                 {(activeCourse?.modules || []).map((mod, idx) => {
-                  const cnt = materialCountByLesson[`${activeCourse?.id}::${mod.id}`] || 0;
+                  const cnt =
+                    materialCountByLesson[`${activeCourse?.id}::${mod.id}`] ||
+                    (activeCourse?.code ? materialCountByLesson[`${activeCourse.code}::${mod.id}`] : 0) ||
+                    0;
                   return (
                     <option key={mod.id} value={mod.id}>
                       {isVi ? `Bài ${idx + 1}` : `Lesson ${idx + 1}`}: {isVi ? mod.titleVi : mod.titleEn}
@@ -765,8 +784,9 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
           displayedMaterials.map((mat) => {
             const title = isVi ? mat.titleVi : mat.titleEn;
             const desc = isVi ? mat.descriptionVi || mat.descriptionEn : mat.descriptionEn || mat.descriptionVi;
-            const lessonName = isVi ? mat.lessonTitleVi : mat.lessonTitleEn;
-            const showPreviewBtn = canPreviewInline(mat) || Boolean(mat.downloadUrl);
+            const liveLesson = resolveMaterialLessonInfo(mat, sortedCourses, COURSES);
+            const lessonName = isVi ? liveLesson.lessonTitleVi : liveLesson.lessonTitleEn;
+            const showPreviewBtn = canPreviewInline(mat) || Boolean(mat.downloadUrl || mat.externalUrl);
 
             return (
               <div
@@ -782,7 +802,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                       <span className="font-mono font-extrabold text-slate-900">{mat.courseCode}</span>
                       <span className="text-slate-300">&middot;</span>
                       <span className="font-semibold text-blue-700">
-                        {isVi ? `Bài ${mat.lessonOrder}` : `Lesson ${mat.lessonOrder}`}: {lessonName}
+                        {isVi ? `Bài ${liveLesson.lessonOrder}` : `Lesson ${liveLesson.lessonOrder}`}: {lessonName}
                       </span>
                       {mat.isRequired && (
                         <>
@@ -824,6 +844,17 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 pl-13 lg:pl-0">
+                  {!compact && (
+                    <button
+                      type="button"
+                      onClick={() => handleJumpToLesson(mat)}
+                      className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>{isVi ? 'Xem bài học' : 'Open Lesson'}</span>
+                    </button>
+                  )}
+
                   {showPreviewBtn && (
                     <button
                       type="button"
@@ -897,66 +928,15 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
         )}
       </div>
 
-      {/* Inline Preview Modal */}
-      {previewMaterial && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-3 sm:p-6">
-          <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-3.5 bg-[#0A192F] text-white flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[11px] font-mono text-amber-400">
-                  {previewMaterial.courseCode} · {isVi ? `Bài ${previewMaterial.lessonOrder}` : `Lesson ${previewMaterial.lessonOrder}`} · {previewMaterial.fileSizeLabel}
-                </div>
-                <h4 className="font-extrabold text-sm truncate">
-                  {isVi ? previewMaterial.titleVi : previewMaterial.titleEn}
-                </h4>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => downloadLessonMaterial(previewMaterial)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{isVi ? 'Tải xuống' : 'Download'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewMaterial(null)}
-                  className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 bg-slate-100 overflow-auto p-4 flex items-center justify-center">
-              {previewTextContent !== null ? (
-                <pre className="w-full h-full bg-white rounded-xl border border-slate-200 p-4 text-xs font-mono text-slate-800 overflow-auto whitespace-pre-wrap">
-                  {previewTextContent}
-                </pre>
-              ) : previewBlobUrl && (previewMaterial.mimeType?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(previewMaterial.fileName || '')) ? (
-                <img
-                  src={previewBlobUrl}
-                  alt={isVi ? previewMaterial.titleVi : previewMaterial.titleEn}
-                  className="max-w-full max-h-full rounded-xl shadow-md object-contain"
-                />
-              ) : previewBlobUrl ? (
-                <iframe
-                  src={previewBlobUrl}
-                  title={isVi ? previewMaterial.titleVi : previewMaterial.titleEn}
-                  className="w-full h-full rounded-xl border border-slate-200 bg-white"
-                />
-              ) : (
-                <div className="text-xs text-slate-500">
-                  {isVi
-                    ? 'Định dạng tệp này không hỗ trợ xem trực tiếp. Vui lòng bấm Tải xuống.'
-                    : 'Inline preview is not supported for this file type. Please click Download.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Unified Inline Reader Modal (DOCX, XLSX, PDF, Video, Links) */}
+      <LessonMaterialPreviewModal
+        material={previewMaterial}
+        materials={displayedMaterials}
+        isVi={isVi}
+        onSelectMaterial={setPreviewMaterial}
+        onOpenLesson={!compact ? handleJumpToLesson : undefined}
+        onClose={() => setPreviewMaterial(null)}
+      />
     </div>
   );
 };

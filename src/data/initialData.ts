@@ -412,7 +412,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Ma trận phân bổ doanh thu package', 'Bảng tính trích lập điểm thưởng loyalty'],
     evidenceRequirementsEn: ['Package Revenue Allocation Matrix', 'Loyalty Point Accrual & Redemption Schedule'],
-    associatedCourseIds: ['course_01'],
+    associatedCourseIds: ['course_103'],
   },
   {
     id: 'comp_far_05',
@@ -441,7 +441,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Monthly Financial Critique Report', 'Slide trình bày tài chính tháng'],
     evidenceRequirementsEn: ['Monthly Financial Critique Report', 'Monthly Executive Financial Deck'],
-    associatedCourseIds: ['course_06'],
+    associatedCourseIds: ['course_02', 'course_06'],
   },
   // Domain 2: FCA (5 competencies)
   {
@@ -500,7 +500,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Báo cáo kiểm tra Rebate/Allowance hàng tháng', 'Audit trail nhật ký chỉnh sửa hóa đơn'],
     evidenceRequirementsEn: ['Monthly Rebate & Allowance Audit Log', 'PMS/POS Folio Adjustment Audit Trail'],
-    associatedCourseIds: ['course_03'],
+    associatedCourseIds: ['course_202'],
   },
   {
     id: 'comp_fca_03',
@@ -529,7 +529,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Báo cáo Food Cost Flash hàng tuần', 'Báo cáo phân tích Menu Engineering'],
     evidenceRequirementsEn: ['Weekly Food Cost Flash Report', 'Menu Engineering Profitability Analysis'],
-    associatedCourseIds: ['course_07'],
+    associatedCourseIds: ['course_203'],
   },
   {
     id: 'comp_fca_04',
@@ -587,7 +587,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Biên bản họp Credit Meeting hàng tháng', 'Báo cáo phân tích AR Aging'],
     evidenceRequirementsEn: ['Monthly Credit Committee Minutes', 'AR Aging & DSO Diagnostic Report'],
-    associatedCourseIds: ['course_02'],
+    associatedCourseIds: ['course_303'],
   },
   // Domain 3: FPM (5 competencies)
   {
@@ -675,7 +675,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Mô hình dòng tiền 13-week Cash Flow Forecast', 'Báo cáo tối ưu hóa dòng vốn lưu động'],
     evidenceRequirementsEn: ['13-Week Direct Cash Flow Forecast Model', 'Working Capital & Cash Conversion Report'],
-    associatedCourseIds: ['course_05'],
+    associatedCourseIds: ['course_05', 'course_303'],
   },
   {
     id: 'comp_fpm_04',
@@ -733,7 +733,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Contingency Cost Flexing Matrix', 'Báo cáo đàm phán hợp đồng nhà cung cấp'],
     evidenceRequirementsEn: ['Contingency Cost Flexing Matrix', 'Outsourced Vendor Contract Renegotiation Brief'],
-    associatedCourseIds: ['course_06'],
+    associatedCourseIds: ['course_05', 'course_06'],
   },
   // Domain 4: BPA (5 competencies)
   {
@@ -879,7 +879,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['File Dashboard BI phân tích doanh thu khách sạn', 'Quy trình trích xuất dữ liệu tự động'],
     evidenceRequirementsEn: ['Hotel Revenue & GOP BI Dashboard Workbook', 'Automated PMS/POS ETL Workflow Spec'],
-    associatedCourseIds: ['course_07'],
+    associatedCourseIds: ['course_403'],
   },
   // Domain 5: LPM (4 competencies)
   {
@@ -964,7 +964,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Tài liệu đào tạo tài chính dành cho Trưởng bộ phận phi tài chính', 'Đánh giá 360 độ'],
     evidenceRequirementsEn: ['Finance for Non-Finance Training Deck', '360-Degree Stakeholder Feedback Summary'],
-    associatedCourseIds: ['course_08', 'course_09'],
+    associatedCourseIds: ['course_502'],
   },
   {
     id: 'comp_lpm_04',
@@ -992,7 +992,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Kế hoạch triển khai dự án công nghệ tài chính', 'Báo cáo đo lường hiệu quả chuyển đổi số'],
     evidenceRequirementsEn: ['Finance Technology Rollout Roadmap', 'Post-Cutover Automation Efficiency Report'],
-    associatedCourseIds: ['course_08'],
+    associatedCourseIds: ['course_503'],
   },
   // Domain 6: SBP (5 competencies)
   {
@@ -1077,7 +1077,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Bộ slide thuyết trình kết quả kinh doanh hàng quý với Chủ đầu tư', 'Thư giải trình kiểm toán'],
     evidenceRequirementsEn: ['Quarterly Owner Review Presentation Deck', 'HMA Compliance & Audit Explanation Letter'],
-    associatedCourseIds: ['course_09'],
+    associatedCourseIds: ['course_602'],
   },
   {
     id: 'comp_sbp_04',
@@ -1105,7 +1105,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Bản thẩm định hợp đồng thương mại', 'Bảng tính Contribution Margin đoàn khách'],
     evidenceRequirementsEn: ['Commercial Contract Risk Appraisal', 'Group Contribution Margin & Attrition Model'],
-    associatedCourseIds: ['course_09'],
+    associatedCourseIds: ['course_09', 'course_602'],
   },
   {
     id: 'comp_sbp_05',
@@ -1132,7 +1132,7 @@ export const COMPETENCIES: Competency[] = [
     },
     evidenceRequirements: ['Báo cáo đánh giá giá trị tài sản qua hệ số vốn hóa (Cap Rate & Asset Valuation)', 'Chiến lược tài chính 3 năm'],
     evidenceRequirementsEn: ['Cap Rate & Hotel Enterprise Valuation Study', '3-Year Asset Value Creation Strategy'],
-    associatedCourseIds: ['course_09'],
+    associatedCourseIds: ['course_603'],
   },
 ];
 
@@ -1425,6 +1425,34 @@ export const OJT_ASSIGNMENTS: OJTAssignment[] = [
       { criterionVi: 'Chất lượng trực quan hóa dữ liệu và thiết kế slide', criterionEn: 'Data Visualization & Executive Deck Design Standards', maxPoints: 25 },
       { criterionVi: 'Chiều sâu của các kiến nghị thương mại tạo ra giá trị dòng tiền', criterionEn: 'Depth of Commercial Value Creation Recommendations', maxPoints: 25 },
       { criterionVi: 'Kỹ năng bảo vệ quan điểm tài chính trước câu hỏi hóc búa', criterionEn: 'Persuasive Defense Against Ownership Scrutiny', maxPoints: 20 },
+    ],
+  },
+  {
+    id: 'ojt_07',
+    code: 'OJT-LPM-01',
+    titleVi: 'Huấn Luyện Đội Ngũ Tài Chính (GROW) & Đào Tạo Tài Chính Cho Trưởng Bộ Phận Phi Tài Chính',
+    titleEn: 'Finance Team GROW Coaching & Cross-Departmental Budget Alignment Program',
+    domainId: 'dom_5',
+    propertyContext: 'Phòng Tài chính & Ban điều hành khách sạn 5 sao (14 nhân sự kế toán & 6 Trưởng bộ phận)',
+    propertyContextEn: '5-Star Hotel Finance Division (14 Staff) & 6 Operational Department Heads',
+    descriptionVi: 'Xây dựng và triển khai chương trình phát triển nhân tài nội bộ cho đội ngũ kế toán: thiết lập IDP 12 tháng cho Senior Accountant, thực hành 2 phiên huấn luyện 1-1 theo mô hình GROW và chủ trì hội thảo "Finance for Non-Finance" giúp Bếp trưởng, Giám đốc Buồng và Kỹ sư trưởng đồng thuận cắt giảm lãng phí ngân sách.',
+    descriptionEn: 'Design and execute a finance talent empowerment & cross-functional influence sprint: craft a 12-month IDP for a Senior Accountant, document 2 GROW 1-on-1 coaching sessions, and lead a "Finance for Non-Finance" budget alignment workshop with Culinary, Housekeeping, and Engineering heads.',
+    deliverablesVi: [
+      'Kế hoạch phát triển cá nhân (IDP 12 tháng) & Biên bản 2 buổi GROW Coaching 1-1',
+      'Bộ slide hội thảo "Finance for Non-Finance" dành cho Trưởng các bộ phận vận hành',
+      'Biên bản cam kết tiết giảm chi phí liên phòng ban (Cost Recovery Agreement)',
+    ],
+    deliverablesEn: [
+      '12-Month Finance Succession IDP & Two Documented GROW 1-on-1 Coaching Logs',
+      'Customized "Finance for Non-Finance Managers" Workshop Deck',
+      'Signed Cross-Departmental Budget Alignment & Cost Recovery Commitment',
+    ],
+    templateFileName: 'HFC_Template_LPM_Coaching_Workshop.docx',
+    evaluationRubric: [
+      { criterionVi: 'Chất lượng cấu trúc IDP và kỹ năng đặt câu hỏi khai vấn GROW', criterionEn: 'IDP Structure & GROW Coaching Question Rigor', maxPoints: 30 },
+      { criterionVi: 'Khả năng chuyển hóa ngôn ngữ tài chính cho Trưởng bộ phận vận hành', criterionEn: 'Clarity of Financial Translation for Non-Finance HODs', maxPoints: 30 },
+      { criterionVi: 'Kỹ năng giải quyết xung đột ngân sách không gây đối đầu', criterionEn: 'Empathetic Conflict Resolution & Mutual Ownership', maxPoints: 25 },
+      { criterionVi: 'Tính khả thi của lộ trình chuyển đổi số & đào tạo nhân sự', criterionEn: 'Change Readiness & Team Capability Adoption Plan', maxPoints: 15 },
     ],
   },
 ];

@@ -14,6 +14,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { auth, db, firebaseConfigSummary, handleFirestoreError, OperationType } from './firebase';
+import { sortLessonMaterialsAsc } from './lessonMaterials';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   ROLE_META,
@@ -407,9 +408,9 @@ export async function seedDefaultRolePermissionsToFirestore(
 export async function fetchLessonMaterialsFromFirestore(): Promise<LessonMaterialDoc[]> {
   try {
     const snap = await getDocs(collection(db, 'lessonMaterials'));
-    return snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as any) }) as LessonMaterialDoc)
-      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    return sortLessonMaterialsAsc(
+      snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }) as LessonMaterialDoc)
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'lessonMaterials');
   }
@@ -729,9 +730,7 @@ export async function fetchProductionTransactionalData(
     careerReadinessReviews,
     userProfiles,
     rolePermissions: rolePermissions as RolePermissionPolicyDoc[],
-    lessonMaterials: (lessonMaterials as LessonMaterialDoc[]).sort((a, b) =>
-      (b.createdAt || '').localeCompare(a.createdAt || '')
-    ),
+    lessonMaterials: sortLessonMaterialsAsc(lessonMaterials as LessonMaterialDoc[]),
   };
 }
 

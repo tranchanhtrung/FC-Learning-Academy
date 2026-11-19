@@ -46,6 +46,8 @@ const MainAppContent: React.FC = () => {
     currentUser,
     selectedCourseForPlayer,
     setSelectedCourseForPlayer,
+    selectedLessonIdForPlayer,
+    setSelectedLessonIdForPlayer,
     selectedCertificateForView,
     setSelectedCertificateForView,
     toasts,
@@ -173,7 +175,11 @@ const MainAppContent: React.FC = () => {
       {selectedCourseForPlayer && (
         <CoursePlayerModal
           course={selectedCourseForPlayer}
-          onClose={() => setSelectedCourseForPlayer(null)}
+          initialLessonId={selectedLessonIdForPlayer}
+          onClose={() => {
+            setSelectedCourseForPlayer(null);
+            setSelectedLessonIdForPlayer(null);
+          }}
           onStartQuiz={handleStartQuiz}
         />
       )}

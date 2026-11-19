@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { COURSES } from '../../data/initialData';
+import { findCourseMatch } from '../../lib/lessonMaterials';
 import { LearningPath } from '../../types';
 import {
   GitBranch,
@@ -43,7 +45,13 @@ export const LearningPathsView: React.FC = () => {
   // Calculate track progress
   const allRequiredCoursesInTrack = activePath.stages.flatMap((s) => s.requiredCourses);
   const completedCoursesCount = allRequiredCoursesInTrack.filter((cid) => {
-    const enr = enrollments.find((e) => e.userId === currentUser.id && e.courseId === cid);
+    const c = findCourseMatch(courses, cid, COURSES);
+    const enr = enrollments.find(
+      (e) =>
+        e.userId === currentUser.id &&
+        (e.courseId === cid ||
+          (c ? e.courseId === c.id || findCourseMatch(courses, e.courseId, COURSES)?.code === c.code : false))
+    );
     return enr?.status === 'completed';
   }).length;
   const trackProgressPct =
@@ -236,9 +244,13 @@ export const LearningPathsView: React.FC = () => {
                     </span>
                     <div className="space-y-2">
                       {stage.requiredCourses.map((cid) => {
-                        const c = courses.find((course) => course.id === cid);
+                        const c = findCourseMatch(courses, cid, COURSES);
                         if (!c) return null;
-                        const enr = enrollments.find((e) => e.userId === currentUser.id && e.courseId === cid);
+                        const enr = enrollments.find(
+                          (e) =>
+                            e.userId === currentUser.id &&
+                            (e.courseId === cid || e.courseId === c.id)
+                        );
                         const isDone = enr?.status === 'completed';
 
                         return (

@@ -1,16 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Course, CourseModule, LessonMaterialDoc } from '../../types';
 import { getCourseSyllabus, generateCourseSyllabusMarkdown } from '../../data/courseSyllabi';
-import { downloadLessonMaterial, canPreviewInline, getMaterialBlobUrl } from '../../lib/lessonMaterials';
+import {
+  downloadLessonMaterial,
+  doesMaterialMatchCourse,
+  findCourseMatch,
+  sortLessonMaterialsAsc,
+} from '../../lib/lessonMaterials';
+import { COURSES } from '../../data/initialData';
 import { LessonMaterialsManager } from './LessonMaterialsManager';
 import {
+  LessonMaterialContentRenderer,
+  LessonMaterialPreviewModal,
+} from './LessonMaterialPreviewModal';
+import {
   X,
-  Play,
   CheckCircle2,
   Download,
   Award,
   BookOpen,
+  ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
   Layers,
@@ -23,20 +33,26 @@ import {
   Eye,
   ExternalLink,
   Paperclip,
+  Maximize2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface CoursePlayerModalProps {
   course: Course | null;
+  initialLessonId?: string | null;
   onClose: () => void;
   onStartQuiz: (course: Course) => void;
 }
 
 export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
-  course,
+  course: rawCourse,
+  initialLessonId,
   onClose,
   onStartQuiz,
 }) => {
   const {
+    courses,
     enrollments,
     updateCourseProgress,
     currentUser,
@@ -44,65 +60,49 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
     t,
     setActiveTab,
     domains,
+    ojtAssignments,
     lessonMaterials,
     hasPermission,
     canAccessRoute,
   } = useApp();
+  const course = useMemo(() => {
+    if (!rawCourse) return null;
+    return findCourseMatch(courses, rawCourse.id, [rawCourse]) ||
+      findCourseMatch(courses, rawCourse.code, [rawCourse]) ||
+      rawCourse;
+  }, [rawCourse, courses]);
   const [activeTabSub, setActiveTabSub] = useState<'syllabus' | 'modules' | 'materials' | 'case_study' | 'assignment'>('modules');
   const [activeModuleIndex, setActiveModuleIndex] = useState<number>(0);
-  const [thumbError, setThumbError] = useState<boolean>(false);
   const [showLessonUploadDrawer, setShowLessonUploadDrawer] = useState<boolean>(false);
   const [previewDoc, setPreviewDoc] = useState<LessonMaterialDoc | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewText, setPreviewText] = useState<string | null>(null);
+  const [selectedEmbeddedMatId, setSelectedEmbeddedMatId] = useState<string | null>(null);
+  const [showInlineReader, setShowInlineReader] = useState<boolean>(true);
 
   useEffect(() => {
-    setActiveModuleIndex(0);
+    let resolvedIdx = 0;
+    if (course && initialLessonId) {
+      const foundIdx = course.modules.findIndex((m) => m.id === initialLessonId);
+      if (foundIdx >= 0) resolvedIdx = foundIdx;
+    }
+    setActiveModuleIndex(resolvedIdx);
     setActiveTabSub('modules');
-    setThumbError(false);
     setShowLessonUploadDrawer(false);
     setPreviewDoc(null);
-  }, [course?.id]);
+    setSelectedEmbeddedMatId(null);
+    setShowInlineReader(true);
+  }, [course?.id, initialLessonId]);
 
   useEffect(() => {
-    if (!previewDoc) {
-      setPreviewUrl(null);
-      setPreviewText(null);
-      return;
-    }
-    let revoked: string | null = null;
-    const url = getMaterialBlobUrl(previewDoc);
-    setPreviewUrl(url);
-    if (url && previewDoc.storageMode === 'firestore_inline') revoked = url;
-
-    const mime = (previewDoc.mimeType || '').toLowerCase();
-    const ext = (previewDoc.fileName || '').split('.').pop()?.toLowerCase() || '';
-    if (
-      previewDoc.storageMode === 'firestore_inline' &&
-      previewDoc.inlineBase64 &&
-      (mime.startsWith('text/') || ['txt', 'md', 'csv'].includes(ext))
-    ) {
-      try {
-        const bin = atob(previewDoc.inlineBase64);
-        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-        setPreviewText(new TextDecoder('utf-8').decode(bytes));
-      } catch {
-        setPreviewText(null);
-      }
-    } else {
-      setPreviewText(null);
-    }
-
-    return () => {
-      if (revoked) URL.revokeObjectURL(revoked);
-    };
-  }, [previewDoc]);
+    setSelectedEmbeddedMatId(null);
+  }, [activeModuleIndex]);
 
   if (!course) return null;
 
   const isVi = language === 'vi';
   const canManageLessonMaterials = hasPermission('manage_lesson_materials');
-  const courseLessonMaterials = lessonMaterials.filter((m) => m.courseId === course.id);
+  const courseLessonMaterials = sortLessonMaterialsAsc(
+    lessonMaterials.filter((m) => doesMaterialMatchCourse(m, course))
+  );
   const syllabus = getCourseSyllabus(course);
   const domainObj = domains.find((d) => d.id === course.domainId);
   const matchingSession =
@@ -121,15 +121,22 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const enrollment = enrollments.find(
-    (e) => e.userId === currentUser.id && e.courseId === course.id
-  );
+  const enrollment = enrollments.find((e) => {
+    if (e.userId !== currentUser.id) return false;
+    if (e.courseId === course.id) return true;
+    const matched = findCourseMatch(courses, e.courseId, COURSES);
+    return Boolean(matched && matched.code === course.code);
+  });
 
   const activeModule: CourseModule = course.modules[activeModuleIndex] || course.modules[0];
   const isModuleCompleted = enrollment?.completedModules.includes(activeModule?.id);
   const activeLessonMaterials = courseLessonMaterials.filter(
-    (m) => m.lessonId === activeModule?.id
+    (m) => m.lessonId === activeModule?.id || m.lessonOrder === activeModuleIndex + 1
   );
+  const activeEmbeddedMaterial =
+    activeLessonMaterials.find((m) => m.id === selectedEmbeddedMatId) ||
+    activeLessonMaterials[0] ||
+    null;
 
   const handleMarkCompleted = () => {
     if (activeModule) {
@@ -275,222 +282,344 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
 
         {/* Content Body */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden bg-slate-50">
-          {/* TAB 1: MODULES & VIDEO PLAYER */}
+          {/* TAB 1: LESSON VIEWER & LEARNING CONTENT */}
           {activeTabSub === 'modules' && (
             <>
-              {/* Main Stage (70%) */}
-              <div className="flex-1 p-6 overflow-y-auto space-y-6">
-                {/* Simulated Video Player */}
-                <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#0A192F] via-slate-900 to-blue-950 shadow-md border border-slate-800 aspect-video flex items-center justify-center group">
-                  {!thumbError && course.thumbnail && (
-                    <img
-                      src={course.thumbnail}
-                      alt={isVi ? course.titleVi : course.titleEn}
-                      onError={() => setThumbError(true)}
-                      className="absolute inset-0 w-full h-full object-cover opacity-35 group-hover:opacity-45 transition-opacity"
-                    />
-                  )}
-                  <div className="relative z-10 flex flex-col items-center gap-3 text-center px-4">
-                    <div className="w-16 h-16 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 cursor-pointer">
-                      <Play className="w-7 h-7 fill-slate-950 ml-1" />
-                    </div>
-                    <div>
-                      <h4 className="text-white font-extrabold text-base">
-                        {language === 'vi' ? activeModule?.titleVi : activeModule?.titleEn}
-                      </h4>
-                      <p className="text-amber-300 text-xs mt-0.5 font-medium">
-                        {course.instructorName} &bull; USALI Masterclass Video (4K Ultra HD)
+              {/* Main Lesson Study Stage (70%) */}
+              <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-5">
+                {/* Active Lesson Navigation & Control Header */}
+                <div className="bg-[#0A192F] text-white rounded-2xl p-5 shadow-sm border border-slate-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="text-[11px] font-mono text-amber-400 flex flex-wrap items-center gap-x-2">
+                        <span className="font-bold uppercase">
+                          {isVi ? `Bài ${activeModuleIndex + 1} / ${course.modules.length}` : `Lesson ${activeModuleIndex + 1} / ${course.modules.length}`}
+                        </span>
+                        <span aria-hidden="true">&middot;</span>
+                        <span>
+                          {Math.round(((activeModule?.durationMinutes || 60) / 60) * 10) / 10}h ({activeModule?.durationMinutes || 60} {isVi ? 'phút' : 'min'})
+                        </span>
+                        <span aria-hidden="true">&middot;</span>
+                        <span className="uppercase">{activeModule?.type}</span>
+                        <span aria-hidden="true">&middot;</span>
+                        <span className={isModuleCompleted ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
+                          {isModuleCompleted
+                            ? isVi ? 'Đã hoàn thành' : 'Completed'
+                            : isVi ? 'Đang học' : 'In Progress'}
+                        </span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-extrabold text-white leading-snug">
+                        {isVi ? activeModule?.titleVi : activeModule?.titleEn}
+                      </h3>
+                      <p className="text-xs text-slate-300">
+                        {course.instructorName} &bull; {course.instructorTitle}
                       </p>
                     </div>
-                  </div>
 
-                  {/* Video Player Controls Mock */}
-                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent p-4 flex items-center justify-between text-xs text-white">
-                    <div className="flex items-center gap-3">
-                      <Play className="w-4 h-4 fill-white cursor-pointer" />
-                      <span className="text-[11px] font-mono text-slate-300">14:20 / {activeModule?.durationMinutes || 45}:00</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800">1080p HD</span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800">1.0x</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lesson Notes & Downloadables */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200/80 space-y-4 shadow-xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                    <div>
-                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
-                        {isVi ? 'Phần' : 'Module'} {activeModuleIndex + 1} / {course.modules.length} • {activeModule?.type.toUpperCase()}
-                      </span>
-                      <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                        {language === 'vi' ? activeModule?.titleVi : activeModule?.titleEn}
-                      </h3>
-                    </div>
-
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
-                        onClick={() => handleDownloadExcel()}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        type="button"
+                        disabled={activeModuleIndex <= 0}
+                        onClick={() => setActiveModuleIndex((idx) => Math.max(0, idx - 1))}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
                       >
-                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Bài trước' : 'Prev'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={activeModuleIndex >= course.modules.length - 1}
+                        onClick={() =>
+                          setActiveModuleIndex((idx) => Math.min(course.modules.length - 1, idx + 1))
+                        }
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                      >
+                        <span>{isVi ? 'Bài tiếp' : 'Next'}</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-slate-800">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadExcel()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
                         <span>{isVi ? 'Tải Mô Hình Excel' : 'Download Excel Model'}</span>
                       </button>
 
-                      <button
-                        onClick={handleMarkCompleted}
-                        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          isModuleCompleted
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>{isModuleCompleted ? (language === 'vi' ? 'Đã hoàn thành' : 'Completed') : (language === 'vi' ? 'Đánh dấu hoàn thành' : 'Mark as Done')}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Matching Syllabus Session Context */}
-                  {matchingSession && (
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-800 uppercase text-[11px] tracking-wider">
-                          {isVi ? 'Trọng tâm Đề cương Học phần tương ứng:' : 'Aligned Syllabus Session Focus:'}
-                        </span>
-                        <span className="font-mono text-[11px] text-blue-700 font-bold">
-                          {matchingSession.durationHours}h · {matchingSession.format}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-slate-900">
-                        {isVi ? matchingSession.titleVi : matchingSession.titleEn}
-                      </p>
-                      <p className="text-slate-600">
-                        <strong>{isVi ? 'Thực hành Lab:' : 'Lab:'}</strong>{' '}
-                        {isVi ? matchingSession.practicalLabVi : matchingSession.practicalLabEn}
-                      </p>
-                      {matchingSession.keyStandardsAndFormulas.length > 0 && (
-                        <div className="pt-1 space-y-0.5">
-                          {matchingSession.keyStandardsAndFormulas.map((f, idx) => (
-                            <div key={idx} className="font-mono text-[11px] text-slate-800">
-                              {f}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Per-Lesson Uploaded Materials (Firestore) */}
-                  <div className="pt-3 border-t border-slate-100 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Paperclip className="w-3.5 h-3.5 text-blue-700" />
-                        <span className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider">
-                          {isVi
-                            ? `Học Liệu Riêng Của Bài ${activeModuleIndex + 1} (${activeLessonMaterials.length})`
-                            : `Lesson ${activeModuleIndex + 1} Uploaded Materials (${activeLessonMaterials.length})`}
-                        </span>
-                      </div>
                       {canManageLessonMaterials && activeModule && (
                         <button
                           type="button"
                           onClick={() => setShowLessonUploadDrawer((prev) => !prev)}
-                          className="px-3 py-1.5 rounded-xl bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                         >
                           <Upload className="w-3.5 h-3.5" />
                           <span>
                             {showLessonUploadDrawer
-                              ? isVi
-                                ? 'Thu gọn trình Upload'
-                                : 'Hide Upload Drawer'
-                              : isVi
-                              ? '+ Upload Học Liệu Cho Bài Này'
-                              : '+ Upload Material to This Lesson'}
+                              ? isVi ? 'Ẩn Upload' : 'Hide Upload'
+                              : isVi ? '+ Upload Học Liệu' : '+ Upload Material'}
                           </span>
                         </button>
                       )}
                     </div>
 
-                    {showLessonUploadDrawer && activeModule ? (
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                        <LessonMaterialsManager
-                          initialCourseId={course.id}
-                          initialLessonId={activeModule.id}
-                          compact
-                          lockSelection
+                    <button
+                      type="button"
+                      onClick={handleMarkCompleted}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                        isModuleCompleted
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        {isModuleCompleted
+                          ? isVi ? 'Đã hoàn thành bài này' : 'Completed'
+                          : isVi ? 'Đánh dấu hoàn thành & Tiếp tục' : 'Mark Done & Next'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Upload Drawer (Authorized Roles Only) */}
+                {showLessonUploadDrawer && activeModule && (
+                  <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                    <LessonMaterialsManager
+                      initialCourseId={course.id}
+                      initialLessonId={activeModule.id}
+                      compact
+                      lockSelection
+                    />
+                  </div>
+                )}
+
+                {/* Embedded Lesson Material Reader (DOCX / XLSX / PDF / Video / Links) */}
+                {activeLessonMaterials.length > 0 && activeEmbeddedMaterial && (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                    <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="w-4 h-4 text-blue-700 shrink-0" />
+                        <span className="text-xs font-extrabold text-slate-900 uppercase tracking-wider truncate">
+                          {isVi
+                            ? `Nội Dung & Tài Liệu Đính Kèm Bài ${activeModuleIndex + 1} (${activeLessonMaterials.length})`
+                            : `Lesson ${activeModuleIndex + 1} Attached Content (${activeLessonMaterials.length})`}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc(activeEmbeddedMaterial)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5 text-blue-700" />
+                          <span>{isVi ? 'Xem Toàn Màn Hình' : 'Fullscreen Reader'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadLessonMaterial(activeEmbeddedMaterial)}
+                          className="px-3 py-1.5 rounded-lg bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                        >
+                          {activeEmbeddedMaterial.storageMode === 'external_link' ? (
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isVi ? 'Tải Xuống' : 'Download'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowInlineReader((prev) => !prev)}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                        >
+                          {showInlineReader ? (
+                            <>
+                              <ChevronUp className="w-3.5 h-3.5" />
+                              <span>{isVi ? 'Thu gọn' : 'Collapse'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="w-3.5 h-3.5" />
+                              <span>{isVi ? 'Mở đọc' : 'Read'}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Multi-file selector if lesson has >1 material */}
+                    {activeLessonMaterials.length > 1 && (
+                      <div className="px-5 py-2.5 bg-slate-100/70 border-b border-slate-200 flex items-center gap-2 overflow-x-auto">
+                        {activeLessonMaterials.map((mat) => {
+                          const isSelected = activeEmbeddedMaterial.id === mat.id;
+                          return (
+                            <button
+                              key={mat.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmbeddedMatId(mat.id);
+                                setShowInlineReader(true);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer flex items-center gap-1.5 ${
+                                isSelected
+                                  ? 'bg-[#0A192F] text-amber-400'
+                                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>{isVi ? mat.titleVi : mat.titleEn}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Active Material Metadata Bar */}
+                    <div className="px-5 py-2.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="font-bold text-slate-900 truncate">
+                        {isVi ? activeEmbeddedMaterial.titleVi : activeEmbeddedMaterial.titleEn}
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-500 flex items-center gap-2 tabular-nums">
+                        <span className="uppercase font-bold text-blue-700">{activeEmbeddedMaterial.materialType}</span>
+                        <span aria-hidden="true">&middot;</span>
+                        <span>{activeEmbeddedMaterial.fileSizeLabel}</span>
+                        {activeEmbeddedMaterial.fileName && (
+                          <>
+                            <span aria-hidden="true">&middot;</span>
+                            <span className="truncate max-w-[200px]">{activeEmbeddedMaterial.fileName}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Embedded Reader Viewport */}
+                    {showInlineReader && (
+                      <div className="bg-slate-100">
+                        <LessonMaterialContentRenderer
+                          material={activeEmbeddedMaterial}
+                          isVi={isVi}
+                          embedded
                         />
-                      </div>
-                    ) : activeLessonMaterials.length === 0 ? (
-                      <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-                        {isVi
-                          ? 'Bài học này chưa có học liệu đính kèm riêng trên Firestore.'
-                          : 'No custom per-lesson materials uploaded to Firestore for this lesson yet.'}
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {activeLessonMaterials.map((mat) => (
-                          <div
-                            key={mat.id}
-                            className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
-                          >
-                            <div className="min-w-0 space-y-0.5">
-                              <div className="font-bold text-xs text-slate-900 truncate">
-                                {isVi ? mat.titleVi : mat.titleEn}
-                              </div>
-                              <div className="text-[11px] font-mono text-slate-500 flex flex-wrap items-center gap-x-2">
-                                <span className="uppercase font-bold text-blue-700">{mat.materialType}</span>
-                                <span>&middot;</span>
-                                <span>{mat.fileSizeLabel}</span>
-                                <span>&middot;</span>
-                                <span>{mat.storageMode}</span>
-                                {mat.isRequired && (
-                                  <>
-                                    <span>&middot;</span>
-                                    <span className="text-rose-700 font-bold">
-                                      {isVi ? 'Bắt buộc' : 'Required'}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              {(canPreviewInline(mat) || Boolean(mat.downloadUrl)) && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewDoc(mat)}
-                                  className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Eye className="w-3 h-3 text-blue-600" />
-                                  <span>{isVi ? 'Xem' : 'Preview'}</span>
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => downloadLessonMaterial(mat)}
-                                className="px-3 py-1 rounded-lg bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                {mat.storageMode === 'external_link' ? (
-                                  <ExternalLink className="w-3 h-3" />
-                                ) : (
-                                  <Download className="w-3 h-3" />
-                                )}
-                                <span>{isVi ? 'Tải' : 'Get'}</span>
-                              </button>
-                            </div>
-                          </div>
-                        ))}
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* Complete Structured Lesson Content from Syllabus */}
+                <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 space-y-5 shadow-xs">
+                  {matchingSession ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div>
+                          <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">
+                            {isVi ? 'Giáo Trình Chi Tiết Bài Học' : 'Detailed Lesson Curriculum Guide'}
+                          </span>
+                          <h4 className="text-base font-extrabold text-slate-900 mt-0.5">
+                            {isVi ? matchingSession.titleVi : matchingSession.titleEn}
+                          </h4>
+                        </div>
+                        <span className="font-mono text-xs text-slate-600 font-bold shrink-0 tabular-nums">
+                          {matchingSession.durationHours}h · {matchingSession.format}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        {/* Learning Outcomes */}
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                          <h5 className="font-extrabold text-slate-900 uppercase text-[11px] tracking-wider">
+                            {isVi ? '1. Chuẩn Đầu Ra Bài Học' : '1. Lesson Learning Outcomes'}
+                          </h5>
+                          <ul className="space-y-1.5 text-slate-700">
+                            {(isVi ? matchingSession.learningOutcomesVi : matchingSession.learningOutcomesEn).map(
+                              (lo, idx) => (
+                                <li key={idx} className="flex items-start gap-2 leading-relaxed">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                                  <span>{lo}</span>
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+
+                        {/* Key Topics */}
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                          <h5 className="font-extrabold text-slate-900 uppercase text-[11px] tracking-wider">
+                            {isVi ? '2. Nội Dung Kiến Thức Trọng Tâm' : '2. Core Knowledge Topics'}
+                          </h5>
+                          <ul className="space-y-1.5 text-slate-700 list-disc pl-4 leading-relaxed">
+                            {(isVi ? matchingSession.topicsVi : matchingSession.topicsEn).map((tp, idx) => (
+                              <li key={idx}>{tp}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* Formulas & Standards */}
+                      {matchingSession.keyStandardsAndFormulas.length > 0 && (
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                          <h5 className="font-extrabold text-slate-900 uppercase text-[11px] tracking-wider">
+                            {isVi ? '3. Chuẩn Mực USALI / IFRS & Công Thức Trọng Tâm' : '3. USALI / IFRS Standards & Formulas'}
+                          </h5>
+                          <div className="space-y-1.5">
+                            {matchingSession.keyStandardsAndFormulas.map((f, idx) => (
+                              <div
+                                key={idx}
+                                className="font-mono text-xs text-slate-900 bg-white px-3 py-2 rounded-lg border border-slate-200/80"
+                              >
+                                {f}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Practical Lab & Deliverables */}
+                      <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-2 text-xs">
+                        <h5 className="font-extrabold text-emerald-950 uppercase text-[11px] tracking-wider">
+                          {isVi ? '4. Bài Thực Hành Lab & Sản Phẩm Đầu Ra' : '4. Practical Lab & Deliverables'}
+                        </h5>
+                        <p className="text-slate-800 leading-relaxed">
+                          {isVi ? matchingSession.practicalLabVi : matchingSession.practicalLabEn}
+                        </p>
+                        <div className="pt-1 font-bold text-emerald-800">
+                          {isVi ? 'Sản phẩm đầu ra:' : 'Deliverables:'}{' '}
+                          {(isVi ? matchingSession.deliverablesVi : matchingSession.deliverablesEn).join(' · ')}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* No Custom Material Notice (Quiet, Clear) */}
+                  {activeLessonMaterials.length === 0 && (
+                    <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        {isVi
+                          ? 'Bài học này hiện chưa có tệp học liệu đính kèm riêng (Word/PDF/Excel).'
+                          : 'No separate uploaded files (Word/PDF/Excel) attached to this lesson yet.'}
+                      </span>
+                      {canManageLessonMaterials && (
+                        <button
+                          type="button"
+                          onClick={() => setShowLessonUploadDrawer(true)}
+                          className="font-bold text-blue-700 hover:underline cursor-pointer"
+                        >
+                          {isVi ? '+ Upload học liệu cho bài này' : '+ Upload material'}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Learning Objectives Reminder */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
                     <span className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wider block">
                       {isVi ? 'Mục tiêu cốt lõi của khóa học:' : 'Core Course Learning Objectives:'}
                     </span>
-                    <ul className="space-y-1 text-xs text-slate-600">
+                    <ul className="space-y-1.5 text-xs text-slate-600">
                       {(language === 'vi' ? course.learningObjectivesVi : course.learningObjectivesEn).map((obj, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
@@ -508,7 +637,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-700">
                     {t.courses.modules} ({course.modules.length})
                   </h4>
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-xs text-slate-500 font-mono tabular-nums">
                     {course.durationHours} {language === 'vi' ? 'giờ' : 'hrs'}
                   </span>
                 </div>
@@ -517,11 +646,14 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   {course.modules.map((mod, idx) => {
                     const isSelected = activeModuleIndex === idx;
                     const isDone = enrollment?.completedModules.includes(mod.id);
-                    const modMatCount = courseLessonMaterials.filter((m) => m.lessonId === mod.id).length;
+                    const modMatCount = courseLessonMaterials.filter(
+                      (m) => m.lessonId === mod.id || m.lessonOrder === idx + 1
+                    ).length;
 
                     return (
                       <button
                         key={mod.id}
+                        type="button"
                         onClick={() => setActiveModuleIndex(idx)}
                         className={`w-full p-4 text-left transition-colors flex items-start gap-3 cursor-pointer ${
                           isSelected
@@ -533,17 +665,23 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                           {isDone ? (
                             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           ) : (
-                            <div className="w-4 h-4 rounded-full border border-slate-400 flex items-center justify-center text-[9px] font-bold text-slate-500">
+                            <div
+                              className={`w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold ${
+                                isSelected
+                                  ? 'border-amber-600 bg-amber-500 text-slate-950'
+                                  : 'border-slate-400 text-slate-500'
+                              }`}
+                            >
                               {idx + 1}
                             </div>
                           )}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h5 className={`font-bold text-xs leading-snug ${isSelected ? 'text-slate-950 font-extrabold' : 'text-slate-700'}`}>
                             {language === 'vi' ? mod.titleVi : mod.titleEn}
                           </h5>
                           <span className="text-[10px] text-slate-500 mt-1 block font-mono tabular-nums">
-                            {mod.durationMinutes} {isVi ? 'phút' : 'min'} &bull; {mod.type}
+                            {Math.round((mod.durationMinutes / 60) * 10) / 10}h ({mod.durationMinutes} {isVi ? 'phút' : 'min'}) &bull; {mod.type}
                             {modMatCount > 0 ? ` · ${modMatCount} ${isVi ? 'học liệu' : 'files'}` : ''}
                           </span>
                         </div>
@@ -825,143 +963,101 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
           )}
 
           {/* TAB 4: PRACTICAL ASSIGNMENT (OJT) */}
-          {activeTabSub === 'assignment' && (
-            <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6 max-w-4xl mx-auto">
-              <div className="border-b border-slate-200 pb-4">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
-                  {isVi ? 'Bài Tập Thực Hành Tại Khách Sạn (On-the-Job Training)' : 'On-the-Job Training (OJT) Practical Assignment'}
-                </span>
-                <h3 className="text-xl font-extrabold text-slate-900 mt-2">
-                  {(isVi
-                    ? course.practicalAssignmentTitle
-                    : course.practicalAssignmentTitleEn || course.practicalAssignmentTitle) ||
-                    (isVi ? 'Thực Hành Tác Nghiệp Khóa Sổ & Phân Tích Tài Chính' : 'Hotel Month-End Closing & Financial Analysis Practicum')}
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  {isVi
-                    ? 'Bài tập yêu cầu người học áp dụng trực tiếp kiến thức đã học vào số liệu vận hành thực tế tại khách sạn và nộp bài để Giám đốc Tài chính chấm điểm thẩm định.'
-                    : 'Learners apply course concepts directly to live hotel operational data and submit deliverables for Cluster Financial Controller rubric grading.'}
-                </p>
-              </div>
+          {activeTabSub === 'assignment' && (() => {
+            const matchedOjt = ojtAssignments.find(
+              (o) =>
+                o.id === course.practicalAssignmentId ||
+                (course.practicalAssignmentTitle &&
+                  course.practicalAssignmentTitle.startsWith(o.code))
+            );
+            const deliverablesList = matchedOjt
+              ? isVi
+                ? matchedOjt.deliverablesVi
+                : matchedOjt.deliverablesEn
+              : isVi
+              ? [
+                  'File Excel tính toán chi tiết mô hình theo chuẩn mực USALI',
+                  'Bản giải trình báo cáo phân tích chuyên đề gửi Giám đốc Tài chính',
+                  'Kế hoạch hành động áp dụng trực tiếp tại khách sạn',
+                ]
+              : [
+                  'USALI-compliant Excel calculation & reconciliation workbook',
+                  'Executive critique & recommendation memo for the Financial Controller',
+                  'Property-level corrective action plan ready for GM review',
+                ];
 
-              <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
-                <div className="space-y-2">
-                  <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
-                    {isVi ? 'Sản phẩm đầu ra cần nộp (Deliverables):' : 'Required Deliverables:'}
-                  </h4>
-                  <ul className="space-y-1.5 text-xs text-slate-700">
-                    <li className="flex items-center gap-2">
-                      <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>
-                        {isVi
-                          ? 'File Excel tính toán chi tiết mô hình theo mẫu chuẩn mực USALI'
-                          : 'USALI-compliant Excel calculation & reconciliation workbook'}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>
-                        {isVi
-                          ? 'Bản giải trình báo cáo phân tích phương sai (P&L Critique Memo)'
-                          : 'Executive variance explanation memo (P&L Critique Memo)'}
-                      </span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <FileCheck className="w-4 h-4 text-blue-600 shrink-0" />
-                      <span>
-                        {isVi
-                          ? 'Kế hoạch hành động 30 ngày khắc phục chi phí gửi Tổng Giám Đốc'
-                          : '30-day corrective cost-control action plan for the General Manager'}
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-slate-500">
-                    {isVi
-                      ? 'Được đánh giá theo thang điểm 100 bởi Cluster Financial Controller'
-                      : 'Graded on a 100-point rubric by the Cluster Financial Controller'}
+            return (
+              <div className="flex-1 p-6 sm:p-8 overflow-y-auto space-y-6 max-w-4xl mx-auto">
+                <div className="border-b border-slate-200 pb-4">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                    {isVi ? 'Bài Tập Thực Hành Tại Khách Sạn (On-the-Job Training)' : 'On-the-Job Training (OJT) Practical Assignment'}
                   </span>
-                  {canAccessRoute('ojtProjects') && (
-                    <button
-                      onClick={() => {
-                        onClose();
-                        setActiveTab('ojtProjects');
-                      }}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
-                    >
-                      <span>{isVi ? 'Mở Phân Hệ Nộp Bài OJT' : 'Open OJT Submission Hub'}</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  )}
+                  <h3 className="text-xl font-extrabold text-slate-900 mt-2">
+                    {(isVi
+                      ? course.practicalAssignmentTitle || matchedOjt?.titleVi
+                      : course.practicalAssignmentTitleEn || matchedOjt?.titleEn || course.practicalAssignmentTitle) ||
+                      (isVi ? 'Thực Hành Tác Nghiệp Khách Sạn Chuyên Sâu' : 'Hospitality Finance Practical Assignment')}
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+                    {matchedOjt
+                      ? isVi
+                        ? matchedOjt.descriptionVi
+                        : matchedOjt.descriptionEn
+                      : isVi
+                      ? 'Bài tập yêu cầu người học áp dụng trực tiếp kiến thức đã học vào số liệu vận hành thực tế tại khách sạn và nộp bài để Giám đốc Tài chính chấm điểm thẩm định.'
+                      : 'Learners apply course concepts directly to live hotel operational data and submit deliverables for Cluster Financial Controller rubric grading.'}
+                  </p>
+                </div>
+
+                <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
+                      {isVi ? 'Sản phẩm đầu ra cần nộp (Deliverables):' : 'Required Deliverables:'}
+                    </h4>
+                    <ul className="space-y-1.5 text-xs text-slate-700">
+                      {deliverablesList.map((deliv, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <FileCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                          <span>{deliv}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs text-slate-500">
+                      {isVi
+                        ? 'Được đánh giá theo thang điểm 100 bởi Cluster Financial Controller'
+                        : 'Graded on a 100-point rubric by the Cluster Financial Controller'}
+                    </span>
+                    {canAccessRoute('ojtProjects') && (
+                      <button
+                        onClick={() => {
+                          onClose();
+                          setActiveTab('ojtProjects');
+                        }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <span>{isVi ? 'Mở Phân Hệ Nộp Bài OJT' : 'Open OJT Submission Hub'}</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       </div>
 
-      {/* Inline Preview Modal inside CoursePlayerModal */}
-      {previewDoc && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 backdrop-blur-xs p-3 sm:p-6">
-          <div className="bg-white rounded-2xl max-w-4xl w-full h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-3.5 bg-[#0A192F] text-white flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[11px] font-mono text-amber-400">
-                  {previewDoc.courseCode} · {isVi ? `Bài ${previewDoc.lessonOrder}` : `Lesson ${previewDoc.lessonOrder}`} · {previewDoc.fileSizeLabel}
-                </div>
-                <h4 className="font-extrabold text-sm truncate">
-                  {isVi ? previewDoc.titleVi : previewDoc.titleEn}
-                </h4>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => downloadLessonMaterial(previewDoc)}
-                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{isVi ? 'Tải xuống' : 'Download'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewDoc(null)}
-                  className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 bg-slate-100 overflow-auto p-4 flex items-center justify-center">
-              {previewText !== null ? (
-                <pre className="w-full h-full bg-white rounded-xl border border-slate-200 p-4 text-xs font-mono text-slate-800 overflow-auto whitespace-pre-wrap">
-                  {previewText}
-                </pre>
-              ) : previewUrl && (previewDoc.mimeType?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(previewDoc.fileName || '')) ? (
-                <img
-                  src={previewUrl}
-                  alt={isVi ? previewDoc.titleVi : previewDoc.titleEn}
-                  className="max-w-full max-h-full rounded-xl shadow-md object-contain"
-                />
-              ) : previewUrl ? (
-                <iframe
-                  src={previewUrl}
-                  title={isVi ? previewDoc.titleVi : previewDoc.titleEn}
-                  className="w-full h-full rounded-xl border border-slate-200 bg-white"
-                />
-              ) : (
-                <div className="text-xs text-slate-500">
-                  {isVi
-                    ? 'Định dạng tệp này không hỗ trợ xem trực tiếp. Vui lòng bấm Tải xuống.'
-                    : 'Inline preview is not supported for this file type. Please click Download.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Unified Lesson Material Reader Modal inside CoursePlayerModal */}
+      <LessonMaterialPreviewModal
+        material={previewDoc}
+        materials={activeLessonMaterials.length > 0 ? activeLessonMaterials : courseLessonMaterials}
+        isVi={isVi}
+        onSelectMaterial={setPreviewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
   );
 };

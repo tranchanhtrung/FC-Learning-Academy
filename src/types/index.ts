@@ -364,6 +364,11 @@ export interface LearningPath {
   titleVi: string;
   titleEn: string;
   targetRole: string;
+  fromRole?: string;
+  targetLevel?: ProficiencyLevel;
+  durationMonths?: number;
+  minAssessmentScore?: number;
+  requiredCompetencyCodes?: string[];
   descriptionVi: string;
   descriptionEn: string;
   totalHours: number;
@@ -371,6 +376,8 @@ export interface LearningPath {
     stageNumber: number;
     titleVi: string;
     titleEn: string;
+    domainIds?: string[];
+    requiredCompetencyCodes?: string[];
     requiredCourses: string[];
     requiredOjtAssignments: string[];
     readinessCriteriaVi: string;

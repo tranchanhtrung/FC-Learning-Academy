@@ -137,8 +137,8 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
       },
       {
         sessionNumber: 4,
-        titleVi: 'Học phần 4: Kiểm tra tổng hợp USALI & Giao bài tập thực hành OJT-FAR-01',
-        titleEn: 'Session 4: Comprehensive USALI Exam & OJT-FAR-01 Briefing',
+        titleVi: 'Học phần 4: Rà soát sai sót P&L, Kiểm tra tổng hợp USALI & Giao bài OJT-FAR-01',
+        titleEn: 'Session 4: P&L Error Review, Comprehensive USALI Exam & OJT-FAR-01 Briefing',
         durationHours: 3,
         format: 'Capstone & Exam',
         learningOutcomesVi: [
@@ -1278,8 +1278,8 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
       },
       {
         sessionNumber: 2,
-        titleVi: 'Học phần 2: Xây dựng Mô hình Chiết khấu Dòng tiền (DCF), NPV, IRR & Payback',
-        titleEn: 'Session 2: Capital Budgeting Financial Modeling (DCF, NPV, IRR & WACC)',
+        titleVi: 'Học phần 2: Xây dựng Mô hình DCF, NPV, IRR & Payback (Lab Chiller $450k)',
+        titleEn: 'Session 2: Capital Budgeting DCF, NPV, IRR & Payback ($450k Chiller Lab)',
         durationHours: 6,
         format: 'Excel Lab',
         learningOutcomesVi: [

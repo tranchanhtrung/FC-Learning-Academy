@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { COURSES } from '../../data/initialData';
+import { findCourseMatch } from '../../lib/lessonMaterials';
 import { Competency, CompetencyDomain } from '../../types';
 import {
   Search,
@@ -432,7 +434,7 @@ export const CompetencyFrameworkView: React.FC = () => {
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {selectedCompetency.associatedCourseIds.map((cid) => {
-                    const c = courses.find((course) => course.id === cid);
+                    const c = findCourseMatch(courses, cid, COURSES);
                     if (!c) return null;
                     return (
                       <button

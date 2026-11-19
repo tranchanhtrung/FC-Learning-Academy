@@ -11,7 +11,7 @@ import * as XLSX from 'xlsx';
  * - Question_Bank: 60
  * - Practical_Assignments: 6
  * - Training_Matrix_2027: 12
- * - Career_Paths: 3
+ * - Career_Paths: 5
  */
 export function build2027DatasetRows() {
   const readmeRows = [
@@ -127,28 +127,45 @@ export function build2027DatasetRows() {
     }
   }
 
-  // 18 courses
-  const courses = Array.from({ length: 18 }, (_, i) => {
-    const comp = competencies[i];
-    const num = i + 1;
-    const series = Math.floor(i / 3) + 1;
-    return {
-      id: `CRS-${String(num).padStart(2, '0')}`,
-      code: `HFC-${series}0${(i % 3) + 1}`,
-      domain_id: comp.domain_id,
-      competency_id: comp.id,
-      title_en: `${comp.name_en} Masterclass`,
-      title_vi: `Chuyên Đề: ${comp.name_vi}`,
-      description_en: `Applied luxury hotel finance workshop covering ${comp.name_en} and practical case scenarios.`,
-      description_vi: `Khóa học chuyên sâu về ${comp.name_vi} kết hợp tình huống khách sạn 5 sao.`,
-      target_level: comp.target_level,
-      duration_hours: 4 + (i % 4) * 2,
-      passing_score: 80,
-      assessment_weight_quiz: 40,
-      assessment_weight_practical: 60,
-      delivery_mode: i % 2 === 0 ? 'Blended + Case Study' : 'Instructor-Led + Excel Lab',
-    };
-  });
+  // 18 courses accurately aligned across all 6 competency domains (3 courses per domain)
+  const courseSeeds: Array<[string, string, string, string, string, string, number, number, number]> = [
+    ['CRS-01', 'HFC-101', 'DOM-FAR', 'COMP-01', 'Mastering USALI 11th & 12th Editions for Hotel Controllers', 'Làm Chủ Chuẩn Mực USALI 11th & 12th Edition', 1, 16, 80],
+    ['CRS-02', 'HFC-102', 'DOM-FAR', 'COMP-02', 'Fast Month-End Closing & Balance Sheet Reconciliations', 'Kỹ Thuật Khóa Sổ Nhanh & Đối Chiếu Bảng Cân Đối Kế Toán', 2, 14, 80],
+    ['CRS-03', 'HFC-103', 'DOM-FAR', 'COMP-04', 'Advanced Hospitality Revenue Recognition, Loyalty Programs & Tax Compliance', 'Ghi Nhận Doanh Thu Phức Tạp, Điểm Thưởng Khách Hàng & Thuế Khách Sạn', 3, 18, 85],
+    ['CRS-04', 'HFC-201', 'DOM-FCA', 'COMP-06', 'Hotel Internal Controls, Audit & Anti-Fraud Strategies', 'Kiểm Soát Nội Bộ & Phòng Ngừa Gian Lận Khách Sạn 5 Sao', 2, 18, 85],
+    ['CRS-05', 'HFC-202', 'DOM-FCA', 'COMP-08', 'Front Office Revenue Control, Cashier Balancing & Night Audit Mastery', 'Kiểm Soát Doanh Thu Lễ Tân, Thu Ngân & Kiểm Toán Đêm (Night Audit Oversight)', 2, 16, 80],
+    ['CRS-06', 'HFC-203', 'DOM-FCA', 'COMP-07', 'Food & Beverage Cost Control, Procurement & Inventory Auditing', 'Quản Trị Giá Thành F&B, Mua Sắm & Kiểm Soát Kho Khách Sạn', 2, 20, 85],
+    ['CRS-07', 'HFC-301', 'DOM-FPM', 'COMP-11', 'Hotel Annual Budgeting & 13-Week Cash Flow Forecasting', 'Lập Ngân Sách Thường Niên & Dự Báo Dòng Tiền 13 Tuần', 3, 24, 85],
+    ['CRS-08', 'HFC-302', 'DOM-FPM', 'COMP-13', 'Hospitality CAPEX Modeling, FF&E Reserve & Asset Feasibility', 'Thẩm Định Đầu Tư CAPEX, Quỹ FF&E & Mô Hình Hoàn Vốn ROI', 3, 20, 85],
+    ['CRS-09', 'HFC-303', 'DOM-FPM', 'COMP-12', 'Working Capital, Credit Policy & Hospitality Debt Collection', 'Quản Trị Vốn Lưu Động, Quản Lý Tín Dụng & Rủi Ro Công Nợ Khách Sạn', 3, 16, 80],
+    ['CRS-10', 'HFC-401', 'DOM-BPA', 'COMP-16', 'GOP Flow-Through, Flex Analysis & Labor Productivity', 'Phân Tích Dòng Chuyển Hóa Lợi Nhuận GOP & Năng Suất Lao Động', 3, 18, 85],
+    ['CRS-11', 'HFC-402', 'DOM-BPA', 'COMP-17', 'RevPAR Strategy, STR Benchmarking & Distribution Costing', 'Chiến Lược RevPAR, Báo Cáo STR & Tối Ưu Hóa Kênh Phân Phối (Net ADR)', 4, 16, 80],
+    ['CRS-12', 'HFC-403', 'DOM-BPA', 'COMP-20', 'Hotel Business Intelligence, Power BI & Executive Dashboarding', 'Xây Dựng Dashboard Quản Trị Khách Sạn (Hotel BI, Power BI & Data Analytics)', 3, 20, 85],
+    ['CRS-13', 'HFC-501', 'DOM-LPM', 'COMP-21', 'Finance Leadership, GROW Coaching & Succession Development', 'Kỹ Năng Lãnh Đạo, Huấn Luyện & Phát Triển Đội Ngũ Tài Chính Kế Thừa', 3, 16, 80],
+    ['CRS-14', 'HFC-502', 'DOM-LPM', 'COMP-22', 'Cross-Functional Influence, Conflict Resolution & Budget Alignment', 'Thuyết Phục & Giải Quyết Xung Đột Ngân Sách Với Trưởng Các Bộ Phận', 3, 14, 80],
+    ['CRS-15', 'HFC-503', 'DOM-LPM', 'COMP-24', 'Change Management & Leading Finance Digital Transformation', 'Quản Lý Thay Đổi & Dẫn Dắt Chuyển Đổi Số Trong Phòng Kế Toán Khách Sạn', 4, 16, 80],
+    ['CRS-16', 'HFC-601', 'DOM-SBP', 'COMP-26', 'The Financial Controller as Strategic Co-Pilot to the GM', 'FC Đối Tác Kinh Doanh Chiến Lược Của Tổng Giám Đốc (GM Co-Pilot)', 4, 24, 90],
+    ['CRS-17', 'HFC-602', 'DOM-SBP', 'COMP-27', 'Owner Relations, Asset Management & Hotel Management Agreement (HMA) Governance', 'Quản Trị Quan Hệ Chủ Sở Hữu (Owner Relations) & Hợp Đồng Quản Lý Khách Sạn (HMA)', 4, 20, 85],
+    ['CRS-18', 'HFC-603', 'DOM-SBP', 'COMP-28', 'Hotel Asset Valuation, Cap Rates & Real Estate Investment Strategy', 'Định Giá Tài Sản Khách Sạn, Hệ Số Vốn Hóa (Cap Rate) & Chiến Lược Thoái Vốn', 4, 20, 85],
+  ];
+
+  const courses = courseSeeds.map(([id, code, domain_id, competency_id, title_en, title_vi, target_level, duration_hours, passing_score], i) => ({
+    id,
+    code,
+    domain_id,
+    competency_id,
+    title_en,
+    title_vi,
+    description_en: `Applied luxury hotel finance program covering ${title_en} and executive case scenarios.`,
+    description_vi: `Chuyên đề tài chính khách sạn chuẩn quốc tế về ${title_vi} kết hợp thực hành tình huống.`,
+    target_level,
+    duration_hours,
+    passing_score,
+    assessment_weight_quiz: 40,
+    assessment_weight_practical: 60,
+    delivery_mode: i % 2 === 0 ? 'Blended + Case Study' : 'Instructor-Led + Excel Lab',
+  }));
+
 
   // 60 questions (mix of multiple_choice A/B/C/D and numeric)
   const questionBank = Array.from({ length: 60 }, (_, i) => {
@@ -236,49 +253,77 @@ export function build2027DatasetRows() {
     };
   });
 
-  // 3 career paths
+  // 5 career paths aligned across all 6 competency domains, 18 courses & OJT capstones
   const careerPaths = [
     {
       id: 'CP-ACC-TO-SENIOR',
-      code: 'PATH-L1-L2',
-      name_en: 'Staff Accountant to Senior Accountant',
-      name_vi: 'Kế Toán Viên lên Kế Toán Tổng Hợp',
-      from_role: 'Accountant',
-      to_role: 'Senior Accountant',
+      code: 'PATH-1',
+      name_en: 'Track 1: Junior Accountant to Senior Accountant / Chief Accountant',
+      name_vi: 'Lộ Trình 1: Kế Toán Viên lên Kế Toán Tổng Hợp / Kế Toán Trưởng',
+      from_role: 'Junior Staff Accountant',
+      to_role: 'Senior Accountant / Chief Accountant',
       target_level: 2,
       duration_months: 12,
-      required_course_ids: 'CRS-01, CRS-02, CRS-04, CRS-05',
-      required_competency_ids: 'COMP-01, COMP-02, COMP-06, COMP-07',
+      required_course_ids: 'CRS-01, CRS-02, CRS-04, CRS-05, CRS-06',
+      required_competency_ids: 'COMP-01, COMP-02, COMP-03, COMP-06, COMP-07, COMP-08, COMP-10',
       required_practical_ids: 'OJT-2027-01, OJT-2027-02',
       min_assessment_score: 80,
     },
     {
       id: 'CP-SENIOR-TO-AFC',
-      code: 'PATH-L2-L3',
-      name_en: 'Senior Accountant to Assistant Financial Controller',
-      name_vi: 'Kế Toán Tổng Hợp lên Trợ Lý FC (AFC)',
+      code: 'PATH-2',
+      name_en: 'Track 2: Senior Accountant to Assistant Financial Controller (AFC)',
+      name_vi: 'Lộ Trình 2: Kế Toán Trưởng lên Trợ Lý Giám Đốc Tài Chính (AFC)',
       from_role: 'Senior Accountant',
-      to_role: 'Assistant Financial Controller',
+      to_role: 'Assistant Financial Controller (AFC)',
       target_level: 3,
       duration_months: 18,
-      required_course_ids: 'CRS-07, CRS-08, CRS-10, CRS-11',
-      required_competency_ids: 'COMP-11, COMP-12, COMP-16, COMP-17',
-      required_practical_ids: 'OJT-2027-03, OJT-2027-04',
+      required_course_ids: 'CRS-03, CRS-06, CRS-07, CRS-09, CRS-10, CRS-13',
+      required_competency_ids: 'COMP-04, COMP-05, COMP-07, COMP-09, COMP-11, COMP-12, COMP-14, COMP-16, COMP-19, COMP-21',
+      required_practical_ids: 'OJT-2027-01, OJT-2027-02, OJT-2027-03, OJT-2027-04, OJT-2027-05',
       min_assessment_score: 85,
     },
     {
       id: 'CP-AFC-TO-FC',
-      code: 'PATH-L3-L4',
-      name_en: 'Assistant FC to Strategic Financial Controller',
-      name_vi: 'Trợ Lý FC lên Giám Đốc Tài Chính Chiến Lược (FC)',
-      from_role: 'Assistant Financial Controller',
-      to_role: 'Financial Controller',
+      code: 'PATH-3',
+      name_en: 'Track 3: Assistant Financial Controller to Financial Controller (FC)',
+      name_vi: 'Lộ Trình 3: Trợ Lý FC lên Giám Đốc Tài Chính Độc Lập (FC)',
+      from_role: 'Assistant Financial Controller (AFC)',
+      to_role: 'Financial Controller (FC)',
       target_level: 4,
       duration_months: 24,
-      required_course_ids: 'CRS-13, CRS-15, CRS-16, CRS-18',
-      required_competency_ids: 'COMP-21, COMP-24, COMP-26, COMP-28',
+      required_course_ids: 'CRS-07, CRS-08, CRS-10, CRS-11, CRS-12, CRS-13, CRS-14, CRS-16',
+      required_competency_ids: 'COMP-11, COMP-12, COMP-13, COMP-14, COMP-15, COMP-16, COMP-17, COMP-18, COMP-19, COMP-20, COMP-21, COMP-22, COMP-25, COMP-26',
+      required_practical_ids: 'OJT-2027-03, OJT-2027-04, OJT-2027-05, OJT-2027-06',
+      min_assessment_score: 85,
+    },
+    {
+      id: 'CP-FC-TO-SBP',
+      code: 'PATH-4',
+      name_en: 'Track 4: Financial Controller to Strategic Business Partner & Cluster FC',
+      name_vi: 'Lộ Trình 4: Giám Đốc Tài Chính lên Đối Tác Chiến Lược Của GM & Chủ Đầu Tư',
+      from_role: 'Financial Controller (FC)',
+      to_role: 'Strategic Finance Business Partner / Cluster Director of Finance',
+      target_level: 4,
+      duration_months: 18,
+      required_course_ids: 'CRS-11, CRS-14, CRS-15, CRS-16, CRS-17, CRS-18',
+      required_competency_ids: 'COMP-17, COMP-22, COMP-24, COMP-26, COMP-27, COMP-28, COMP-29, COMP-30',
       required_practical_ids: 'OJT-2027-05, OJT-2027-06',
       min_assessment_score: 90,
+    },
+    {
+      id: 'CP-COMPREHENSIVE-18',
+      code: 'PATH-A',
+      name_en: 'Comprehensive Track: Complete 6 Competency Domains, 18 Courses & OJT Capstones',
+      name_vi: 'Lộ Trình Toàn Diện: Trọn Bộ 6 Miền Năng Lực, 18 Khóa Học & Dự Án OJT Thực Tế',
+      from_role: 'Junior Staff Accountant',
+      to_role: 'Cluster Financial Controller & Strategic Business Partner',
+      target_level: 4,
+      duration_months: 36,
+      required_course_ids: 'CRS-01, CRS-02, CRS-03, CRS-04, CRS-05, CRS-06, CRS-07, CRS-08, CRS-09, CRS-10, CRS-11, CRS-12, CRS-13, CRS-14, CRS-15, CRS-16, CRS-17, CRS-18',
+      required_competency_ids: 'COMP-01, COMP-02, COMP-03, COMP-04, COMP-05, COMP-06, COMP-07, COMP-08, COMP-09, COMP-10, COMP-11, COMP-12, COMP-13, COMP-14, COMP-15, COMP-16, COMP-17, COMP-18, COMP-19, COMP-20, COMP-21, COMP-22, COMP-23, COMP-24, COMP-25, COMP-26, COMP-27, COMP-28, COMP-29, COMP-30',
+      required_practical_ids: 'OJT-2027-01, OJT-2027-02, OJT-2027-03, OJT-2027-04, OJT-2027-05, OJT-2027-06',
+      min_assessment_score: 85,
     },
   ];
 

@@ -23,9 +23,14 @@ import {
   validateStorageFile,
 } from '../lib/firebase';
 import {
+  findCourseMatch,
+  findLearningPathMatch,
+  findOjtMatch,
+  getLearningPathCanonicalKey,
   fileToBase64,
   formatFileSizeLabel,
   inferMaterialTypeFromFile,
+  sortLessonMaterialsAsc,
   FIRESTORE_INLINE_MAX_BYTES,
   FIREBASE_STORAGE_MAX_BYTES,
 } from '../lib/lessonMaterials';
@@ -107,6 +112,7 @@ import {
   SUCCESSION_CANDIDATES,
 } from '../data/initialData';
 import { COURSE_SYLLABI_BY_CODE } from '../data/courseSyllabi';
+import { build2027DatasetRows } from '../data/dataset2027';
 import { translations, Language } from '../i18n/translations';
 
 export interface ToastMessage {
@@ -187,6 +193,8 @@ interface AppContextType {
   updateUserCareerPath: (pathId: string) => Promise<void>;
   selectedCourseForPlayer: Course | null;
   setSelectedCourseForPlayer: (c: Course | null) => void;
+  selectedLessonIdForPlayer: string | null;
+  setSelectedLessonIdForPlayer: (lessonId: string | null) => void;
   selectedCertificateForView: Certificate | null;
   setSelectedCertificateForView: (cert: Certificate | null) => void;
   activeQuizTopic: string | null;
@@ -357,6 +365,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedCourseForPlayer, setSelectedCourseForPlayer] = useState<Course | null>(null);
+  const [selectedLessonIdForPlayer, setSelectedLessonIdForPlayer] = useState<string | null>(null);
   const [selectedCertificateForView, setSelectedCertificateForView] = useState<Certificate | null>(null);
   const [activeQuizTopic, setActiveQuizTopic] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -623,7 +632,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setRolePermissions(normalizeRolePermissionsMap(data.rolePermissions));
         }
         if (Array.isArray(data.lessonMaterials)) {
-          setLessonMaterials(data.lessonMaterials);
+          setLessonMaterials(sortLessonMaterialsAsc(data.lessonMaterials));
         }
       })
       .catch((err) => console.warn('Bootstrap fallback to local initial data:', err));
@@ -767,22 +776,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
           if (hasProdAcademy) {
-            if (masterCollections.competencyDomains?.length > 0) {
-              setDomains(
-                masterCollections.competencyDomains.map((d: any) => {
-                  const fallbackDom = COMPETENCY_DOMAINS.find((fd) => fd.id === d.id || fd.code === d.code);
-                  return {
-                    id: d.id,
-                    code: d.code,
-                    nameEn: d.nameEn,
-                    nameVi: d.nameVi,
-                    descriptionEn: d.descriptionEn || fallbackDom?.descriptionEn || '',
-                    descriptionVi: d.descriptionVi || fallbackDom?.descriptionVi || '',
-                    iconName: fallbackDom?.iconName || 'BookOpen',
-                    color: fallbackDom?.color || 'blue',
-                  };
-                })
+            const DOMAIN_KEY_MAP: Record<string, string[]> = {
+              dom_1: ['dom_1', 'DOM-FAR', 'D1-FAR', 'FAR'],
+              dom_2: ['dom_2', 'DOM-FCA', 'D2-FCA', 'FCA'],
+              dom_3: ['dom_3', 'DOM-FPM', 'D3-FPM', 'FPM'],
+              dom_4: ['dom_4', 'DOM-BPA', 'D4-BPA', 'BPA'],
+              dom_5: ['dom_5', 'DOM-LPM', 'D5-LPM', 'LPM'],
+              dom_6: ['dom_6', 'DOM-SBP', 'D6-SBP', 'SBP'],
+            };
+            const findMatchingDomain = <T extends { id?: string; code?: string }>(
+              fallbackDomId: string,
+              list: T[]
+            ): T | undefined => {
+              const aliases = new Set(
+                (DOMAIN_KEY_MAP[fallbackDomId] || [fallbackDomId]).map((x) => x.toUpperCase())
               );
+              return list.find(
+                (d) =>
+                  aliases.has((d.id || '').toUpperCase()) ||
+                  (d.code ? aliases.has(d.code.toUpperCase()) : false)
+              );
+            };
+
+            let activeDomains: CompetencyDomain[] = COMPETENCY_DOMAINS;
+            if (masterCollections.competencyDomains?.length > 0) {
+              activeDomains = masterCollections.competencyDomains.map((d: any) => {
+                const fallbackDom = COMPETENCY_DOMAINS.find((fd) => fd.id === d.id || fd.code === d.code);
+                return {
+                  id: d.id,
+                  code: d.code,
+                  nameEn: d.nameEn,
+                  nameVi: d.nameVi,
+                  descriptionEn: d.descriptionEn || fallbackDom?.descriptionEn || '',
+                  descriptionVi: d.descriptionVi || fallbackDom?.descriptionVi || '',
+                  iconName: fallbackDom?.iconName || 'BookOpen',
+                  color: fallbackDom?.color || 'blue',
+                };
+              });
+              setDomains(activeDomains);
             }
             if (masterCollections.competencies?.length > 0) {
               setCompetencies(
@@ -813,116 +844,360 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     assessmentCriteriaEn: fallbackComp?.assessmentCriteriaEn,
                     evidenceRequirements: fallbackComp?.evidenceRequirements || ['Practical OJT Deliverable'],
                     evidenceRequirementsEn: fallbackComp?.evidenceRequirementsEn,
-                    associatedCourseIds: fallbackComp?.associatedCourseIds || [],
+                    associatedCourseIds:
+                      fallbackComp?.associatedCourseIds ||
+                      (c.code === 'LPM-05' ? ['course_502'] : []),
                   };
                 })
               );
             }
             if (masterCollections.courses?.length > 0) {
-              setCourses(
-                masterCollections.courses.map((c: any) => {
-                  const fallbackCourse = COURSES.find((fc) => fc.id === c.id || fc.code === c.code);
-                  const domainObj = COMPETENCY_DOMAINS.find((d) => d.id === c.domainId);
-                  return {
-                    id: c.id,
-                    code: c.code,
-                    titleEn: c.titleEn,
-                    titleVi: c.titleVi,
-                    category: fallbackCourse?.category || domainObj?.nameEn || 'Hospitality Finance',
-                    domainId: c.domainId,
-                    difficulty:
-                      Number(c.targetLevel) === 1
-                        ? 'Foundation'
-                        : Number(c.targetLevel) === 2
-                        ? 'Operational'
-                        : Number(c.targetLevel) === 3
-                        ? 'Advanced'
-                        : 'Strategic',
-                    durationHours: Number(c.durationHours || fallbackCourse?.durationHours || 4),
-                    instructorName: fallbackCourse?.instructorName || 'FC Academy Faculty',
-                    instructorTitle: fallbackCourse?.instructorTitle || 'Hospitality Financial Controller',
-                    prerequisites: fallbackCourse?.prerequisites || [],
-                    prerequisitesEn: fallbackCourse?.prerequisitesEn,
-                    learningObjectivesEn: fallbackCourse?.learningObjectivesEn || [c.descriptionEn || c.titleEn],
-                    learningObjectivesVi: fallbackCourse?.learningObjectivesVi || [c.descriptionVi || c.titleVi],
-                    modules: fallbackCourse?.modules || [],
-                    passingScore: Number(c.passingScore || fallbackCourse?.passingScore || 80),
-                    thumbnail: fallbackCourse?.thumbnail || '/assets/courses/usali.jpg',
-                    isMandatoryForFC: Number(c.targetLevel) >= 3,
-                    materials: fallbackCourse?.materials,
-                    caseStudy: fallbackCourse?.caseStudy,
-                    practicalAssignmentId: fallbackCourse?.practicalAssignmentId,
-                    practicalAssignmentTitle: fallbackCourse?.practicalAssignmentTitle,
-                    practicalAssignmentTitleEn: fallbackCourse?.practicalAssignmentTitleEn,
-                    quizQuestionIds: fallbackCourse?.quizQuestionIds,
-                    syllabus: fallbackCourse?.syllabus || COURSE_SYLLABI_BY_CODE[c.code],
-                  };
-                })
+              const catalogSeeds2027 = build2027DatasetRows().Course_Catalog;
+              const fsDomainDocs = masterCollections.competencyDomains || [];
+              const fsCompDocs = masterCollections.competencies || [];
+              const fsDomainIds = new Set(fsDomainDocs.map((d: any) => String(d.id)));
+              const fsCompIds = new Set(fsCompDocs.map((cp: any) => String(cp.id)));
+              const repairWrites: Array<{ id: string; payload: Record<string, any> }> = [];
+
+              const mappedCourses: Course[] = masterCollections.courses.map((c: any) => {
+                const fallbackCourse = COURSES.find((fc) => fc.id === c.id || fc.code === c.code);
+                const seed2027 = catalogSeeds2027.find((r) => r.code === c.code || r.id === c.id);
+                const matchedDomain = fallbackCourse
+                  ? findMatchingDomain(fallbackCourse.domainId, activeDomains)
+                  : activeDomains.find((d) => d.id === c.domainId);
+                const resolvedDomainId =
+                  matchedDomain?.id || fallbackCourse?.domainId || c.domainId;
+
+                const canonicalTitleEn = fallbackCourse?.titleEn || c.titleEn;
+                const canonicalTitleVi = fallbackCourse?.titleVi || c.titleVi;
+                const canonicalDuration = Number(
+                  fallbackCourse?.durationHours || c.durationHours || 4
+                );
+                const canonicalPassing = Number(
+                  fallbackCourse?.passingScore || c.passingScore || 80
+                );
+                const canonicalDifficulty =
+                  fallbackCourse?.difficulty ||
+                  (Number(c.targetLevel) === 1
+                    ? 'Foundation'
+                    : Number(c.targetLevel) === 2
+                    ? 'Operational'
+                    : Number(c.targetLevel) === 3
+                    ? 'Advanced'
+                    : 'Strategic');
+
+                if (fallbackCourse && isAdminOrLnd && auth.currentUser?.emailVerified) {
+                  const fsMatchedDom = findMatchingDomain(fallbackCourse.domainId, fsDomainDocs);
+                  const targetFsDomainId =
+                    fsMatchedDom?.id && fsDomainIds.has(String(fsMatchedDom.id))
+                      ? String(fsMatchedDom.id)
+                      : fsDomainIds.has(String(c.domainId))
+                      ? String(c.domainId)
+                      : '';
+                  const seedCompId = seed2027?.competency_id || '';
+                  const fallbackComp = fsCompDocs.find(
+                    (cp: any) => cp.domainId === targetFsDomainId
+                  );
+                  const targetFsCompId = fsCompIds.has(seedCompId)
+                    ? seedCompId
+                    : fsCompIds.has(String(c.competencyId))
+                    ? String(c.competencyId)
+                    : fallbackComp?.id || '';
+
+                  const needsRepair =
+                    c.titleVi !== canonicalTitleVi ||
+                    c.titleEn !== canonicalTitleEn ||
+                    Number(c.durationHours) !== canonicalDuration ||
+                    (targetFsDomainId && c.domainId !== targetFsDomainId) ||
+                    (targetFsCompId && c.competencyId !== targetFsCompId);
+
+                  if (needsRepair && targetFsDomainId && targetFsCompId) {
+                    const qW = Number(c.assessmentWeightQuiz);
+                    const pW = Number(c.assessmentWeightPractical);
+                    const weightsValid =
+                      Number.isFinite(qW) &&
+                      Number.isFinite(pW) &&
+                      qW + pW >= 99.9 &&
+                      qW + pW <= 100.1;
+                    repairWrites.push({
+                      id: String(c.id),
+                      payload: {
+                        id: String(c.id),
+                        code: String(c.code || fallbackCourse.code).slice(0, 32),
+                        domainId: targetFsDomainId,
+                        competencyId: targetFsCompId,
+                        titleEn: canonicalTitleEn.slice(0, 250),
+                        titleVi: canonicalTitleVi.slice(0, 250),
+                        descriptionEn: (
+                          seed2027?.description_en ||
+                          fallbackCourse.syllabus?.overviewEn ||
+                          c.descriptionEn ||
+                          canonicalTitleEn
+                        ).slice(0, 2000),
+                        descriptionVi: (
+                          seed2027?.description_vi ||
+                          fallbackCourse.syllabus?.overviewVi ||
+                          c.descriptionVi ||
+                          canonicalTitleVi
+                        ).slice(0, 2000),
+                        targetLevel: Math.min(
+                          4,
+                          Math.max(1, Number(seed2027?.target_level || c.targetLevel) || 2)
+                        ),
+                        durationHours: canonicalDuration,
+                        passingScore: canonicalPassing,
+                        assessmentWeightQuiz: weightsValid ? qW : 40,
+                        assessmentWeightPractical: weightsValid ? pW : 60,
+                        deliveryMode: String(
+                          c.deliveryMode || seed2027?.delivery_mode || 'Blended + Case Study'
+                        ).slice(0, 100),
+                        importedAt: String(c.importedAt || new Date().toISOString()).slice(0, 64),
+                        importBatchId: String(c.importBatchId || 'curriculum_sync').slice(0, 128),
+                      },
+                    });
+                  }
+                }
+
+                return {
+                  id: c.id,
+                  code: c.code,
+                  titleEn: canonicalTitleEn,
+                  titleVi: canonicalTitleVi,
+                  category: fallbackCourse?.category || matchedDomain?.nameEn || 'Hospitality Finance',
+                  domainId: resolvedDomainId,
+                  difficulty: canonicalDifficulty,
+                  durationHours: canonicalDuration,
+                  instructorName: fallbackCourse?.instructorName || 'FC Academy Faculty',
+                  instructorTitle: fallbackCourse?.instructorTitle || 'Hospitality Financial Controller',
+                  prerequisites: fallbackCourse?.prerequisites || [],
+                  prerequisitesEn: fallbackCourse?.prerequisitesEn,
+                  learningObjectivesEn:
+                    fallbackCourse?.learningObjectivesEn || [c.descriptionEn || canonicalTitleEn],
+                  learningObjectivesVi:
+                    fallbackCourse?.learningObjectivesVi || [c.descriptionVi || canonicalTitleVi],
+                  modules: fallbackCourse?.modules || [],
+                  passingScore: canonicalPassing,
+                  thumbnail: fallbackCourse?.thumbnail || '',
+                  isMandatoryForFC:
+                    fallbackCourse?.isMandatoryForFC ?? Number(c.targetLevel) >= 3,
+                  materials: fallbackCourse?.materials,
+                  caseStudy: fallbackCourse?.caseStudy,
+                  practicalAssignmentId: fallbackCourse?.practicalAssignmentId,
+                  practicalAssignmentTitle: fallbackCourse?.practicalAssignmentTitle,
+                  practicalAssignmentTitleEn: fallbackCourse?.practicalAssignmentTitleEn,
+                  quizQuestionIds: fallbackCourse?.quizQuestionIds,
+                  syllabus: fallbackCourse?.syllabus || COURSE_SYLLABI_BY_CODE[c.code],
+                };
+              });
+              mappedCourses.sort((a, b) =>
+                (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' })
               );
+              setCourses(mappedCourses);
+              setSelectedCourseForPlayer((prev) =>
+                prev
+                  ? mappedCourses.find((mc) => mc.id === prev.id || mc.code === prev.code) || prev
+                  : null
+              );
+
+              if (repairWrites.length > 0) {
+                void Promise.all(
+                  repairWrites.map((item) =>
+                    syncRecordToFirestore('courses', item.id, item.payload, false).catch(() => undefined)
+                  )
+                );
+              }
             }
             if (masterCollections.practicalAssignments?.length > 0) {
-              setOjtAssignments(
-                masterCollections.practicalAssignments.map((p: any) => {
-                  const fbOjt = OJT_ASSIGNMENTS.find((o) => o.id === p.id || o.code === p.code);
-                  const delivList: string[] = p.deliverables
-                    ? typeof p.deliverables === 'string'
-                      ? p.deliverables.split(';').map((s: string) => s.trim()).filter(Boolean)
-                      : Array.isArray(p.deliverables)
-                      ? p.deliverables
-                      : []
-                    : [];
-                  return {
-                    id: p.id,
-                    code: p.code || fbOjt?.code || p.id,
-                    titleEn: p.titleEn || fbOjt?.titleEn || '',
-                    titleVi: p.titleVi || fbOjt?.titleVi || '',
-                    domainId: p.domainId || fbOjt?.domainId || 'D2',
-                    propertyContext: fbOjt?.propertyContext || 'Hotel Finance Operation',
-                    propertyContextEn: fbOjt?.propertyContextEn || 'Hotel Finance Operation',
-                    descriptionEn: p.scenarioEn || fbOjt?.descriptionEn || '',
-                    descriptionVi: p.scenarioVi || fbOjt?.descriptionVi || '',
-                    deliverablesEn: delivList.length > 0 ? delivList : fbOjt?.deliverablesEn || [],
-                    deliverablesVi: fbOjt?.deliverablesVi || delivList,
-                    templateFileName: fbOjt?.templateFileName,
-                    evaluationRubric: fbOjt?.evaluationRubric || [
-                      {
-                        criterionVi: 'Độ chính xác USALI & khuyến nghị',
-                        criterionEn: 'USALI Accuracy & Recommendations',
-                        maxPoints: Number(p.maxScore || 100),
-                      },
-                    ],
-                  };
-                })
-              );
+              const mappedOjts: OJTAssignment[] = masterCollections.practicalAssignments.map((p: any) => {
+                const fbOjt =
+                  findOjtMatch(OJT_ASSIGNMENTS, p.id) ||
+                  findOjtMatch(OJT_ASSIGNMENTS, p.code);
+                const matchedDomain = fbOjt
+                  ? findMatchingDomain(fbOjt.domainId, activeDomains)
+                  : findMatchingDomain(p.domainId, activeDomains);
+                const delivList: string[] = p.deliverables
+                  ? typeof p.deliverables === 'string'
+                    ? p.deliverables.split(';').map((s: string) => s.trim()).filter(Boolean)
+                    : Array.isArray(p.deliverables)
+                    ? p.deliverables
+                    : []
+                  : [];
+                return {
+                  id: p.id,
+                  code: fbOjt?.code || p.code || p.id,
+                  titleEn: fbOjt?.titleEn || p.titleEn || '',
+                  titleVi: fbOjt?.titleVi || p.titleVi || '',
+                  domainId: matchedDomain?.id || fbOjt?.domainId || p.domainId || 'dom_2',
+                  propertyContext: fbOjt?.propertyContext || 'Hotel Finance Operation',
+                  propertyContextEn: fbOjt?.propertyContextEn || 'Hotel Finance Operation',
+                  descriptionEn: fbOjt?.descriptionEn || p.scenarioEn || '',
+                  descriptionVi: fbOjt?.descriptionVi || p.scenarioVi || '',
+                  deliverablesEn: fbOjt?.deliverablesEn?.length ? fbOjt.deliverablesEn : delivList,
+                  deliverablesVi: fbOjt?.deliverablesVi?.length ? fbOjt.deliverablesVi : delivList,
+                  templateFileName: fbOjt?.templateFileName,
+                  evaluationRubric: fbOjt?.evaluationRubric || [
+                    {
+                      criterionVi: 'Độ chính xác USALI & khuyến nghị',
+                      criterionEn: 'USALI Accuracy & Recommendations',
+                      maxPoints: Number(p.maxScore || 100),
+                    },
+                  ],
+                };
+              });
+
+              for (const canonicalOjt of OJT_ASSIGNMENTS) {
+                const alreadyExists = mappedOjts.some(
+                  (mo) =>
+                    Boolean(findOjtMatch([mo], canonicalOjt.id)) ||
+                    Boolean(findOjtMatch([mo], canonicalOjt.code))
+                );
+                if (!alreadyExists) {
+                  const matchedDomain = findMatchingDomain(canonicalOjt.domainId, activeDomains);
+                  mappedOjts.push({
+                    ...canonicalOjt,
+                    domainId: matchedDomain?.id || canonicalOjt.domainId,
+                  });
+                }
+              }
+              setOjtAssignments(mappedOjts);
             }
-            if (masterCollections.careerPaths?.length > 0) {
-              setLearningPaths(
-                masterCollections.careerPaths.map((p: any, idx: number) => {
-                  const fallbackPath = LEARNING_PATHS.find((lp) => lp.id === p.id || lp.code === p.code);
+
+            const fsCareerPaths = masterCollections.careerPaths || [];
+            if (fsCareerPaths.length > 0) {
+              const canonicalKeysUsed = new Set<string>();
+              const pathSeed2027 = build2027DatasetRows().Career_Paths;
+              const pathRepairWrites: Array<{ id: string; payload: Record<string, any> }> = [];
+
+              const anchoredPaths: LearningPath[] = LEARNING_PATHS.map((canonicalPath) => {
+                const fsMatch = fsCareerPaths.find(
+                  (p: any) =>
+                    getLearningPathCanonicalKey(p.id) === canonicalPath.id ||
+                    getLearningPathCanonicalKey(p.code) === canonicalPath.id
+                );
+                if (fsMatch) {
+                  canonicalKeysUsed.add(String(fsMatch.id));
+                }
+                const resolvedDomainIds = (canonicalPath.domainIds || []).map(
+                  (did) => findMatchingDomain(did, activeDomains)?.id || did
+                );
+                return {
+                  ...canonicalPath,
+                  id: fsMatch?.id || canonicalPath.id,
+                  domainIds: resolvedDomainIds,
+                  stages: canonicalPath.stages.map((st) => ({
+                    ...st,
+                    domainIds: (st.domainIds || []).map(
+                      (did) => findMatchingDomain(did, activeDomains)?.id || did
+                    ),
+                  })),
+                };
+              });
+
+              const customPaths: LearningPath[] = fsCareerPaths
+                .filter((p: any) => !canonicalKeysUsed.has(String(p.id)))
+                .map((p: any, idx: number) => {
                   const reqCourses = Array.isArray(p.requiredCourseIds) ? p.requiredCourseIds : [];
                   return {
                     id: p.id,
                     code: p.code || `CP-${idx + 1}`,
                     titleEn: p.nameEn || p.titleEn || `${p.fromRole} → ${p.toRole}`,
                     titleVi: p.nameVi || p.titleVi || `${p.fromRole} → ${p.toRole}`,
-                    targetRole: p.toRole || fallbackPath?.targetRole || 'Financial Controller',
-                    descriptionEn: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} months)`,
-                    descriptionVi: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 6} tháng)`,
-                    totalHours: fallbackPath?.totalHours || Math.max(8, reqCourses.length * 4),
-                    stages: fallbackPath?.stages || [
+                    fromRole: p.fromRole,
+                    toRole: p.toRole,
+                    targetRole: p.toRole || 'Financial Controller',
+                    targetLevel: (Math.min(4, Math.max(1, Number(p.targetLevel) || 3))) as ProficiencyLevel,
+                    durationMonths: Number(p.durationMonths || 12),
+                    minAssessmentScore: Number(p.minAssessmentScore || 80),
+                    requiredCompetencyCodes: Array.isArray(p.requiredCompetencyIds)
+                      ? p.requiredCompetencyIds
+                      : [],
+                    descriptionEn: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 12} months)`,
+                    descriptionVi: `${p.fromRole} → ${p.toRole} (${p.durationMonths || 12} tháng)`,
+                    totalHours: Math.max(8, reqCourses.length * 16),
+                    stages: [
                       {
                         stageNumber: 1,
                         titleEn: p.nameEn || 'Core Track',
                         titleVi: p.nameVi || 'Lộ Trình Cốt Lõi',
                         requiredCourses: reqCourses,
-                        requiredOjtAssignments: Array.isArray(p.requiredPracticalIds) ? p.requiredPracticalIds : [],
+                        requiredOjtAssignments: Array.isArray(p.requiredPracticalIds)
+                          ? p.requiredPracticalIds
+                          : [],
                         readinessCriteriaEn: `Minimum Assessment Score: ${p.minAssessmentScore || 80}%`,
                         readinessCriteriaVi: `Điểm đánh giá tối thiểu: ${p.minAssessmentScore || 80}%`,
                       },
                     ],
                   };
-                })
-              );
+                });
+
+              setLearningPaths([...anchoredPaths, ...customPaths]);
+
+              if (isAdminOrLnd && auth.currentUser?.emailVerified) {
+                const splitCsv = (val: string) =>
+                  val
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+
+                for (const seed of pathSeed2027) {
+                  const existing = fsCareerPaths.find(
+                    (p: any) =>
+                      p.id === seed.id ||
+                      getLearningPathCanonicalKey(p.id) === getLearningPathCanonicalKey(seed.id)
+                  );
+                  const expectedCourses = splitCsv(seed.required_course_ids);
+                  const expectedComps = splitCsv(seed.required_competency_ids);
+                  const expectedPracticals = splitCsv(seed.required_practical_ids);
+                  const existingCourses = Array.isArray(existing?.requiredCourseIds)
+                    ? existing.requiredCourseIds
+                    : [];
+                  const needsPathSync =
+                    !existing ||
+                    existing.nameVi !== seed.name_vi ||
+                    existing.nameEn !== seed.name_en ||
+                    existing.code !== seed.code ||
+                    Number(existing.durationMonths) !== Number(seed.duration_months) ||
+                    existingCourses.join(',') !== expectedCourses.join(',');
+
+                  if (needsPathSync) {
+                    const targetId = existing?.id || seed.id;
+                    pathRepairWrites.push({
+                      id: targetId,
+                      payload: {
+                        id: targetId,
+                        code: String(seed.code).slice(0, 64),
+                        nameEn: String(seed.name_en).slice(0, 200),
+                        nameVi: String(seed.name_vi).slice(0, 200),
+                        fromRole: String(seed.from_role).slice(0, 150),
+                        toRole: String(seed.to_role).slice(0, 150),
+                        targetLevel: Math.min(4, Math.max(1, Number(seed.target_level) || 2)),
+                        durationMonths: Math.max(1, Number(seed.duration_months) || 12),
+                        requiredCourseIds: expectedCourses.slice(0, 30),
+                        requiredCompetencyIds: expectedComps.slice(0, 40),
+                        requiredPracticalIds: expectedPracticals.slice(0, 20),
+                        minAssessmentScore: Math.min(
+                          100,
+                          Math.max(0, Number(seed.min_assessment_score) || 80)
+                        ),
+                        importedAt: String(existing?.importedAt || new Date().toISOString()).slice(0, 64),
+                        importBatchId: String(existing?.importBatchId || 'curriculum_sync').slice(0, 128),
+                      },
+                    });
+                  }
+                }
+
+                if (pathRepairWrites.length > 0) {
+                  void Promise.all(
+                    pathRepairWrites.map((item) =>
+                      syncRecordToFirestore('careerPaths', item.id, item.payload, false).catch(
+                        () => undefined
+                      )
+                    )
+                  );
+                }
+              }
+            } else {
+              setLearningPaths(LEARNING_PATHS);
             }
           }
 
@@ -988,7 +1263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setIdpReviewLogs(txData.idpReviewLogs as IdpReviewLogDoc[]);
           setCompetencyReassessments(txData.competencyReassessments as CompetencyReassessmentDoc[]);
           setCareerReadinessReviews(txData.careerReadinessReviews as CareerReadinessReviewDoc[]);
-          setLessonMaterials(txData.lessonMaterials || []);
+          setLessonMaterials(sortLessonMaterialsAsc(txData.lessonMaterials || []));
         } else if (hasProdSim) {
           setProductionCounts((prev) => ({ ...prev }));
         }
@@ -3218,7 +3493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.lessonMaterials)) {
-          setLessonMaterials(data.lessonMaterials);
+          setLessonMaterials(sortLessonMaterialsAsc(data.lessonMaterials));
         }
       }
     } catch (err) {
@@ -3242,13 +3517,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       forceFirestore?: boolean;
     }): Promise<LessonMaterialDoc | null> => {
       try {
-        const courseObj = courses.find((c) => c.id === params.courseId);
+        const courseObj = findCourseMatch(courses, params.courseId, COURSES);
         if (!courseObj) {
           showToast(language === 'vi' ? 'Không tìm thấy khóa học.' : 'Course not found.', 'error');
           return null;
         }
-        const lessonIdx = courseObj.modules.findIndex((m) => m.id === params.lessonId);
-        const lessonObj = lessonIdx >= 0 ? courseObj.modules[lessonIdx] : undefined;
+        const fallbackCourse = COURSES.find(
+          (fc) => fc.id === courseObj.id || fc.code === courseObj.code
+        );
+        const effectiveModules =
+          courseObj.modules && courseObj.modules.length > 0
+            ? courseObj.modules
+            : fallbackCourse?.modules || [];
+        let lessonIdx = effectiveModules.findIndex((m) => m.id === params.lessonId);
+        if (lessonIdx < 0 && fallbackCourse?.modules?.length) {
+          const fbIdx = fallbackCourse.modules.findIndex((m) => m.id === params.lessonId);
+          if (fbIdx >= 0 && effectiveModules[fbIdx]) {
+            lessonIdx = fbIdx;
+          }
+        }
+        const lessonObj = lessonIdx >= 0 ? effectiveModules[lessonIdx] : undefined;
         if (!lessonObj) {
           showToast(language === 'vi' ? 'Không tìm thấy bài học.' : 'Lesson not found.', 'error');
           return null;
@@ -3295,10 +3583,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             showToast(fileCheck.error || 'Invalid file.', 'error');
             return null;
           }
-          fileName = params.file.name;
-          mimeType = params.file.type || 'application/octet-stream';
+          fileName = params.file.name.slice(0, 255);
+          mimeType = (params.file.type || 'application/octet-stream').slice(0, 150);
           fileSizeBytes = params.file.size;
-          fileSizeLabel = formatFileSizeLabel(params.file.size);
+          fileSizeLabel = formatFileSizeLabel(params.file.size).slice(0, 40);
 
           const pref = params.preferredStorage || 'auto';
           const canInline = params.file.size <= FIRESTORE_INLINE_MAX_BYTES;
@@ -3371,19 +3659,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         } else if (trimmedUrl) {
           storageMode = 'external_link';
-          externalUrl = trimmedUrl;
-          downloadUrl = trimmedUrl;
+          externalUrl = trimmedUrl.slice(0, 2000);
+          downloadUrl = trimmedUrl.slice(0, 2000);
           if (!params.materialType) resolvedType = 'link';
         }
 
         const record: LessonMaterialDoc = {
           id: docId,
           courseId: courseObj.id,
-          courseCode: courseObj.code,
+          courseCode: courseObj.code.slice(0, 32),
           lessonId: lessonObj.id,
           lessonOrder: lessonIdx + 1,
-          lessonTitleVi: lessonObj.titleVi,
-          lessonTitleEn: lessonObj.titleEn,
+          lessonTitleVi: (lessonObj.titleVi || `Bài ${lessonIdx + 1}`).slice(0, 300),
+          lessonTitleEn: (lessonObj.titleEn || `Lesson ${lessonIdx + 1}`).slice(0, 300),
           titleVi: titleVi.slice(0, 300),
           titleEn: titleEn.slice(0, 300),
           descriptionVi: params.descriptionVi?.trim() ? params.descriptionVi.trim().slice(0, 2000) : undefined,
@@ -3395,21 +3683,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fileSizeBytes,
           fileSizeLabel,
           inlineBase64,
-          downloadUrl,
-          storagePath,
-          externalUrl,
+          downloadUrl: downloadUrl ? downloadUrl.slice(0, 2000) : undefined,
+          storagePath: storagePath ? storagePath.slice(0, 500) : undefined,
+          externalUrl: externalUrl ? externalUrl.slice(0, 2000) : undefined,
           isRequired: Boolean(params.isRequired),
           uploadedByUid: useFirestore && auth.currentUser ? auth.currentUser.uid : currentUser.id,
-          uploadedByName: (useFirestore ? officialAuthUser?.name : currentUser.name) || currentUser.name,
-          uploadedByEmail: (useFirestore ? auth.currentUser?.email || currentUser.email : currentUser.email) || undefined,
-          uploadedByRole: currentUser.role,
+          uploadedByName: ((useFirestore ? officialAuthUser?.name : currentUser.name) || currentUser.name || 'Administrator').slice(0, 150),
+          uploadedByEmail: ((useFirestore ? auth.currentUser?.email || currentUser.email : currentUser.email) || undefined)?.slice(0, 200),
+          uploadedByRole: String(currentUser.role).slice(0, 64),
           createdAt: now,
           updatedAt: now,
         };
 
         if (useFirestore) {
           const saved = await saveLessonMaterialToFirestore(record);
-          setLessonMaterials((prev) => [saved, ...prev.filter((m) => m.id !== saved.id)]);
+          setLessonMaterials((prev) =>
+            sortLessonMaterialsAsc([saved, ...prev.filter((m) => m.id !== saved.id)])
+          );
           setProductionCounts((prev) => ({
             ...prev,
             lessonMaterials: (prev.lessonMaterials || 0) + 1,
@@ -3433,7 +3723,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return null;
           }
           const saved: LessonMaterialDoc = data.material;
-          setLessonMaterials((prev) => [saved, ...prev.filter((m) => m.id !== saved.id)]);
+          setLessonMaterials((prev) =>
+            sortLessonMaterialsAsc([saved, ...prev.filter((m) => m.id !== saved.id)])
+          );
           refreshAuditLogs();
           showToast(
             language === 'vi'
@@ -3572,6 +3864,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserCareerPath,
         selectedCourseForPlayer,
         setSelectedCourseForPlayer,
+        selectedLessonIdForPlayer,
+        setSelectedLessonIdForPlayer,
         selectedCertificateForView,
         setSelectedCertificateForView,
         activeQuizTopic,
