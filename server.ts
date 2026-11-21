@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -61,7 +62,14 @@ import {
   type TalentReportType,
 } from './server/talentData.ts';
 
-import { create2027TemplateBuffer } from './src/data/dataset2027.ts';
+import { create2027TemplateBuffer } from './server/dataset2027Workbook.ts';
+import { writeJsonAtomic } from './server/persistence.ts';
+import {
+  securityHeadersMiddleware,
+  createRateLimiter,
+  pickAllowedFields,
+} from './server/securityMiddleware.ts';
+import { createAuthEngine } from './server/authEngine.ts';
 import {
   IMPORT_ORDER_SPEC,
   detectWorkbookSheets,
@@ -116,10 +124,34 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+if (process.argv.includes('--production') && !process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'production';
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const ALLOW_DEMO_HEADER_AUTH = !IS_PRODUCTION || process.env.DEMO_MODE === 'true';
 
+app.set('trust proxy', 1);
+app.use(securityHeadersMiddleware);
 app.use(express.json({ limit: '25mb' }));
+
+const authRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  keyPrefix: 'auth',
+  message: 'Quá nhiều yêu cầu xác thực. Vui lòng thử lại sau ít phút.',
+});
+
+const aiRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyPrefix: 'gemini',
+  message: 'Bạn đang gửi yêu cầu AI quá nhanh. Vui lòng chờ một lát.',
+});
+
+app.use('/api/gemini', aiRateLimiter);
 
 // Initialize Google GenAI
 const apiKey = process.env.GEMINI_API_KEY || '';
@@ -135,7 +167,7 @@ if (apiKey) {
   });
 }
 
-const GEMINI_MODEL = 'gemini-4-hydrogen';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 // Build compact Grounded Curriculum Knowledge Source from approved LMS data
 function buildCurriculumKnowledgeBase(selectedCourseId?: string): string {
@@ -343,7 +375,10 @@ interface AcademyDB {
   lessonMaterials: LessonMaterialDoc[];
 }
 
-const DATA_DIR = path.join(__dirname, '.data');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const DATA_DIR = IS_VERCEL
+  ? path.join(os.tmpdir(), 'fc-learning-academy-data')
+  : path.join(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'academy-db.json');
 
 function getSeedDB(): AcademyDB {
@@ -492,10 +527,7 @@ function loadDB(): AcademyDB {
 
 function persistDB(state: AcademyDB) {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(DB_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    writeJsonAtomic(DB_FILE, state);
   } catch (err) {
     console.error('Failed to persist DB file:', err);
   }
@@ -519,8 +551,27 @@ function recordAudit(action: string, actor: string, target: string, details: str
   return entry;
 }
 
-// Helper to get requesting actor info from headers (or body fallback)
+// Mount full-stack Academy Authentication Engine (/api/auth/*)
+const authEngine = createAuthEngine({
+  dataDir: DATA_DIR,
+  getUsers: () => db.users,
+  addUser: (user) => {
+    db.users.push(user);
+  },
+  recordAudit,
+  persistMainDB: () => persistDB(db),
+});
+
+app.use('/api/auth', authRateLimiter, authEngine.router);
+
+// Helper to resolve requesting actor: verified signed session cookie/Bearer token takes priority.
+// Header-based persona switching is strictly gated behind ALLOW_DEMO_HEADER_AUTH (non-production / DEMO_MODE).
 function getRequestActor(req: express.Request): User | undefined {
+  const verified = authEngine.resolveAuthenticatedUser(req);
+  if (verified) return verified.user;
+
+  if (!ALLOW_DEMO_HEADER_AUTH) return undefined;
+
   const actorId = (req.headers['x-user-id'] as string) || req.body?.actorId;
   if (!actorId) return undefined;
   const found = db.users.find((u) => u.id === actorId);
@@ -550,6 +601,11 @@ function getRequestActor(req: express.Request): User | undefined {
 }
 
 function getEffectiveActorRole(req: express.Request): UserRole | undefined {
+  const verified = authEngine.resolveAuthenticatedUser(req);
+  if (verified) return verified.user.role;
+
+  if (!ALLOW_DEMO_HEADER_AUTH) return undefined;
+
   const headerRole = req.headers['x-user-role'] as string | undefined;
   if (headerRole && SYSTEM_ROLES.includes(headerRole as UserRole)) {
     return headerRole as UserRole;
@@ -561,7 +617,8 @@ function getEffectiveActorRole(req: express.Request): UserRole | undefined {
 
 function hasActorPermission(req: express.Request, permission: PermissionKey): boolean {
   const role = getEffectiveActorRole(req);
-  if (!role) return true; // Unscoped test/CLI callers without headers retain seed parity
+  // Fail-closed: unauthenticated callers without a valid session or demo role cannot bypass RBAC
+  if (!role) return false;
   return roleHasPermission(role, permission, db.rolePermissions);
 }
 
@@ -1816,17 +1873,34 @@ app.post('/api/assessments', (req, res) => {
       );
     }
 
+    const safeRecordFields = pickAllowedFields<AssessmentRecord>(record, [
+      'id',
+      'learnerId',
+      'supervisorId',
+      'cycle',
+      'status',
+      'overallGapAverage',
+      'domainAverages',
+      'learnerReflection',
+      'supervisorComments',
+      'date',
+      'approvedDate',
+    ]);
     const newRecord: AssessmentRecord = {
-      ...record,
-      id: record.id || `asmt_${Date.now()}`,
+      ...(existingRecord || {}),
+      ...safeRecordFields,
+      id: safeRecordFields.id || `asmt_${Date.now()}`,
+      learnerId: String(record.learnerId),
+      cycle: String(safeRecordFields.cycle || existingRecord?.cycle || 'Q2 2026'),
+      status: safeRecordFields.status || existingRecord?.status || 'pending_self',
+      overallGapAverage: Number(safeRecordFields.overallGapAverage ?? existingRecord?.overallGapAverage ?? 0),
       supervisorId:
         !canAssessTeam
           ? existingRecord?.supervisorId || record.supervisorId || 'user_fc1'
           : record.supervisorId || actor?.id || 'user_fc1',
       scores: mergedScores,
       supervisorComments: mergedSupervisorComments,
-      date: record.date || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString(),
+      date: safeRecordFields.date || new Date().toISOString().split('T')[0],
     };
 
     if (existingIdx >= 0) {
@@ -1868,11 +1942,34 @@ app.post('/api/idps', (req, res) => {
     }
 
     const existingIdx = db.idps.findIndex((i) => i.learnerId === plan.learnerId);
+    const prevPlan = existingIdx >= 0 ? db.idps[existingIdx] : undefined;
+    const safePlanFields = pickAllowedFields<IndividualDevelopmentPlan>(plan, [
+      'id',
+      'learnerId',
+      'createdDate',
+      'targetPosition',
+      'targetCompletionDate',
+      'status',
+      'items',
+      'approvedBy',
+      'approvedDate',
+      'overallGoal',
+      'overallGoalEn',
+    ]);
     const updatedPlan: IndividualDevelopmentPlan = {
-      ...plan,
-      id: plan.id || `idp_${Date.now()}`,
-      createdDate: plan.createdDate || new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString(),
+      ...(prevPlan || {}),
+      ...safePlanFields,
+      id: safePlanFields.id || prevPlan?.id || `idp_${Date.now()}`,
+      learnerId: String(plan.learnerId),
+      targetPosition: String(safePlanFields.targetPosition || prevPlan?.targetPosition || 'Financial Controller'),
+      targetCompletionDate: String(
+        safePlanFields.targetCompletionDate ||
+          prevPlan?.targetCompletionDate ||
+          new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0]
+      ),
+      status: safePlanFields.status || prevPlan?.status || 'Active',
+      items: Array.isArray(safePlanFields.items) ? safePlanFields.items : prevPlan?.items || [],
+      createdDate: safePlanFields.createdDate || prevPlan?.createdDate || new Date().toISOString().split('T')[0],
     };
 
     if (existingIdx >= 0) {
@@ -2084,45 +2181,51 @@ function requireImportAdmin(
     'manage_sim_admin',
   ]
 ): User | null {
-  const actorId =
-    (req.headers['x-user-id'] as string) ||
-    (req.query.userId as string) ||
-    req.body?.actorId;
-  if (!actorId) {
+  const verified = authEngine.resolveAuthenticatedUser(req);
+  let actor: User | undefined = verified?.user;
+
+  if (!actor && ALLOW_DEMO_HEADER_AUTH) {
+    const actorId =
+      (req.headers['x-user-id'] as string) ||
+      (req.query.userId as string) ||
+      req.body?.actorId;
+    if (actorId) {
+      actor =
+        db.users.find((u) => u.id === actorId) ||
+        getRequestActor(req) ||
+        (() => {
+          const headerRole = req.headers['x-user-role'] as string | undefined;
+          if (
+            headerRole &&
+            SYSTEM_ROLES.includes(headerRole as UserRole) &&
+            /^[a-zA-Z0-9_\-]{1,128}$/.test(actorId)
+          ) {
+            return {
+              id: actorId,
+              name: 'Demo Admin',
+              email: '',
+              role: headerRole as UserRole,
+              position: 'System Administrator',
+              department: 'Corporate Finance & L&D',
+              property: 'FC Learning Academy',
+              avatar: '',
+              currentLevel: 4 as const,
+              targetLevel: 4 as const,
+              joinedDate: new Date().toISOString().split('T')[0],
+            };
+          }
+          return undefined;
+        })();
+    }
+  }
+
+  if (!actor) {
     res.status(401).json({ error: 'Authentication required for Data Import Center.' });
     return null;
   }
-  const actor =
-    db.users.find((u) => u.id === actorId) ||
-    getRequestActor(req) ||
-    (() => {
-      const headerRole = req.headers['x-user-role'] as string | undefined;
-      if (
-        headerRole &&
-        SYSTEM_ROLES.includes(headerRole as UserRole) &&
-        /^[a-zA-Z0-9_\-]{1,128}$/.test(actorId)
-      ) {
-        return {
-          id: actorId,
-          name: 'Verified Firebase Admin',
-          email: '',
-          role: headerRole as UserRole,
-          position: 'System Administrator',
-          department: 'Corporate Finance & L&D',
-          property: 'FC Learning Academy',
-          avatar: '',
-          currentLevel: 4 as const,
-          targetLevel: 4 as const,
-          joinedDate: new Date().toISOString().split('T')[0],
-        };
-      }
-      return undefined;
-    })();
-  if (!actor) {
-    res.status(401).json({ error: 'Invalid user session.' });
-    return null;
-  }
-  const effectiveRole: UserRole = getEffectiveActorRole(req) ?? actor.role;
+  const effectiveRole: UserRole = verified
+    ? verified.user.role
+    : getEffectiveActorRole(req) ?? actor.role;
   const allowed = requiredPermissions.some((perm) =>
     roleHasPermission(effectiveRole, perm, db.rolePermissions)
   );
@@ -2347,7 +2450,12 @@ function ensureSimulatorBuiltinSeeds(store: SimulatorLocalStore): SimulatorLocal
   return store;
 }
 
+let cachedSimulatorStore: SimulatorLocalStore | null = null;
+
 function loadSimulatorLocalStore(): SimulatorLocalStore {
+  if (cachedSimulatorStore) {
+    return cachedSimulatorStore;
+  }
   const empty: Record<string, Record<string, Record<string, any>>> = {};
   for (const s of SIMULATOR_IMPORT_ORDER_SPEC) {
     empty[s.collectionName] = {};
@@ -2376,12 +2484,13 @@ function loadSimulatorLocalStore(): SimulatorLocalStore {
             ? parsed.pendingJobPayloads
             : {},
       };
-      return ensureSimulatorBuiltinSeeds(store);
+      cachedSimulatorStore = ensureSimulatorBuiltinSeeds(store);
+      return cachedSimulatorStore;
     }
   } catch (err) {
     console.warn('Could not read simulator local store:', err);
   }
-  return ensureSimulatorBuiltinSeeds({
+  cachedSimulatorStore = ensureSimulatorBuiltinSeeds({
     collections: empty,
     sessions: [],
     datasets: {},
@@ -2394,11 +2503,12 @@ function loadSimulatorLocalStore(): SimulatorLocalStore {
     competencyMappings: {},
     pendingJobPayloads: {},
   });
+  return cachedSimulatorStore;
 }
 
 function saveSimulatorLocalStore(store: SimulatorLocalStore): void {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(getSimulatorStorePath(), JSON.stringify(store, null, 2), 'utf-8');
+  cachedSimulatorStore = store;
+  writeJsonAtomic(getSimulatorStorePath(), store);
 }
 
 app.get('/api/import/status', async (req, res) => {
@@ -4002,16 +4112,38 @@ app.put('/api/simulator/scenarios/:id', (req, res) => {
 
   const now = new Date().toISOString();
   const nextVer = Number(existing.versionNumber || 1) + 1;
+  const safeScenarioPatch = pickAllowedFields<SimulationScenarioDoc>(req.body, [
+    'scenarioCode',
+    'titleEn',
+    'titleVi',
+    'category',
+    'difficulty',
+    'hotelId',
+    'estimatedDurationMinutes',
+    'targetRole',
+    'status',
+    'published',
+    'backgroundContextEn',
+    'backgroundContextVi',
+    'executiveBriefEn',
+    'executiveBriefVi',
+    'gmPersonaStyle',
+    'keyMetricsSummary',
+    'competencyCodes',
+    'passingScore',
+    'tags',
+  ]);
   const updated = {
     ...existing,
-    ...req.body,
+    ...safeScenarioPatch,
     id,
     versionNumber: nextVer,
     updatedAt: now,
   };
   simStore.collections.simulationScenarios[id] = updated;
   if (req.body?.datasetOverride) {
-    const hp = simStore.collections.hotelSimulationProfiles?.[updated.hotelId] as any;
+    const hotelKey = String(updated.hotelId || existing.hotelId || '');
+    const hp = hotelKey ? (simStore.collections.hotelSimulationProfiles?.[hotelKey] as any) : undefined;
     simStore.datasets[id] = generateDatasetSnapshotForScenario(updated as SimulationScenarioDoc, hp, req.body.datasetOverride);
   }
   appendScenarioVersionEntry(simStore, updated as SimulationScenarioDoc, actor, `Manual update (v${nextVer})`);
@@ -4880,7 +5012,7 @@ function pushTalentNotification(
 
 app.get('/api/talent/bootstrap', (req, res) => {
   const actor = getRequestActor(req);
-  // Scope sensitive employee records by actor role when x-user-id is supplied
+  // Strict scoping: unauthenticated requests never receive employee records
   const scopeFilter = <T extends { employeeId: string }>(arr: T[]) => {
     if (!actor) return [];
     return arr.filter((item) => canViewEmployeeTalentData(actor, item.employeeId));
@@ -4888,16 +5020,12 @@ app.get('/api/talent/bootstrap', (req, res) => {
 
   return res.json({
     talentConfig: db.talentConfig,
-    competencyAssessments: actor ? scopeFilter(db.competencyAssessments) : db.competencyAssessments,
-    talentIdps: actor ? scopeFilter(db.talentIdps) : db.talentIdps,
-    developmentActivities: actor ? scopeFilter(db.developmentActivities) : db.developmentActivities,
-    competencyReassessments: actor
-      ? scopeFilter(db.competencyReassessments)
-      : db.competencyReassessments,
-    careerReadinessReviews: actor
-      ? scopeFilter(db.careerReadinessReviews)
-      : db.careerReadinessReviews,
-    idpReviewLogs: actor ? scopeFilter(db.idpReviewLogs) : db.idpReviewLogs,
+    competencyAssessments: scopeFilter(db.competencyAssessments),
+    talentIdps: scopeFilter(db.talentIdps),
+    developmentActivities: scopeFilter(db.developmentActivities),
+    competencyReassessments: scopeFilter(db.competencyReassessments),
+    careerReadinessReviews: scopeFilter(db.careerReadinessReviews),
+    idpReviewLogs: scopeFilter(db.idpReviewLogs),
     talentNotifications: actor
       ? db.talentNotifications.filter(
           (n) => n.recipientId === 'all' || n.recipientId === actor.id || canViewEmployeeTalentData(actor, n.recipientId)
@@ -6185,6 +6313,19 @@ Include a clear advisory disclaimer noting outputs are editable suggestions requ
   }
 });
 
+// Always return JSON 404 for unknown API routes instead of falling through to SPA HTML
+app.use('/api', (_req, res) => {
+  return res.status(404).json({ error: 'API endpoint not found.' });
+});
+
+// Global Express error middleware so unexpected failures return structured JSON
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Server Error]', err);
+  if (res.headersSent) return;
+  const status = typeof err?.status === 'number' ? err.status : 500;
+  res.status(status).json({ error: err?.message || 'Internal server error.' });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
@@ -6200,9 +6341,27 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`FC Learning Academy Server running at http://localhost:${PORT}`);
+  });
+
+  const shutdown = (signal: string) => {
+    console.log(`\n[Server] Received ${signal}, closing HTTP server gracefully...`);
+    server.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000).unref?.();
+  };
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+if (!IS_VERCEL) {
+  startServer().catch((err) => {
+    console.error('[Server] Fatal startup error:', err);
+    process.exit(1);
   });
 }
 
-startServer();
+export { app };
+export default app;

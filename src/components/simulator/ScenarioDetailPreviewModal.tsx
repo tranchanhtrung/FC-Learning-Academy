@@ -593,7 +593,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
           {!loading && activeTab === 'rubric' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <div className="lg:col-span-7 border border-slate-200 rounded-xl overflow-hidden bg-white">
-                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                   <span className="font-bold text-slate-900 flex items-center gap-1.5">
                     <Award className="w-4 h-4 text-amber-600" />
                     <span>Evaluation Rubric</span>
@@ -602,7 +602,8 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
                     Total Weight: {rubricWeightSum}%
                   </span>
                 </div>
-                <table className="w-full text-xs border-collapse">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[460px] text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 text-[11px] font-mono uppercase text-slate-500 text-left">
                       <th className="py-2 px-3">Code</th>
@@ -622,6 +623,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               <div className="lg:col-span-5 border border-slate-200 rounded-xl overflow-hidden bg-white">

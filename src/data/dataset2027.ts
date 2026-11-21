@@ -1,7 +1,5 @@
-import * as XLSX from 'xlsx';
-
 /**
- * Generates the official FC_Learning_Academy_Training_Dataset_2027.xlsx workbook
+ * Generates the official FC_Learning_Academy_Training_Dataset_2027.xlsx dataset rows
  * containing the README sheet + all 9 curriculum sheets with exact target counts:
  * - Competency_Domains: 6
  * - Proficiency_Levels: 4
@@ -339,19 +337,4 @@ export function build2027DatasetRows() {
     Training_Matrix_2027: annualTrainingMatrix,
     Career_Paths: careerPaths,
   };
-}
-
-export function build2027DatasetWorkbook(): XLSX.WorkBook {
-  const sheets = build2027DatasetRows();
-  const wb = XLSX.utils.book_new();
-  (Object.keys(sheets) as Array<keyof typeof sheets>).forEach((sheetName) => {
-    const ws = XLSX.utils.json_to_sheet(sheets[sheetName]);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  });
-  return wb;
-}
-
-export function create2027TemplateBuffer(): Buffer {
-  const wb = build2027DatasetWorkbook();
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }

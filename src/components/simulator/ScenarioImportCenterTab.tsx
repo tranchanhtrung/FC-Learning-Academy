@@ -1141,7 +1141,7 @@ export const ScenarioImportCenterTab: React.FC = () => {
                     value={scenarioSearch}
                     onChange={(e) => setScenarioSearch(e.target.value)}
                     placeholder="Filter scenarios by code, ID, title, or hotel..."
-                    className="px-3 py-2 rounded-lg border border-slate-200 w-72 focus:outline-none focus:border-amber-500"
+                    className="px-3 py-2 rounded-lg border border-slate-200 w-full sm:w-72 focus:outline-none focus:border-amber-500"
                   />
                   <select
                     value={scenarioStatusFilter}
@@ -1432,7 +1432,7 @@ export const ScenarioImportCenterTab: React.FC = () => {
                     value={errorSearch}
                     onChange={(e) => setErrorSearch(e.target.value)}
                     placeholder="Filter errors by sheet, record ID, field..."
-                    className="px-3 py-2 rounded-lg border border-slate-200 w-72"
+                    className="px-3 py-2 rounded-lg border border-slate-200 w-full sm:w-72"
                   />
                   <div className="flex items-center gap-2">
                     <button

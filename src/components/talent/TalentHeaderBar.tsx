@@ -101,20 +101,20 @@ export const TalentHeaderBar: React.FC<TalentHeaderBarProps> = ({
         </div>
 
         {/* Employee, Target Position & Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <div>
+        <div className="flex flex-wrap items-end gap-3 w-full lg:w-auto min-w-0">
+          <div className="w-full sm:w-auto min-w-0 flex-1 sm:flex-initial">
             <label className="block text-[11px] text-slate-400 mb-1">
               {language === 'vi' ? 'Nhân sự mục tiêu' : 'Employee'}
             </label>
             {isLearner ? (
-              <div className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-white whitespace-nowrap">
+              <div className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-white truncate max-w-full">
                 {currentUser.name} ({currentUser.position})
               </div>
             ) : (
               <select
                 value={effectiveEmployeeId}
                 onChange={(e) => handleEmployeeChange(e.target.value)}
-                className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full sm:w-auto max-w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 {cohortUsers.map((u) => (
                   <option key={u.id} value={u.id}>
@@ -125,14 +125,14 @@ export const TalentHeaderBar: React.FC<TalentHeaderBarProps> = ({
             )}
           </div>
 
-          <div>
+          <div className="w-full sm:w-auto min-w-0 flex-1 sm:flex-initial">
             <label className="block text-[11px] text-slate-400 mb-1">
               {language === 'vi' ? 'Vị trí đích (Career Target)' : 'Target Position'}
             </label>
             <select
               value={selectedTalentTargetPosition}
               onChange={(e) => setSelectedTalentTargetPosition(e.target.value)}
-              className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="w-full sm:w-auto max-w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-semibold text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
             >
               {STANDARD_CAREER_POSITIONS.map((pos) => (
                 <option key={pos} value={pos}>
@@ -142,20 +142,20 @@ export const TalentHeaderBar: React.FC<TalentHeaderBarProps> = ({
             </select>
           </div>
 
-          <div className="flex items-center gap-2 pt-4 sm:pt-0 sm:self-end">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setCoachOpen(true)}
               className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <Bot className="w-4 h-4" />
-              <span>{language === 'vi' ? 'AI Coach' : 'AI Coach'}</span>
+              <Bot className="w-4 h-4 shrink-0" />
+              <span>AI Coach</span>
             </button>
             {isAdminOrLnd && (
               <button
                 onClick={() => setConfigOpen(true)}
                 className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-semibold text-xs rounded-lg flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Sliders className="w-4 h-4 text-amber-400" />
+                <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>{language === 'vi' ? 'Cấu hình' : 'Engine Config'}</span>
               </button>
             )}

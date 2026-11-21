@@ -365,6 +365,8 @@ export interface LearningPath {
   titleEn: string;
   targetRole: string;
   fromRole?: string;
+  toRole?: string;
+  domainIds?: string[];
   targetLevel?: ProficiencyLevel;
   durationMonths?: number;
   minAssessmentScore?: number;

@@ -617,36 +617,36 @@ export const AssessmentView: React.FC = () => {
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   {language === 'vi' ? 'Chế độ so sánh biểu đồ Radar:' : 'Radar Comparison Mode:'}
                 </span>
-                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl text-[11px] font-bold">
                   <button
                     onClick={() => setRadarMode('target_sup')}
-                    className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+                    className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
                       radarMode === 'target_sup'
                         ? 'bg-white text-blue-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Target vs FC
+                    {language === 'vi' ? 'Chuẩn vs FC' : 'Target vs FC'}
                   </button>
                   <button
                     onClick={() => setRadarMode('target_self')}
-                    className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+                    className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
                       radarMode === 'target_self'
                         ? 'bg-white text-emerald-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Target vs Self
+                    {language === 'vi' ? 'Chuẩn vs Tự ĐG' : 'Target vs Self'}
                   </button>
                   <button
                     onClick={() => setRadarMode('perception_gap')}
-                    className={`py-1.5 rounded-lg transition-all cursor-pointer text-center ${
+                    className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer text-center ${
                       radarMode === 'perception_gap'
                         ? 'bg-[#0A192F] text-amber-400 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Perception Gap
+                    {language === 'vi' ? 'Độ Lệch Nhận Thức' : 'Perception Gap'}
                   </button>
                 </div>
               </div>

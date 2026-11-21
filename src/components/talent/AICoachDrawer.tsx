@@ -266,7 +266,7 @@ export const AICoachDrawer: React.FC<AICoachDrawerProps> = ({
               <div className="border border-slate-200 rounded-xl p-4 bg-white space-y-2">
                 <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
                   <span>{result.computedReadiness ? `Readiness: ${result.computedReadiness}` : 'Advisory Draft'}</span>
-                  <span>Gemini 4 Hydrogen</span>
+                  <span>Google Gemini AI</span>
                 </div>
                 <h3 className="text-base font-bold text-slate-900">{result.headline}</h3>
                 <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">

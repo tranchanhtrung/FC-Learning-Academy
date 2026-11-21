@@ -119,8 +119,12 @@ export const CertificationsView: React.FC = () => {
       <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold uppercase tracking-wider mb-2">
-            <Award className="w-3.5 h-3.5" />
-            <span>5-Level Professional Certification Journey</span>
+            <Award className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {language === 'vi'
+                ? 'Lộ Trình Chứng Chỉ Chuyên Môn 5 Cấp Độ'
+                : '5-Level Professional Certification Journey'}
+            </span>
           </div>
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             {t.certifications.title}
@@ -131,14 +135,14 @@ export const CertificationsView: React.FC = () => {
         </div>
 
         {canSelectCandidate ? (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs w-full sm:w-auto max-w-full">
             <span className="font-bold text-slate-700 shrink-0">
               {language === 'vi' ? 'Hồ sơ cấp chứng chỉ:' : 'Candidate:'}
             </span>
             <select
               value={selectedUserId}
               onChange={(e) => setSelectedUserId(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-bold text-xs focus:outline-none"
+              className="w-full sm:w-auto max-w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-bold text-xs focus:outline-none"
             >
               {users
                 .filter((u) => u.role === 'learner' || u.id === currentUser.id)
@@ -202,7 +206,7 @@ export const CertificationsView: React.FC = () => {
         {hasSearched && (
           <div className="mt-4 pt-4 border-t border-slate-700/80 text-xs">
             {verificationResult ? (
-              <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between">
+              <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-emerald-300">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   <div>

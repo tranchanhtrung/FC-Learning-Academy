@@ -2851,8 +2851,8 @@ export const DataImportCenterView: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-xs text-left">
+                <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                  <table className="w-full min-w-[400px] text-xs text-left">
                     <thead className="bg-slate-50 text-slate-500 uppercase font-bold border-b border-slate-200">
                       <tr>
                         <th className="py-2 px-3">Collection</th>

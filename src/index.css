@@ -1,10 +1,171 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: "Playfair Display", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 @layer base {
+  html {
+    overflow-x: clip;
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
     background-color: #F8FAFC;
     color: #0F172A;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: clip;
+  }
+
+  /* Accessible keyboard focus indicators */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #F59E0B;
+    outline-offset: 2px;
+  }
+}
+
+/* Subtle custom scrollbars for sidebars and data panels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.65);
+}
+
+/* Finny Onboarding Mascot micro-animations */
+@keyframes finny-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes finny-blink {
+  0%, 88%, 94%, 100% {
+    transform: scaleY(1);
+  }
+  91%, 97% {
+    transform: scaleY(0.12);
+  }
+}
+
+@keyframes finny-wave {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-20deg);
+  }
+  40% {
+    transform: rotate(16deg);
+  }
+  60% {
+    transform: rotate(-16deg);
+  }
+  80% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes finny-antenna-glow {
+  0%, 100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes finny-spotlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.95), 0 0 22px rgba(245, 158, 11, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(252, 211, 77, 1), 0 0 34px rgba(245, 158, 11, 0.85);
+  }
+}
+
+@keyframes finny-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes finny-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-finny-float {
+  animation: finny-float 3.2s ease-in-out infinite;
+}
+
+.finny-eyes-blink {
+  transform-origin: 32px 34px;
+  animation: finny-blink 4.6s ease-in-out infinite;
+}
+
+.finny-hand-wave {
+  transform-origin: 51px 44px;
+  animation: finny-wave 1.8s ease-in-out infinite;
+}
+
+.finny-antenna-pulse {
+  transform-origin: 32px 7px;
+  animation: finny-antenna-glow 2.2s ease-in-out infinite;
+}
+
+.finny-spotlight-ring {
+  animation: finny-spotlight-pulse 2s ease-in-out infinite;
+}
+
+.animate-finny-pop {
+  animation: finny-pop 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-finny-step-in {
+  animation: finny-step-in 240ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

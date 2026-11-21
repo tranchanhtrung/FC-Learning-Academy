@@ -336,8 +336,15 @@ export const OJTProjectsView: React.FC = () => {
 
       {/* Submission Modal */}
       {submissionModalOpen && selectedAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-700/50 my-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSubmissionModalOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-8 space-y-5 shadow-2xl border border-slate-700/50 my-auto">
             <div className="flex items-start justify-between border-b border-slate-200 pb-3">
               <div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">
@@ -381,20 +388,27 @@ export const OJTProjectsView: React.FC = () => {
               />
             </div>
 
-            {/* Simulated File Attachment */}
-            <div className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs">
+            {/* File Attachment Picker */}
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs">
               <FileSpreadsheet className="w-6 h-6 text-emerald-600 shrink-0" />
-              <div className="flex-1">
-                <p className="font-bold text-slate-800">{fileName}</p>
-                <p className="text-[10px] text-slate-500">Working Model &bull; 3.2 MB &bull; Excel 2026</p>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-800 truncate">{fileName}</p>
+                <p className="text-[11px] text-slate-500">
+                  {language === 'vi' ? 'Tài liệu nộp bài OJT (.xlsx, .pdf, .docx)' : 'OJT Deliverable Attachment (.xlsx, .pdf, .docx)'}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setFileName(`Deliverable_${Date.now()}.xlsx`)}
-                className="px-2.5 py-1 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer"
-              >
-                {language === 'vi' ? 'Đổi file' : 'Change File'}
-              </button>
+              <label className="px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer shrink-0 whitespace-nowrap">
+                {language === 'vi' ? 'Chọn tệp...' : 'Choose File...'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const picked = e.target.files?.[0];
+                    if (picked) setFileName(picked.name);
+                  }}
+                />
+              </label>
             </div>
 
             {/* AI Preliminary Review Trigger */}

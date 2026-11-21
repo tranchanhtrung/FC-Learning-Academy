@@ -548,12 +548,19 @@ export const TalentActivitiesView: React.FC = () => {
 
       {/* Custom L&D Activity Creator Modal */}
       {customModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-slate-950/60 p-3 sm:p-4 backdrop-blur-xs overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCustomModalOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+        >
           <form
             onSubmit={handleSubmitCustomActivity}
-            className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden"
+            className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto"
           >
-            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-400" />
                 <h3 className="text-sm font-bold">
@@ -564,8 +571,8 @@ export const TalentActivitiesView: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-5 space-y-3 text-xs overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     {language === 'vi' ? 'Năng lực' : 'Competency'}

@@ -165,26 +165,33 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-5xl w-full h-[92vh] flex flex-col shadow-2xl border border-slate-700/50 overflow-hidden my-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-white rounded-2xl max-w-5xl w-full h-[94vh] sm:h-[92vh] flex flex-col shadow-2xl border border-slate-700/50 overflow-hidden my-auto">
         {/* Top Header Bar */}
-        <div className="flex items-center justify-between px-6 py-3.5 bg-[#0A192F] text-white border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <span className="px-2.5 py-0.5 rounded text-[11px] font-extrabold bg-amber-400 text-slate-950 font-mono">
+        <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 bg-[#0A192F] text-white border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <span className="px-2.5 py-0.5 rounded text-[11px] font-extrabold bg-amber-400 text-slate-950 font-mono shrink-0">
               {course.code}
             </span>
-            <div>
-              <h3 className="font-extrabold text-sm sm:text-base tracking-wide text-white line-clamp-1">
+            <div className="min-w-0">
+              <h3 className="font-extrabold text-sm sm:text-base tracking-wide text-white truncate">
                 {language === 'vi' ? course.titleVi : course.titleEn}
               </h3>
-              <p className="text-[11px] text-slate-400 flex items-center gap-2">
-                <span>{course.instructorName} &bull; {course.instructorTitle}</span>
-                <span className="hidden sm:inline text-amber-300 font-semibold">• {course.difficulty} Level</span>
+              <p className="text-[11px] text-slate-400 flex items-center gap-2 truncate">
+                <span className="truncate">{course.instructorName} &bull; {course.instructorTitle}</span>
+                <span className="hidden sm:inline text-amber-300 font-semibold shrink-0">• {course.difficulty} Level</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="hidden sm:flex items-center gap-2 text-xs">
               <span className="text-slate-400">{language === 'vi' ? 'Tiến độ:' : 'Progress:'}</span>
               <span className="font-bold text-amber-400 font-mono">{enrollment?.progressPercent || 0}%</span>
@@ -631,8 +638,8 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                 </div>
               </div>
 
-              {/* Sidebar Modules List (30%) */}
-              <div className="w-full lg:w-80 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col">
+              {/* Sidebar Modules List (30%) — capped height on mobile/tablet so main lesson pane stays readable */}
+              <div className="w-full lg:w-80 max-h-56 lg:max-h-none bg-white border-t lg:border-t-0 lg:border-l border-slate-200 flex flex-col shrink-0">
                 <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                   <h4 className="font-extrabold text-xs uppercase tracking-wider text-slate-700">
                     {t.courses.modules} ({course.modules.length})

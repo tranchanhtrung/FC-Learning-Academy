@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { writeJsonAtomic } from './persistence.ts';
 import { initializeApp, getApps, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore, Firestore as AdminFirestore } from 'firebase-admin/firestore';
 
@@ -2046,7 +2048,9 @@ export function parseAndValidateWorkbook(params: {
 // FIREBASE ADMIN & DEMO LOCAL CURRICULUM STORE HELPERS
 // ============================================================================
 
-const DEMO_CURRICULUM_FILE = path.join(process.cwd(), '.data', 'firestore-curriculum-demo.json');
+const DEMO_CURRICULUM_FILE = process.env.VERCEL
+  ? path.join(os.tmpdir(), 'fc-learning-academy-data', 'firestore-curriculum-demo.json')
+  : path.join(process.cwd(), '.data', 'firestore-curriculum-demo.json');
 
 export interface DemoCurriculumStore {
   collections: Record<string, Record<string, Record<string, any>>>;
@@ -2077,9 +2081,7 @@ export function loadDemoCurriculumStore(): DemoCurriculumStore {
 }
 
 export function saveDemoCurriculumStore(store: DemoCurriculumStore): void {
-  const dir = path.dirname(DEMO_CURRICULUM_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DEMO_CURRICULUM_FILE, JSON.stringify(store, null, 2), 'utf-8');
+  writeJsonAtomic(DEMO_CURRICULUM_FILE, store);
 }
 
 export function getDemoExistingIds(): Record<string, string[]> {

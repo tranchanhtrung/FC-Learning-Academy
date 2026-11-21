@@ -644,17 +644,17 @@ export const AIAssistantView: React.FC = () => {
       <div className="bg-gradient-to-r from-[#0A192F] via-[#102A4C] to-[#1E3A8A] text-white p-6 sm:p-8 rounded-2xl border border-slate-700/50 shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold uppercase tracking-wider mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Google Gemini 4 Hydrogen &bull; Curriculum-Grounded AI</span>
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span>Google Gemini AI &bull; Curriculum-Grounded Assistant</span>
           </div>
-          <h2 className="text-2xl font-extrabold tracking-tight">{t.ai.title}</h2>
+          <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">{t.ai.title}</h2>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
             {t.ai.subtitle}
           </p>
         </div>
 
         {/* Mode Switcher */}
-        <div className="flex flex-wrap items-center bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 text-xs font-bold gap-1 shrink-0">
+        <div className="flex flex-wrap items-center bg-slate-900/80 p-1.5 rounded-xl border border-slate-700 text-xs font-bold gap-1 w-full xl:w-auto">
           <button
             onClick={() => setActiveTab('simulator')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all cursor-pointer ${
@@ -899,7 +899,7 @@ export const AIAssistantView: React.FC = () => {
                           {activeOperationalRows[0].periodLabel}
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
                         <div className="p-2 rounded-lg bg-slate-50 border border-slate-200">
                           <span className="text-[10px] text-slate-400 block font-semibold">Occupancy</span>
                           <span className="font-bold text-slate-900 font-mono">

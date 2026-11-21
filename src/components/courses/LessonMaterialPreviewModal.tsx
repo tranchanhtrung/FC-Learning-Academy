@@ -1,6 +1,4 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import * as mammoth from 'mammoth';
-import * as XLSX from 'xlsx';
 import { LessonMaterialDoc } from '../../types';
 import { COURSES } from '../../data/initialData';
 import {
@@ -99,7 +97,10 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
 
         if (kind === 'docx') {
           if (active) setLoading(true);
-          const buffer = await getMaterialArrayBuffer(material);
+          const [buffer, mammoth] = await Promise.all([
+            getMaterialArrayBuffer(material),
+            import('mammoth'),
+          ]);
           const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
           const cleanHtml = sanitizeDocxHtml(result.value || '');
           if (active) {
@@ -117,7 +118,10 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
 
         if (kind === 'excel') {
           if (active) setLoading(true);
-          const buffer = await getMaterialArrayBuffer(material);
+          const [buffer, XLSX] = await Promise.all([
+            getMaterialArrayBuffer(material),
+            import('xlsx'),
+          ]);
           const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
           const parsed: ParsedSheet[] = wb.SheetNames.map((name) => {
             const ws = wb.Sheets[name];
@@ -473,11 +477,22 @@ export const LessonMaterialPreviewModal: React.FC<LessonMaterialPreviewModalProp
   const hasNext = currentIdx >= 0 && currentIdx < list.length - 1;
   const liveLesson = resolveMaterialLessonInfo(material, COURSES);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className={`fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/85 backdrop-blur-xs ${
         isFullscreen ? 'p-0' : 'p-2 sm:p-6'
       }`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className={`bg-white flex flex-col shadow-2xl border border-slate-200 overflow-hidden ${

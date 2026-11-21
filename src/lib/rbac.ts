@@ -533,15 +533,7 @@ export function canAccessTab(
   policyMap?: RolePermissionsMap
 ): boolean {
   const required = TAB_REQUIRED_PERMISSION[tabId];
-  if (!required) return true;
-  // Simulator sub-admin/import views also logically require simulator OR governance visibility
-  if (tabId === 'dataImportCenter') {
-    return (
-      roleHasPermission(role, 'access_data_import_center', policyMap) ||
-      (roleHasPermission(role, 'view_administration', policyMap) &&
-        roleHasPermission(role, 'access_data_import_center', policyMap))
-    );
-  }
+  if (!required) return false;
   return roleHasPermission(role, required, policyMap);
 }
 

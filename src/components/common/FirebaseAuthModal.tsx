@@ -24,19 +24,30 @@ import {
   LogOut,
   CheckCircle2,
   AlertTriangle,
-  Copy,
   RefreshCw,
   KeyRound,
   UserCog,
   ExternalLink,
   Database,
   Users,
+  Eye,
+  EyeOff,
+  Server,
+  Cloud,
   Sparkles,
 } from 'lucide-react';
 
 interface FirebaseAuthModalProps {
   onClose: () => void;
   initialTab?: 'login' | 'register' | 'reset';
+}
+
+interface DemoAccountInfo {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  position: string;
 }
 
 const HOTEL_PROPERTIES = [
@@ -48,6 +59,25 @@ const HOTEL_PROPERTIES = [
   'FC Learning Academy',
 ];
 
+function formatFirebaseErrorVi(err: any, isVi: boolean): string {
+  const code = String(err?.code || err?.message || '');
+  if (code.includes('unauthorized-domain')) {
+    return isVi
+      ? `Tên miền "${window.location.hostname}" chưa được cấp phép trong Firebase Console (Authentication → Settings → Authorized domains). Hãy dùng tab "Tài Khoản Học Viện" bên cạnh để đăng nhập / đăng ký ngay trên máy cục bộ.`
+      : `Domain "${window.location.hostname}" is not allowlisted in Firebase Console (Authentication → Settings → Authorized domains). Use the "Academy Account" tab to sign in or register locally right away.`;
+  }
+  if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+    return isVi ? 'Email hoặc mật khẩu Firebase không chính xác.' : 'Invalid Firebase email or password.';
+  }
+  if (code.includes('email-already-in-use')) {
+    return isVi ? 'Email này đã tồn tại trên Firebase.' : 'This email is already registered in Firebase.';
+  }
+  if (code.includes('popup-closed-by-user')) {
+    return isVi ? 'Bạn đã đóng cửa sổ đăng nhập Google.' : 'Google sign-in popup was closed.';
+  }
+  return err?.message || (isVi ? 'Thao tác Firebase thất bại.' : 'Firebase operation failed.');
+}
+
 export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
   onClose,
   initialTab = 'login',
@@ -55,12 +85,17 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
   const {
     language,
     t,
+    serverAuthUser,
+    loginWithServerAccount,
+    registerWithServerAccount,
+    changeServerPassword,
+    requestServerPasswordReset,
+    confirmServerPasswordReset,
     firebaseUser,
     firebaseProfile,
     dataSourceMode,
     setDataSourceMode,
     refreshFromFirestore,
-    productionCounts,
     signOutOfficialAccount,
     syncAllExperienceRolesToFirestore,
     showToast,
@@ -70,33 +105,46 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
   const canSeeSystemDiagnostics =
     Boolean(firebaseProfile?.isAdmin) || hasPermission('view_administration');
 
+  // Dual-engine mode: 'academy' (Full-Stack Server Auth - default & always works) vs 'firebase' (Cloud Sync)
+  const [providerMode, setProviderMode] = useState<'academy' | 'firebase'>(() =>
+    firebaseUser && !serverAuthUser ? 'firebase' : 'academy'
+  );
   const [authTab, setAuthTab] = useState<'login' | 'register' | 'reset'>(initialTab);
+
+  // Common form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [position, setPosition] = useState('Senior Accountant');
   const [property, setProperty] = useState(HOTEL_PROPERTIES[0]);
   const [requestedRole, setRequestedRole] = useState<UserRole>('learner');
+
+  // Password reset & change password state (Academy Server Auth)
+  const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
+  const [resetCode, setResetCode] = useState('');
+  const [devResetPreviewCode, setDevResetPreviewCode] = useState<string | null>(null);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+
+  // Demo quick-fill accounts fetched from /api/auth/demo-accounts
+  const [demoAccounts, setDemoAccounts] = useState<DemoAccountInfo[]>([]);
+  const [demoPasswordHint, setDemoPasswordHint] = useState<string>('');
+  const [showDemoQuickFill, setShowDemoQuickFill] = useState(false);
+
   const [busy, setBusy] = useState(false);
   const [seedingRoles, setSeedingRoles] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    setAuthTab(initialTab);
-    setErrorMsg(null);
-    setInfoMsg(null);
-  }, [initialTab]);
-
-  // Admin promotion helper & registry list
+  // Firebase Admin promotion & probe state
   const [grantUid, setGrantUid] = useState('');
   const [grantEmail, setGrantEmail] = useState('');
   const [grantRole, setGrantRole] = useState<'super_admin' | 'lnd_manager'>('lnd_manager');
   const [adminEntries, setAdminEntries] = useState<
     Array<{ uid: string; email: string; role: string; grantedAt: string }>
   >([]);
-
-  // Live Read & Write verification probe state
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeResult, setProbeResult] = useState<{
     readOk: boolean;
@@ -105,6 +153,36 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
     checkedAt: string;
     counts: Record<string, number>;
   } | null>(null);
+
+  useEffect(() => {
+    setAuthTab(initialTab);
+    setErrorMsg(null);
+    setInfoMsg(null);
+    setResetStep('request');
+    setDevResetPreviewCode(null);
+  }, [initialTab]);
+
+  // Close modal on Escape
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  // Fetch demo quick-fill accounts (non-production)
+  useEffect(() => {
+    fetch('/api/auth/demo-accounts')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.enabled && Array.isArray(data.accounts)) {
+          setDemoAccounts(data.accounts);
+          setDemoPasswordHint(data.defaultPasswordHint || '');
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const runReadWriteCheck = async () => {
     setProbeBusy(true);
@@ -121,15 +199,178 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
   };
 
   useEffect(() => {
-    if (firebaseUser?.emailVerified && canSeeSystemDiagnostics) {
+    if (providerMode === 'firebase' && firebaseUser?.emailVerified && canSeeSystemDiagnostics) {
       runReadWriteCheck();
     } else {
       setProbeResult(null);
       setAdminEntries([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firebaseUser?.uid, firebaseUser?.emailVerified, firebaseProfile?.isAdmin, canSeeSystemDiagnostics]);
+  }, [providerMode, firebaseUser?.uid, firebaseUser?.emailVerified, firebaseProfile?.isAdmin, canSeeSystemDiagnostics]);
 
+  // Password strength indicator for Registration
+  const passwordScore = (() => {
+    let score = 0;
+    if (password.length >= 8) score++;
+    if (/[A-Za-z]/.test(password) && /\d/.test(password)) score++;
+    if (/[A-Z]/.test(password) && /[^A-Za-z0-9]/.test(password)) score++;
+    return score;
+  })();
+
+  // =========================================================================
+  // ACADEMY SERVER AUTH HANDLERS (Full-Stack Scrypt + Signed Session Cookie)
+  // =========================================================================
+  const handleServerLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    setBusy(true);
+    setErrorMsg(null);
+    setInfoMsg(null);
+    try {
+      const res = await loginWithServerAccount(email.trim(), password);
+      if (!res.ok) {
+        setErrorMsg(res.error || (isVi ? 'Đăng nhập thất bại.' : 'Sign in failed.'));
+        return;
+      }
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleServerRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setInfoMsg(null);
+    if (displayName.trim().length < 2) {
+      setErrorMsg(isVi ? 'Vui lòng nhập họ và tên (tối thiểu 2 ký tự).' : 'Enter your full name (min 2 chars).');
+      return;
+    }
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      setErrorMsg(
+        isVi
+          ? 'Mật khẩu phải từ 8 ký tự trở lên và gồm cả chữ cái lẫn chữ số.'
+          : 'Password must be at least 8 characters and include both letters and numbers.'
+      );
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg(isVi ? 'Mật khẩu xác nhận không khớp.' : 'Password confirmation does not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await registerWithServerAccount({
+        name: displayName.trim(),
+        email: email.trim(),
+        password,
+        position: position.trim(),
+        department: 'Finance & Accounting',
+        property,
+        requestedRole,
+      });
+      if (!res.ok) {
+        setErrorMsg(res.error || (isVi ? 'Đăng ký thất bại.' : 'Registration failed.'));
+        return;
+      }
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleServerRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setErrorMsg(isVi ? 'Vui lòng nhập email tài khoản.' : 'Enter your email address.');
+      return;
+    }
+    setBusy(true);
+    setErrorMsg(null);
+    setInfoMsg(null);
+    try {
+      const res = await requestServerPasswordReset(email.trim());
+      if (!res.ok) {
+        setErrorMsg(res.error || 'Không thể gửi yêu cầu khôi phục.');
+        return;
+      }
+      setResetStep('confirm');
+      setDevResetPreviewCode(res.devPreviewCode || null);
+      setInfoMsg(
+        res.message ||
+          (isVi
+            ? 'Đã tạo mã khôi phục 6 chữ số (hiệu lực 15 phút).'
+            : 'A 6-digit recovery code has been generated (valid for 15 minutes).')
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleServerConfirmReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setInfoMsg(null);
+    if (!resetCode.trim() || newPasswordInput.length < 8) {
+      setErrorMsg(
+        isVi
+          ? 'Nhập mã xác nhận 6 số và mật khẩu mới tối thiểu 8 ký tự (có chữ và số).'
+          : 'Enter the 6-digit code and a new password (min 8 chars with letters and numbers).'
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await confirmServerPasswordReset(email.trim(), resetCode.trim(), newPasswordInput);
+      if (!res.ok) {
+        setErrorMsg(res.error || 'Đặt lại mật khẩu thất bại.');
+        return;
+      }
+      setAuthTab('login');
+      setResetStep('request');
+      setResetCode('');
+      setNewPasswordInput('');
+      setDevResetPreviewCode(null);
+      setInfoMsg(
+        isVi
+          ? 'Đặt lại mật khẩu thành công! Mời bạn đăng nhập bằng mật khẩu mới.'
+          : 'Password updated! Please sign in with your new password.'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleServerChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setInfoMsg(null);
+    if (!currentPasswordInput || newPasswordInput.length < 8) {
+      setErrorMsg(
+        isVi
+          ? 'Nhập mật khẩu hiện tại và mật khẩu mới tối thiểu 8 ký tự (gồm chữ và số).'
+          : 'Provide your current password and a new password (min 8 chars with letters and numbers).'
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await changeServerPassword(currentPasswordInput, newPasswordInput);
+      if (!res.ok) {
+        setErrorMsg(res.error || 'Đổi mật khẩu thất bại.');
+        return;
+      }
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setInfoMsg(isVi ? 'Đã cập nhật mật khẩu thành công!' : 'Password changed successfully!');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // =========================================================================
+  // FIREBASE CLOUD AUTH HANDLERS (Optional Cloud Sync)
+  // =========================================================================
   const activateOfficialMode = async (emailLabel?: string | null) => {
     setDataSourceMode('firestore');
     await refreshFromFirestore('firestore');
@@ -156,13 +397,13 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
         );
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Google Sign-In failed.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
   };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleFirebaseEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
     setBusy(true);
@@ -173,33 +414,26 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
       if (!user.emailVerified) {
         setInfoMsg(
           isVi
-            ? 'Tài khoản đã đăng nhập nhưng email chưa xác minh. Vui lòng kiểm tra hộp thư và bấm liên kết xác minh để kích hoạt chế độ sử dụng chính thức.'
-            : 'Signed in, but your email is not verified yet. Please verify via inbox link to activate Official Production mode.'
+            ? 'Tài khoản đã đăng nhập nhưng email chưa xác minh. Vui lòng kiểm tra hộp thư để xác minh.'
+            : 'Signed in, but your email is not verified yet.'
         );
       } else {
         await activateOfficialMode(user.email);
       }
     } catch (err: any) {
-      setErrorMsg(
-        err?.message ||
-          'Email sign-in failed. Verify Email/Password provider is enabled in Firebase Console.'
-      );
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleFirebaseRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!displayName.trim()) {
-      setErrorMsg(isVi ? 'Vui lòng nhập họ và tên.' : 'Please enter your full name.');
-      return;
-    }
-    if (!email.trim() || password.length < 6) {
+    if (!displayName.trim() || !email.trim() || password.length < 6) {
       setErrorMsg(
         isVi
-          ? 'Vui lòng nhập email hợp lệ và mật khẩu tối thiểu 6 ký tự.'
-          : 'Please provide a valid email and password (min 6 characters).'
+          ? 'Vui lòng nhập họ tên, email hợp lệ và mật khẩu tối thiểu 6 ký tự.'
+          : 'Please enter full name, valid email, and password (min 6 chars).'
       );
       return;
     }
@@ -217,25 +451,22 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
       setInfoMsg(
         verificationSent
           ? isVi
-            ? `Đã đăng ký tài khoản ${user.email}. Liên kết xác minh đã được gửi tới hộp thư — sau khi bấm xác minh, nhấn "Kiểm tra & Kích hoạt" bên dưới để chuyển sang sử dụng chính thức!`
-            : `Registered ${user.email}. Verification link dispatched — after verifying in your inbox, click "Verify & Activate" below to enter Official Mode!`
+            ? `Đã đăng ký Firebase ${user.email}. Kiểm tra email xác minh rồi nhấn "Kiểm tra & Kích hoạt".`
+            : `Registered ${user.email}. Verify your email then click "Verify & Activate".`
           : isVi
-          ? `Đã tạo tài khoản ${user.email}. Bấm "Gửi lại email" bên dưới để xác minh.`
-          : `Account created for ${user.email}. Click resend verification email below.`
+          ? `Đã tạo tài khoản Firebase ${user.email}.`
+          : `Created Firebase account ${user.email}.`
       );
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Registration failed.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
+  const handleFirebaseReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      setErrorMsg(isVi ? 'Vui lòng nhập email.' : 'Enter your email address.');
-      return;
-    }
+    if (!email.trim()) return;
     setBusy(true);
     setErrorMsg(null);
     setInfoMsg(null);
@@ -243,11 +474,11 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
       await sendPasswordReset(email);
       setInfoMsg(
         isVi
-          ? `Đã gửi email khôi phục mật khẩu tới ${email}.`
-          : `Password reset email dispatched to ${email}.`
+          ? `Đã gửi email khôi phục mật khẩu Firebase tới ${email}.`
+          : `Firebase password reset email sent to ${email}.`
       );
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to send password reset email.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
@@ -258,19 +489,15 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
     setErrorMsg(null);
     try {
       await resendVerificationEmail();
-      setInfoMsg(
-        isVi
-          ? 'Đã gửi lại liên kết xác minh email. Sau khi xác minh, hãy bấm "Kiểm tra & Kích hoạt".'
-          : 'Verification email re-sent. Click "Verify & Activate" after confirming.'
-      );
+      setInfoMsg(isVi ? 'Đã gửi lại liên kết xác minh email.' : 'Verification email re-sent.');
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Unable to resend verification email.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
   };
 
-  const handleReloadUser = async () => {
+  const handleReloadFirebaseUser = async () => {
     if (!auth.currentUser) return;
     setBusy(true);
     setErrorMsg(null);
@@ -279,17 +506,13 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
       await auth.currentUser.getIdToken(true);
       if (auth.currentUser.emailVerified) {
         await activateOfficialMode(auth.currentUser.email);
-        setInfoMsg(
-          isVi
-            ? 'Email đã xác minh thành công và đã kích hoạt Sử Dụng Chính Thức!'
-            : 'Email verified and Official Production Mode activated!'
-        );
+        setInfoMsg(isVi ? 'Email đã xác minh và kích hoạt Firestore Live!' : 'Verified and activated Firestore Live!');
         await runReadWriteCheck();
       } else {
         setInfoMsg(isVi ? 'Email vẫn chưa được xác minh.' : 'Email is still pending verification.');
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Reload failed.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
@@ -306,14 +529,12 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
         targetEmail: grantEmail.trim(),
         role: grantRole,
       });
-      showToast(`Granted ${grantRole} in /admins/${grantUid.trim()}`, 'success');
+      showToast(isVi ? `Đã cấp quyền ${grantRole} cho ${grantEmail}` : `Granted ${grantRole} to ${grantEmail}`, 'success');
       setGrantUid('');
       setGrantEmail('');
-      await refreshFromFirestore();
-      const list = await listAdminRegistryEntries().catch(() => []);
-      setAdminEntries(list);
+      await runReadWriteCheck();
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to write /admins registry.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setBusy(false);
     }
@@ -323,714 +544,935 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
     setSeedingRoles(true);
     setErrorMsg(null);
     try {
-      const res = await syncAllExperienceRolesToFirestore(overwrite);
-      setInfoMsg(
-        isVi
-          ? `Đã khai báo ${INITIAL_USERS.length} hồ sơ (đủ 5 vai trò hệ thống) vào Firestore /userProfiles: ${res.createdCount} mới, ${res.updatedCount} cập nhật, ${res.adminSyncedCount} Admin.`
-          : `Declared ${INITIAL_USERS.length} staff profiles (all 5 system roles) in Firestore /userProfiles: ${res.createdCount} created, ${res.updatedCount} updated.`
-      );
+      await syncAllExperienceRolesToFirestore(overwrite);
       await runReadWriteCheck();
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Failed to declare experience roles in Firestore.');
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
     } finally {
       setSeedingRoles(false);
     }
   };
 
-  const copyUid = () => {
-    if (!firebaseUser?.uid) return;
-    navigator.clipboard.writeText(firebaseUser.uid);
-    showToast(isVi ? 'Đã sao chép Firebase UID.' : 'Copied Firebase UID.', 'info');
-  };
-
-  const activeCounts = probeResult?.counts || productionCounts || {};
-  const profileCount = productionCounts?.userProfiles ?? activeCounts.userProfiles ?? 0;
-
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto text-slate-900">
-      <div className="bg-white text-slate-900 rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden my-6">
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2.5 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-white rounded-2xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden my-auto text-slate-800">
         {/* Header */}
-        <div className="bg-[#0A192F] text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
-              <ShieldCheck className="w-5 h-5" />
+        <div className="bg-[#0A192F] text-white px-5 py-4 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5 text-amber-400" />
             </div>
-            <div>
-              <h3 className="font-extrabold text-sm text-white">
-                {isVi
-                  ? 'Tài Khoản Chính Thức & Kết Nối Firestore'
-                  : 'Official Account Authentication & Firestore'}
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-extrabold tracking-wide truncate">
+                {isVi ? 'Đăng Nhập & Quản Lý Tài Khoản' : 'Account Authentication & Security'}
               </h3>
-              <p className="text-[11px] text-slate-400 font-mono">
-                Project: {firebaseConfigSummary.projectId} &bull; DB:{' '}
-                {firebaseConfigSummary.databaseId.slice(0, 26)}...
+              <p className="text-[11px] text-slate-400 truncate">
+                {providerMode === 'academy'
+                  ? isVi
+                    ? 'Xác thực Bảo mật Học viện (Scrypt + HttpOnly Cookie)'
+                    : 'Academy Server Auth (Scrypt + HttpOnly Session)'
+                  : `Firebase · ${firebaseConfigSummary.projectId}`}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
-            aria-label="Close"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer shrink-0"
+            aria-label={isVi ? 'Đóng' : 'Close'}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[82vh] overflow-y-auto text-xs text-slate-900">
+        {/* Auth Provider Switcher */}
+        <div className="px-5 pt-3.5 pb-2 bg-slate-50 border-b border-slate-200 shrink-0">
+          <div className="grid grid-cols-2 gap-1.5 bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setProviderMode('academy');
+                setErrorMsg(null);
+                setInfoMsg(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg transition-all cursor-pointer ${
+                providerMode === 'academy'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="truncate">{isVi ? 'Tài Khoản Học Viện' : 'Academy Account'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setProviderMode('firebase');
+                setErrorMsg(null);
+                setInfoMsg(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg transition-all cursor-pointer ${
+                providerMode === 'firebase'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Cloud className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span className="truncate">{isVi ? 'Firebase Cloud Sync' : 'Firebase Cloud'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-2">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2 leading-relaxed">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{errorMsg}</span>
+              <span>{errorMsg}</span>
             </div>
           )}
 
           {infoMsg && (
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-              <span className="leading-relaxed">{infoMsg}</span>
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-start gap-2 leading-relaxed">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <span>{infoMsg}</span>
             </div>
           )}
 
-          {firebaseUser ? (
-            <div className="space-y-4">
-              {/* Signed-In Status Card */}
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-extrabold text-sm text-slate-900">
-                      {firebaseProfile?.name || firebaseUser.displayName || firebaseUser.email}
+          {/* ================================================================= */}
+          {/* MODE 1: FULL-STACK ACADEMY SERVER AUTH                            */}
+          {/* ================================================================= */}
+          {providerMode === 'academy' && (
+            <>
+              {serverAuthUser ? (
+                <div className="space-y-4">
+                  {/* Active Session Summary Card */}
+                  <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={serverAuthUser.avatar}
+                          alt={serverAuthUser.name}
+                          className="w-11 h-11 rounded-full object-cover ring-2 ring-emerald-500/40 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-slate-900 truncate">
+                              {serverAuthUser.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                              {t.roles[serverAuthUser.role]}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 truncate">{serverAuthUser.email}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {serverAuthUser.position} &bull; {serverAuthUser.property}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await signOutOfficialAccount();
+                          setInfoMsg(isVi ? 'Đã đăng xuất.' : 'Signed out.');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer shrink-0"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Đăng xuất' : 'Sign Out'}</span>
+                      </button>
                     </div>
-                    <div className="text-slate-600">{firebaseUser.email}</div>
-                    {firebaseProfile?.position && (
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {firebaseProfile.position} &bull; {firebaseProfile.property}
+                  </div>
+
+                  {/* Change Password Form */}
+                  <form
+                    onSubmit={handleServerChangePassword}
+                    className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3"
+                  >
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-amber-600" />
+                      <span>{isVi ? 'Đổi Mật Khẩu Bảo Mật' : 'Change Security Password'}</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          {isVi ? 'Mật khẩu hiện tại' : 'Current Password'}
+                        </label>
+                        <input
+                          type="password"
+                          value={currentPasswordInput}
+                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          {isVi ? 'Mật khẩu mới (≥ 8 ký tự)' : 'New Password (≥ 8 chars)'}
+                        </label>
+                        <input
+                          type="password"
+                          value={newPasswordInput}
+                          onChange={(e) => setNewPasswordInput(e.target.value)}
+                          placeholder="Ví dụ: Finance@2026"
+                          required
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      {busy
+                        ? isVi
+                          ? 'Đang cập nhật...'
+                          : 'Updating...'
+                        : isVi
+                        ? 'Cập Nhật Mật Khẩu'
+                        : 'Update Password'}
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <>
+                  {/* Sub-tabs: Login / Register / Reset */}
+                  <div className="grid grid-cols-3 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthTab('login');
+                        setErrorMsg(null);
+                        setInfoMsg(null);
+                      }}
+                      className={`py-2 rounded-lg transition-all cursor-pointer ${
+                        authTab === 'login' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {isVi ? 'Đăng Nhập' : 'Sign In'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthTab('register');
+                        setErrorMsg(null);
+                        setInfoMsg(null);
+                      }}
+                      className={`py-2 rounded-lg transition-all cursor-pointer ${
+                        authTab === 'register' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {isVi ? 'Đăng Ký Mới' : 'Register'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthTab('reset');
+                        setResetStep('request');
+                        setErrorMsg(null);
+                        setInfoMsg(null);
+                      }}
+                      className={`py-2 rounded-lg transition-all cursor-pointer ${
+                        authTab === 'reset' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {isVi ? 'Quên Mật Khẩu' : 'Reset Password'}
+                    </button>
+                  </div>
+
+                  {/* LOGIN FORM */}
+                  {authTab === 'login' && (
+                    <form onSubmit={handleServerLogin} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                        <div className="relative">
+                          <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="name@grandhorizon.vn"
+                            className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          {isVi ? 'Mật khẩu' : 'Password'}
+                        </label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            autoComplete="current-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((p) => !p)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        <span>
+                          {busy
+                            ? isVi
+                              ? 'Đang xác thực...'
+                              : 'Signing in...'
+                            : isVi
+                            ? 'Đăng Nhập Hệ Thống'
+                            : 'Sign In to Academy'}
+                        </span>
+                      </button>
+
+                      {/* Quick-Fill Seeded Demo Accounts */}
+                      {demoAccounts.length > 0 && (
+                        <div className="pt-2 border-t border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setShowDemoQuickFill((p) => !p)}
+                            className="w-full flex items-center justify-between text-xs font-bold text-slate-600 hover:text-slate-900 py-1 cursor-pointer"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                              <span>
+                                {isVi
+                                  ? 'Điền nhanh 5 tài khoản mẫu (mật khẩu mặc định)'
+                                  : 'Quick-fill 5 demo role accounts'}
+                              </span>
+                            </span>
+                            <span className="text-[11px] text-amber-600">
+                              {showDemoQuickFill ? (isVi ? 'Ẩn' : 'Hide') : isVi ? 'Mở' : 'Show'}
+                            </span>
+                          </button>
+                          {showDemoQuickFill && (
+                            <div className="mt-2 space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                              <p className="text-[11px] text-slate-500 mb-2">
+                                {isVi ? 'Mật khẩu mặc định:' : 'Default password:'}{' '}
+                                <code className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-900 font-mono font-bold">
+                                  {demoPasswordHint}
+                                </code>
+                              </p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {demoAccounts.map((acc) => (
+                                  <button
+                                    key={acc.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setEmail(acc.email);
+                                      setPassword(demoPasswordHint);
+                                      setErrorMsg(null);
+                                    }}
+                                    className="text-left p-2 rounded-lg bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 transition-colors cursor-pointer"
+                                  >
+                                    <p className="text-xs font-bold text-slate-900 truncate">{acc.name}</p>
+                                    <p className="text-[10px] font-semibold text-amber-700 truncate">
+                                      {t.roles[acc.role]}
+                                    </p>
+                                    <p className="text-[10px] font-mono text-slate-500 truncate">{acc.email}</p>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </form>
+                  )}
+
+                  {/* REGISTER FORM */}
+                  {authTab === 'register' && (
+                    <form onSubmit={handleServerRegister} className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Họ và tên *' : 'Full Name *'}
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            placeholder={isVi ? 'Nguyễn Văn A' : 'Alex Nguyen'}
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Email *</label>
+                          <input
+                            type="email"
+                            required
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="name@hotel.com"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Mật khẩu * (≥ 8 ký tự, chữ & số)' : 'Password * (≥ 8 chars)'}
+                          </label>
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            autoComplete="new-password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Ví dụ: Finance2026"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          {password.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1.5">
+                              {[1, 2, 3].map((lvl) => (
+                                <span
+                                  key={lvl}
+                                  className={`h-1 flex-1 rounded-full ${
+                                    passwordScore >= lvl
+                                      ? passwordScore === 3
+                                        ? 'bg-emerald-500'
+                                        : passwordScore === 2
+                                        ? 'bg-amber-500'
+                                        : 'bg-rose-500'
+                                      : 'bg-slate-200'
+                                  }`}
+                                />
+                              ))}
+                              <span className="text-[10px] font-bold text-slate-500 ml-1">
+                                {passwordScore === 3
+                                  ? isVi
+                                    ? 'Mạnh'
+                                    : 'Strong'
+                                  : passwordScore === 2
+                                  ? isVi
+                                    ? 'Đạt chuẩn'
+                                    : 'Good'
+                                  : isVi
+                                  ? 'Yếu'
+                                  : 'Weak'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Xác nhận mật khẩu *' : 'Confirm Password *'}
+                          </label>
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            autoComplete="new-password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Chức danh' : 'Job Position'}
+                          </label>
+                          <input
+                            type="text"
+                            value={position}
+                            onChange={(e) => setPosition(e.target.value)}
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Khách sạn / Đơn vị' : 'Hotel Property'}
+                          </label>
+                          <select
+                            value={property}
+                            onChange={(e) => setProperty(e.target.value)}
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          >
+                            {HOTEL_PROPERTIES.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          {isVi ? 'Vai trò đề xuất (Mặc định kích hoạt Học viên)' : 'Requested Role'}
+                        </label>
+                        <select
+                          value={requestedRole}
+                          onChange={(e) => setRequestedRole(e.target.value as UserRole)}
+                          className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          <option value="learner">{t.roles.learner}</option>
+                          <option value="financial_controller">{t.roles.financial_controller}</option>
+                          <option value="general_manager">{t.roles.general_manager}</option>
+                          <option value="lnd_manager">{t.roles.lnd_manager}</option>
+                        </select>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {isVi
+                            ? 'Vì lý do bảo mật RBAC, tài khoản tự đăng ký bắt đầu ở vai trò Học viên; Quản trị viên có thể phê duyệt nâng vai trò trong mục Quản Trị Hệ Thống.'
+                            : 'For RBAC security, self-registered accounts start as Learner; admins can upgrade roles in System Administration.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span>
+                          {busy
+                            ? isVi
+                              ? 'Đang tạo tài khoản...'
+                              : 'Creating account...'
+                            : isVi
+                            ? 'Đăng Ký & Đăng Nhập Ngay'
+                            : 'Create Account & Sign In'}
+                        </span>
+                      </button>
+                    </form>
+                  )}
+
+                  {/* RESET PASSWORD (2-STEP) */}
+                  {authTab === 'reset' &&
+                    (resetStep === 'request' ? (
+                      <form onSubmit={handleServerRequestReset} className="space-y-3.5">
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {isVi
+                            ? 'Nhập địa chỉ email tài khoản để nhận mã xác thực 6 chữ số đặt lại mật khẩu (hiệu lực 15 phút).'
+                            : 'Enter your account email to generate a 6-digit password recovery code (valid for 15 minutes).'}
+                        </p>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                          <input
+                            type="email"
+                            required
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="name@hotel.com"
+                            className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer disabled:opacity-60"
+                        >
+                          {busy
+                            ? isVi
+                              ? 'Đang tạo mã...'
+                              : 'Generating code...'
+                            : isVi
+                            ? 'Tạo Mã Khôi Phục 6 Số'
+                            : 'Generate 6-Digit Recovery Code'}
+                        </button>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleServerConfirmReset} className="space-y-3">
+                        {devResetPreviewCode && (
+                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                            <span className="font-bold">
+                              {isVi ? 'Mã khôi phục (Chế độ Local Dev): ' : 'Recovery Code (Local Dev): '}
+                            </span>
+                            <code className="px-2 py-0.5 rounded bg-amber-200/80 font-mono font-extrabold tracking-widest">
+                              {devResetPreviewCode}
+                            </code>
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Mã xác nhận 6 chữ số' : '6-Digit Recovery Code'}
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={resetCode}
+                            onChange={(e) => setResetCode(e.target.value)}
+                            placeholder="123456"
+                            className="w-full px-3 py-2 text-xs font-mono tracking-widest rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            {isVi ? 'Mật khẩu mới (≥ 8 ký tự, chữ & số)' : 'New Password (≥ 8 chars)'}
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            value={newPasswordInput}
+                            onChange={(e) => setNewPasswordInput(e.target.value)}
+                            placeholder="Ví dụ: NewPass@2026"
+                            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setResetStep('request')}
+                            className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                          >
+                            {isVi ? 'Quay lại' : 'Back'}
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer disabled:opacity-60"
+                          >
+                            {isVi ? 'Xác Nhận Đặt Lại Mật Khẩu' : 'Confirm Password Reset'}
+                          </button>
+                        </div>
+                      </form>
+                    ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ================================================================= */}
+          {/* MODE 2: OPTIONAL FIREBASE CLOUD SYNC                              */}
+          {/* ================================================================= */}
+          {providerMode === 'firebase' && (
+            <div className="space-y-4">
+              {!firebaseUser ? (
+                <>
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+                    {isVi
+                      ? `Kết nối trực tiếp Firebase Project "${firebaseConfigSummary.projectId}" để đồng bộ dữ liệu Firestore Live. Lưu ý: Google Sign-In yêu cầu tên miền hiện tại (${window.location.hostname}) đã được thêm vào Firebase Console → Authorized domains.`
+                      : `Connect directly to Firebase Project "${firebaseConfigSummary.projectId}" for live Firestore sync. Note: Google Sign-In requires "${window.location.hostname}" to be listed in Firebase Authorized domains.`}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={handleGoogleSignIn}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>{isVi ? 'Đăng Nhập Nhanh Bằng Google (Firebase)' : 'Sign In with Google (Firebase)'}</span>
+                  </button>
+
+                  <div className="grid grid-cols-3 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setAuthTab('login')}
+                      className={`py-1.5 rounded-lg cursor-pointer ${
+                        authTab === 'login' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                      }`}
+                    >
+                      {isVi ? 'Đăng Nhập' : 'Sign In'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthTab('register')}
+                      className={`py-1.5 rounded-lg cursor-pointer ${
+                        authTab === 'register' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                      }`}
+                    >
+                      {isVi ? 'Đăng Ký' : 'Register'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthTab('reset')}
+                      className={`py-1.5 rounded-lg cursor-pointer ${
+                        authTab === 'reset' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500'
+                      }`}
+                    >
+                      {isVi ? 'Quên MK' : 'Reset'}
+                    </button>
+                  </div>
+
+                  {authTab === 'login' && (
+                    <form onSubmit={handleFirebaseEmailLogin} className="space-y-3">
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Email Firebase"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={isVi ? 'Mật khẩu Firebase' : 'Firebase Password'}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {isVi ? 'Đăng Nhập Firebase & Chuyển Live' : 'Sign In & Go Firestore Live'}
+                      </button>
+                    </form>
+                  )}
+
+                  {authTab === 'register' && (
+                    <form onSubmit={handleFirebaseRegister} className="space-y-3">
+                      <input
+                        type="text"
+                        required
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder={isVi ? 'Họ và tên' : 'Full Name'}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Email Firebase"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <input
+                        type="password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder={isVi ? 'Mật khẩu (tối thiểu 6 ký tự)' : 'Password (min 6 chars)'}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {isVi ? 'Đăng Ký Tài Khoản Firebase' : 'Register Firebase Account'}
+                      </button>
+                    </form>
+                  )}
+
+                  {authTab === 'reset' && (
+                    <form onSubmit={handleFirebaseReset} className="space-y-3">
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Email Firebase"
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy}
+                        className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {isVi ? 'Gửi Email Khôi Phục Firebase' : 'Send Firebase Reset Email'}
+                      </button>
+                    </form>
+                  )}
+
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-slate-800">
+                      <span>Firebase Console ({firebaseConfigSummary.projectId})</span>
+                      <a
+                        href={`https://console.firebase.google.com/project/${firebaseConfigSummary.projectId}/authentication/settings`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>Open Console</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <p>
+                      {isVi
+                        ? 'Để dùng Google Login trên localhost, thêm "localhost" vào Authentication → Settings → Authorized domains.'
+                        : 'To use Google Sign-In locally, add "localhost" under Authentication → Settings → Authorized domains.'}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {firebaseUser.displayName || firebaseUser.email}
+                        </p>
+                        <p className="text-[11px] text-slate-500 truncate">{firebaseUser.email}</p>
+                        <p className="text-[10px] font-mono text-slate-400 truncate">UID: {firebaseUser.uid}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={signOutOfficialAccount}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Đăng xuất' : 'Sign Out'}</span>
+                      </button>
+                    </div>
+
+                    {!firebaseUser.emailVerified && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={handleReloadFirebaseUser}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+                        >
+                          {isVi ? 'Kiểm tra & Kích hoạt' : 'Verify & Activate'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={handleResendVerification}
+                          className="px-3 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold cursor-pointer"
+                        >
+                          {isVi ? 'Gửi lại email xác minh' : 'Resend Verification'}
+                        </button>
                       </div>
                     )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {firebaseUser.emailVerified ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[11px]">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Verified
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-100 text-amber-800 font-bold text-[11px]">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Pending Verification
-                      </span>
+
+                    {firebaseUser.emailVerified && (
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const nextMode = dataSourceMode === 'firestore' ? 'demo' : 'firestore';
+                            setDataSourceMode(nextMode);
+                            if (nextMode === 'firestore') await refreshFromFirestore('firestore');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-[#0A192F] hover:bg-slate-800 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Database className="w-3.5 h-3.5" />
+                          <span>
+                            {dataSourceMode === 'firestore'
+                              ? isVi
+                                ? 'Chuyển về Demo Sandbox'
+                                : 'Switch to Demo Sandbox'
+                              : isVi
+                              ? 'Kích hoạt Firestore Live'
+                              : 'Activate Firestore Live'}
+                          </span>
+                        </button>
+                        {canSeeSystemDiagnostics && (
+                          <button
+                            type="button"
+                            disabled={probeBusy}
+                            onClick={runReadWriteCheck}
+                            className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${probeBusy ? 'animate-spin' : ''}`} />
+                            <span>{isVi ? 'Kiểm tra Read/Write' : 'Test Read/Write'}</span>
+                          </button>
+                        )}
+                      </div>
                     )}
-                    <span className="px-2.5 py-1 rounded-md bg-[#0A192F] text-amber-400 font-bold text-[11px] uppercase">
-                      {t.roles[(firebaseProfile?.role || 'learner') as UserRole]}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2 font-mono text-[11px] text-slate-600">
-                    <span>UID: {firebaseUser.uid}</span>
-                    <button
-                      onClick={copyUid}
-                      className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer"
-                      title="Copy UID"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={async () => {
-                      await signOutOfficialAccount();
-                      onClose();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 font-bold text-rose-700 cursor-pointer"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>{isVi ? 'Đăng xuất' : 'Sign Out'}</span>
-                  </button>
-                </div>
-
-                {!firebaseUser.emailVerified && (
-                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-amber-900 font-medium">
-                      {isVi
-                        ? 'Firestore yêu cầu xác minh email trước khi chuyển sang chế độ Sử dụng Chính thức.'
-                        : 'Firestore requires email verification before switching to Official Production mode.'}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleResendVerification}
-                        disabled={busy}
-                        className="px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold cursor-pointer"
-                      >
-                        {isVi ? 'Gửi lại email' : 'Resend Link'}
-                      </button>
-                      <button
-                        onClick={handleReloadUser}
-                        disabled={busy}
-                        className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#0A192F] text-white font-bold cursor-pointer"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>{isVi ? 'Kiểm tra & Kích hoạt' : 'Verify & Activate'}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Official Activation CTA when signed in & verified but still in Sandbox */}
-              {firebaseUser.emailVerified && dataSourceMode !== 'firestore' && (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-extrabold text-emerald-950 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-emerald-600" />
-                      <span>
-                        {isVi
-                          ? 'Sẵn sàng chuyển sang Sử dụng Chính thức!'
-                          : 'Ready to enter Official Production Mode!'}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-emerald-800 mt-0.5">
-                      {isVi
-                        ? 'Kích hoạt Production Firestore Live để đọc/ghi dữ liệu trực tiếp và sử dụng đúng tài khoản đã đăng nhập.'
-                        : 'Activate Production Firestore Live to read/write live data using your verified account.'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      await activateOfficialMode(firebaseUser.email);
-                      await runReadWriteCheck();
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold cursor-pointer shadow-xs"
-                  >
-                    {isVi ? 'Chuyển Sang Sử Dụng Chính Thức' : 'Switch to Official Mode'}
-                  </button>
-                </div>
-              )}
-
-              {/* Data Source Mode Selector */}
-              <div className="p-4 rounded-xl border border-slate-200 space-y-2.5">
-                <div className="font-extrabold text-slate-900">
-                  {isVi ? 'Chế Độ Nguồn Dữ Liệu LMS (Data Source Mode)' : 'Active LMS Data Source Mode'}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <button
-                    onClick={async () => {
-                      if (!firebaseUser.emailVerified) {
-                        setErrorMsg(
-                          isVi
-                            ? 'Cần xác minh email Firebase trước khi bật Production Firestore Live.'
-                            : 'Verify your Firebase email before enabling Production Firestore Live.'
-                        );
-                        return;
-                      }
-                      await activateOfficialMode(firebaseUser.email);
-                      await runReadWriteCheck();
-                    }}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                      dataSourceMode === 'firestore'
-                        ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-500'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="font-bold text-slate-900 flex items-center justify-between">
-                      <span>Production Firestore Live</span>
-                      {dataSourceMode === 'firestore' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold">
-                          ACTIVE
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      {isVi
-                        ? 'Chế độ chính thức: Đọc & ghi trực tiếp từ project fc-learning-academy'
-                        : 'Official use: Read & persist directly in fc-learning-academy Firestore'}
-                    </p>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDataSourceMode('demo');
-                      showToast(
-                        isVi ? 'Đã chuyển sang Demo Sandbox Dataset.' : 'Switched to Demo Sandbox Dataset.',
-                        'info'
-                      );
-                    }}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                      dataSourceMode === 'demo'
-                        ? 'border-[#0A192F] bg-slate-50 ring-1 ring-[#0A192F]'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="font-bold text-slate-900">Demo Sandbox Dataset</div>
-                    <p className="text-[11px] text-slate-600 mt-0.5">
-                      {isVi
-                        ? 'Sử dụng bộ dữ liệu mô phỏng nội bộ để kiểm thử nhanh'
-                        : 'Use local hospitality sandbox without altering production records'}
-                    </p>
-                  </button>
-                </div>
-              </div>
-
-              {/* Declare All Experience Roles into Official Firestore Data */}
-              {firebaseProfile?.isAdmin && (
-                <div className="p-4 rounded-xl border border-amber-300 bg-amber-50/60 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-extrabold text-slate-900">
-                      <Users className="w-4 h-4 text-amber-700" />
-                      <span>
-                        {isVi
-                          ? 'Khai Báo Toàn Bộ Vai Trò Trải Nghiệm Vào Dữ Liệu Chính Thức'
-                          : 'Declare Experience Roles into Official Firestore (/userProfiles)'}
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded bg-white border border-amber-300 font-mono text-[11px] font-bold text-amber-900">
-                      {profileCount} / {INITIAL_USERS.length}+ docs
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-700 leading-relaxed">
-                    {isVi
-                      ? `Đồng bộ đầy đủ 5 vai trò hệ thống (Quản Trị Viên Cao Cấp, Quản Lý Đào Tạo L&D, Giám Đốc Tài Chính FC, Tổng Giám Đốc GM, Học Viên) gồm ${INITIAL_USERS.length} nhân sự chuẩn vào collection /userProfiles & /admins của dự án.`
-                      : `Registers all 5 system roles (Super Admin, L&D Manager, Financial Controller, General Manager, Learner) across ${INITIAL_USERS.length} staff records into Firestore /userProfiles & /admins.`}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      disabled={seedingRoles}
-                      onClick={() => handleSeedExperienceRoles(false)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#0A192F] text-amber-400 font-bold text-[11px] cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${seedingRoles ? 'animate-spin' : ''}`} />
-                      <span>
-                        {isVi ? 'Khai Báo Vai Trò Còn Thiếu' : 'Seed Missing Roles'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={seedingRoles}
-                      onClick={() => handleSeedExperienceRoles(true)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-[11px] cursor-pointer disabled:opacity-50"
-                    >
-                      <span>
-                        {isVi
-                          ? `Cập Nhật Toàn Bộ ${INITIAL_USERS.length} Hồ Sơ`
-                          : `Refresh All ${INITIAL_USERS.length} Profiles`}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Live Read & Write Diagnostic Card (Admins & System Managers Only) */}
-              {canSeeSystemDiagnostics && (
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-extrabold text-slate-900">
-                      <Database className="w-4 h-4 text-emerald-700" />
-                      <span>
-                        {isVi
-                          ? 'Trạng Thái Đọc & Ghi Trực Tiếp Firestore (Live Check)'
-                          : 'Live Firestore Read & Write Readiness'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={runReadWriteCheck}
-                      disabled={probeBusy}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0A192F] text-white font-bold text-[11px] cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${probeBusy ? 'animate-spin' : ''}`} />
-                      <span>{isVi ? 'Kiểm Tra Đọc & Ghi' : 'Test Read & Write'}</span>
-                    </button>
                   </div>
 
                   {probeResult && (
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold ${
-                            probeResult.readOk
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {probeResult.readOk ? 'Read: OK' : 'Read: Failed'}
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                      <p className="font-bold text-slate-800">
+                        Firestore Probe: Read {probeResult.readOk ? 'OK' : 'ERR'} · Write{' '}
+                        {probeResult.writeOk ? 'OK' : 'ERR'}
+                      </p>
+                      <p className="text-[11px] text-slate-600">{probeResult.message}</p>
+                    </div>
+                  )}
+
+                  {firebaseProfile?.isAdmin && (
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-amber-600" />
+                          <span>{isVi ? `Đồng bộ ${INITIAL_USERS.length} hồ sơ mẫu lên Firestore` : 'Seed Experience Roles'}</span>
                         </span>
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-bold ${
-                            probeResult.writeOk
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
+                        <button
+                          type="button"
+                          disabled={seedingRoles}
+                          onClick={() => handleSeedExperienceRoles(false)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer disabled:opacity-50"
                         >
-                          {probeResult.writeOk ? 'Write: OK' : 'Write: Pending / Denied'}
-                        </span>
-                        <span className="text-slate-600 font-mono truncate">{probeResult.message}</span>
+                          {seedingRoles ? '...' : isVi ? 'Đồng bộ ngay' : 'Sync Roles'}
+                        </button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] font-mono tabular-nums">
-                        {[
-                          { label: 'Domains', val: activeCounts.competencyDomains ?? 0 },
-                          { label: 'Competencies', val: activeCounts.competencies ?? 0 },
-                          { label: 'Courses', val: activeCounts.courses ?? 0 },
-                          { label: 'Scenarios', val: activeCounts.simulationScenarios ?? 0 },
-                          { label: 'Profiles', val: profileCount },
-                        ].map((stat) => (
-                          <div
-                            key={stat.label}
-                            className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 flex items-center justify-between"
+                      <form onSubmit={handleGrantAdmin} className="pt-3 border-t border-slate-200 space-y-2">
+                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <UserCog className="w-4 h-4 text-blue-600" />
+                          <span>{isVi ? 'Cấp quyền Admin Firestore' : 'Grant Firestore Admin'}</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={grantUid}
+                            onChange={(e) => setGrantUid(e.target.value)}
+                            placeholder="Firebase UID"
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                          />
+                          <input
+                            type="email"
+                            value={grantEmail}
+                            onChange={(e) => setGrantEmail(e.target.value)}
+                            placeholder="Email"
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                          />
+                          <select
+                            value={grantRole}
+                            onChange={(e) => setGrantRole(e.target.value as 'super_admin' | 'lnd_manager')}
+                            className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                           >
-                            <span className="text-slate-500">{stat.label}</span>
-                            <span className="font-bold text-slate-900">{stat.val}</span>
+                            <option value="lnd_manager">L&D Manager</option>
+                            <option value="super_admin">Super Admin</option>
+                          </select>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                        >
+                          {isVi ? 'Cấp quyền' : 'Grant Role'}
+                        </button>
+                        {adminEntries.length > 0 && (
+                          <div className="text-[11px] text-slate-500 pt-1">
+                            Admins: {adminEntries.map((a) => `${a.email} (${a.role})`).join(', ')}
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      </form>
                     </div>
                   )}
                 </div>
               )}
-
-              {/* Admin Registry Granting UI */}
-              {firebaseProfile?.isAdmin && (
-                <form
-                  onSubmit={handleGrantAdmin}
-                  className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-extrabold text-slate-900">
-                      <UserCog className="w-4 h-4 text-indigo-700" />
-                      <span>
-                        {isVi
-                          ? 'Cấp Quyền Quản Trị (/admins/{uid})'
-                          : 'Admin Registry Role Assignment (/admins/{uid})'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGrantUid(firebaseUser.uid);
-                        setGrantEmail(firebaseUser.email || '');
-                        setGrantRole('super_admin');
-                      }}
-                      className="text-[11px] font-bold text-indigo-700 hover:underline cursor-pointer"
-                    >
-                      {isVi ? 'Điền UID của tôi' : 'Use My UID'}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <input
-                      type="text"
-                      value={grantUid}
-                      onChange={(e) => setGrantUid(e.target.value)}
-                      placeholder="Target Firebase UID"
-                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 font-mono text-[11px] focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                    <input
-                      type="email"
-                      value={grantEmail}
-                      onChange={(e) => setGrantEmail(e.target.value)}
-                      placeholder="admin@hotel.com"
-                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 text-[11px] focus:outline-none focus:border-indigo-500"
-                      required
-                    />
-                    <select
-                      value={grantRole}
-                      onChange={(e) => setGrantRole(e.target.value as 'super_admin' | 'lnd_manager')}
-                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 font-bold text-[11px] focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="lnd_manager">L&D Manager</option>
-                      <option value="super_admin">Super Administrator</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-600 font-mono">
-                      {adminEntries.length > 0
-                        ? `${adminEntries.length} admin(s) registered in /admins`
-                        : isVi
-                        ? 'Tài khoản gốc tranchanhtrung@gmail.com đã tự động xác thực quyền Admin'
-                        : 'Bootstrapped owner tranchanhtrung@gmail.com has active Admin rules'}
-                    </span>
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="px-4 py-1.5 rounded-lg bg-[#0A192F] text-amber-400 font-bold cursor-pointer disabled:opacity-50"
-                    >
-                      {isVi ? 'Lưu Quyền Vào Firestore' : 'Write /admins Entry'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Official Usage Note */}
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-[11px] leading-relaxed">
-                {isVi
-                  ? 'Đăng nhập hoặc Đăng ký tài khoản để chuyển từ chế độ Trải nghiệm Demo sang Sử dụng Chính thức với dữ liệu thực tế lưu trực tiếp trên Firestore (fc-learning-academy).'
-                  : 'Sign in or register an account to switch from Demo Sandbox to Official Production Mode backed live by Firestore (fc-learning-academy).'}
-              </div>
-
-              {/* Google Sign-In */}
-              <button
-                onClick={handleGoogleSignIn}
-                disabled={busy}
-                className="w-full py-3 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-extrabold flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>
-                  {isVi
-                    ? 'Đăng Nhập Nhanh Bằng Google (Sử Dụng Chính Thức)'
-                    : 'Sign In with Google (Official Mode)'}
-                </span>
-              </button>
-
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-slate-200" />
-                <span className="shrink mx-3 text-[11px] font-bold uppercase text-slate-400">
-                  {isVi ? 'Hoặc Email & Mật Khẩu' : 'Or Email & Password'}
-                </span>
-                <div className="flex-grow border-t border-slate-200" />
-              </div>
-
-              {/* Auth Tabs */}
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-xl font-bold">
-                <button
-                  type="button"
-                  onClick={() => setAuthTab('login')}
-                  className={`flex-1 py-1.5 rounded-lg cursor-pointer ${
-                    authTab === 'login' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isVi ? 'Đăng Nhập' : 'Sign In'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthTab('register')}
-                  className={`flex-1 py-1.5 rounded-lg cursor-pointer ${
-                    authTab === 'register' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isVi ? 'Đăng Ký Mới' : 'Sign Up'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthTab('reset')}
-                  className={`flex-1 py-1.5 rounded-lg cursor-pointer ${
-                    authTab === 'reset' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                  }`}
-                >
-                  {isVi ? 'Quên Mật Khẩu' : 'Reset Password'}
-                </button>
-              </div>
-
-              {authTab === 'login' && (
-                <form onSubmit={handleEmailLogin} className="space-y-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Email</label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="fc.learner@hotel.com"
-                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">
-                      {isVi ? 'Mật khẩu' : 'Password'}
-                    </label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold cursor-pointer disabled:opacity-50"
-                  >
-                    {busy ? 'Signing in...' : isVi ? 'Đăng Nhập & Chuyển Chính Thức' : 'Sign In & Activate Official Mode'}
-                  </button>
-                </form>
-              )}
-
-              {authTab === 'register' && (
-                <form onSubmit={handleRegister} className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        {isVi ? 'Họ và tên' : 'Full Name'}
-                      </label>
-                      <input
-                        type="text"
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="Nguyễn Minh Thư"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="name@hotel.com"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        {isVi ? 'Chức vụ chuyên môn' : 'Job Title'}
-                      </label>
-                      <input
-                        type="text"
-                        value={position}
-                        onChange={(e) => setPosition(e.target.value)}
-                        placeholder="Senior Accountant / AFC / FC"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        {isVi ? 'Vai trò đăng ký (RBAC)' : 'Requested Role'}
-                      </label>
-                      <select
-                        value={requestedRole}
-                        onChange={(e) => setRequestedRole(e.target.value as UserRole)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-bold"
-                      >
-                        <option value="learner">{t.roles.learner}</option>
-                        <option value="financial_controller">{t.roles.financial_controller}</option>
-                        <option value="general_manager">{t.roles.general_manager}</option>
-                        <option value="lnd_manager">{t.roles.lnd_manager}</option>
-                        <option value="super_admin">{t.roles.super_admin}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        {isVi ? 'Khách sạn / Đơn vị' : 'Hotel / Property'}
-                      </label>
-                      <select
-                        value={property}
-                        onChange={(e) => setProperty(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900"
-                      >
-                        {HOTEL_PROPERTIES.map((prop) => (
-                          <option key={prop} value={prop}>
-                            {prop}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 mb-1">
-                        {isVi ? 'Mật khẩu (tối thiểu 6 ký tự)' : 'Password (min 6 chars)'}
-                      </label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        minLength={6}
-                        placeholder="••••••••"
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-slate-500">
-                    {isVi
-                      ? 'Lưu ý bảo mật: Tài khoản mới tự đăng ký luôn khởi tạo với quyền Learner sau khi xác minh email; Super Admin sẽ xét duyệt nâng quyền vai trò đề xuất trong Quản trị Hệ thống.'
-                      : 'Security policy: Self-registered accounts initialize as Learner upon email verification; requested elevated roles are approved by Super Admin.'}
-                  </p>
-
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span>
-                      {isVi
-                        ? 'Đăng Ký Tài Khoản Chính Thức'
-                        : 'Register Official Account'}
-                    </span>
-                  </button>
-                </form>
-              )}
-
-              {authTab === 'reset' && (
-                <form onSubmit={handleResetPassword} className="space-y-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@hotel.com"
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400"
-                      required
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <KeyRound className="w-4 h-4" />
-                    <span>{isVi ? 'Gửi Email Khôi Phục Mật Khẩu' : 'Send Password Reset Email'}</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
-          {/* Spark Console Checklist (Admins & System Managers Only) */}
-          {canSeeSystemDiagnostics && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-[11px] text-slate-600">
-              <div className="font-bold text-slate-800 flex items-center justify-between">
-                <span>Firebase Console Checklist (Spark Plan — {firebaseConfigSummary.projectId})</span>
-                <a
-                  href={`https://console.firebase.google.com/project/${firebaseConfigSummary.projectId}/authentication/providers`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-blue-700 font-bold hover:underline"
-                >
-                  <span>Open Console</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-              <ul className="list-disc list-inside space-y-0.5">
-                <li>
-                  Authentication &rarr; Sign-in method: Enable <strong>Google</strong> and{' '}
-                  <strong>Email/Password</strong> providers.
-                </li>
-                <li>
-                  Authentication &rarr; Settings &rarr; Authorized domains: Verify AI Studio preview
-                  domain is allowlisted.
-                </li>
-                <li>
-                  Storage &rarr; Get started: Initialize bucket{' '}
-                  <code className="font-mono">{firebaseConfigSummary.storageBucket}</code> and deploy{' '}
-                  <code className="font-mono">storage.rules</code>.
-                </li>
-              </ul>
             </div>
           )}
         </div>

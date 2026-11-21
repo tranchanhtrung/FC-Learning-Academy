@@ -186,7 +186,7 @@ export const CourseCatalogView: React.FC = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full lg:w-auto">
-          <div className="grid grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <div className="px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 text-center">
               <span className="text-[10px] font-bold text-slate-500 uppercase block">
                 {isVi ? 'Khóa học' : 'Courses'}

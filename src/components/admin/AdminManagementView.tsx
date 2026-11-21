@@ -463,9 +463,9 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                <span className="text-[10px] text-emerald-700 font-bold block uppercase">AI Model Server</span>
-                <p className="font-bold text-slate-900 mt-1">Google Gemini 4 Hydrogen</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Server-Side Curriculum Proxy (/api/gemini/*)</p>
+                <span className="text-[11px] text-emerald-700 font-bold block uppercase">AI Model Server</span>
+                <p className="font-bold text-slate-900 mt-1">Google Gemini AI</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Server-Side Curriculum Proxy (/api/gemini/*)</p>
               </div>
 
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
@@ -524,10 +524,17 @@ export const AdminManagementView: React.FC = () => {
 
       {/* Add / Edit User Modal */}
       {userModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setUserModalOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+        >
           <form
             onSubmit={handleSaveUser}
-            className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 my-auto text-xs"
+            className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 my-auto text-xs"
           >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-bold text-base text-slate-900">

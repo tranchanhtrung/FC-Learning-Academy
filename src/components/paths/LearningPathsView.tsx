@@ -42,6 +42,16 @@ export const LearningPathsView: React.FC = () => {
   const activePath =
     learningPaths.find((p) => p.id === selectedPathId) || learningPaths[0];
 
+  if (!activePath) {
+    return (
+      <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-sm text-slate-500">
+        {language === 'vi'
+          ? 'Chưa có dữ liệu lộ trình nghề nghiệp. Vui lòng đồng bộ hoặc nhập dữ liệu đào tạo.'
+          : 'No career learning paths available yet.'}
+      </div>
+    );
+  }
+
   // Calculate track progress
   const allRequiredCoursesInTrack = activePath.stages.flatMap((s) => s.requiredCourses);
   const completedCoursesCount = allRequiredCoursesInTrack.filter((cid) => {
@@ -160,8 +170,8 @@ export const LearningPathsView: React.FC = () => {
       {/* Selected Path Milestone Stages Timeline */}
       <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-bold text-amber-600 uppercase tracking-widest font-mono">
                 {activePath.code} &bull; {activePath.totalHours} {language === 'vi' ? 'Tổng giờ học & thực tập' : 'Total Hours'}
               </span>
@@ -207,7 +217,7 @@ export const LearningPathsView: React.FC = () => {
               </div>
 
               {/* Stage Card */}
-              <div className="flex-1 bg-slate-50 border border-slate-200/80 p-5 sm:p-6 rounded-2xl space-y-4">
+              <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200/80 p-4 sm:p-6 rounded-2xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h4 className="font-extrabold text-base text-slate-900">
                     {stage.stageNumber}. {language === 'vi' ? stage.titleVi : stage.titleEn}

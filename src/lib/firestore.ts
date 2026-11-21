@@ -754,11 +754,21 @@ export async function commitCollectionToFirestore(
     failedRecords: [],
   };
 
-  const toWrite: Array<{ record: Record<string, any>; mode: 'create' | 'update' }> = [];
+  const toWrite: Array<{ docId: string; record: Record<string, any>; mode: 'create' | 'update' }> = [];
 
   for (const rawRecord of records) {
     const record = sanitizeForFirestore(rawRecord);
-    const docId = String(record.id);
+    const docId = String(record.id || record.uid || '').trim();
+    if (!docId || docId === 'undefined' || docId === 'null') {
+      outcome.failedCount++;
+      outcome.failedRecords.push({
+        collection: collectionName,
+        id: docId || '(missing)',
+        reason: `Missing valid document id/uid for collection "${collectionName}".`,
+        record,
+      });
+      continue;
+    }
     const exists = existingIds.has(docId);
     if (exists) {
       if (duplicateStrategy === 'skip' || duplicateStrategy === 'insert_new') {
@@ -775,9 +785,9 @@ export async function commitCollectionToFirestore(
         });
         continue;
       }
-      toWrite.push({ record, mode: 'update' });
+      toWrite.push({ docId, record, mode: 'update' });
     } else {
-      toWrite.push({ record, mode: 'create' });
+      toWrite.push({ docId, record, mode: 'create' });
     }
   }
 
@@ -794,7 +804,7 @@ export async function commitCollectionToFirestore(
       try {
         const batch = writeBatch(db);
         for (const item of chunk) {
-          const ref = doc(db, collectionName, String(item.record.id));
+          const ref = doc(db, collectionName, item.docId);
           // Full overwrite removes any stale legacy fields that would violate Firestore hasOnly() rules
           batch.set(ref, item.record);
         }
@@ -802,8 +812,8 @@ export async function commitCollectionToFirestore(
         for (const item of chunk) {
           if (item.mode === 'update') outcome.updatedCount++;
           else outcome.createdCount++;
-          outcome.succeededIds.push(String(item.record.id));
-          existingIds.add(String(item.record.id));
+          outcome.succeededIds.push(item.docId);
+          existingIds.add(item.docId);
         }
         committed = true;
         break;
@@ -818,11 +828,11 @@ export async function commitCollectionToFirestore(
     if (!committed) {
       for (const item of chunk) {
         try {
-          await setDoc(doc(db, collectionName, String(item.record.id)), item.record);
+          await setDoc(doc(db, collectionName, item.docId), item.record);
           if (item.mode === 'update') outcome.updatedCount++;
           else outcome.createdCount++;
-          outcome.succeededIds.push(String(item.record.id));
-          existingIds.add(String(item.record.id));
+          outcome.succeededIds.push(item.docId);
+          existingIds.add(item.docId);
         } catch (rowErr: any) {
           outcome.failedCount++;
           const rawMsg = rowErr instanceof Error ? rowErr.message : String(rowErr);

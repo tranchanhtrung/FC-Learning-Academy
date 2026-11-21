@@ -231,7 +231,30 @@ interface AppContextType {
   submitTalentReassessment: (payload: any) => Promise<{ reassessment?: CompetencyReassessmentDoc; newAssessment?: CompetencyAssessmentDoc } | null>;
   submitCareerReadinessReview: (payload: any) => Promise<CareerReadinessReviewDoc | null>;
 
-  // Firebase Live Auth, Production Mode & FC Business Partner Simulator
+  // Full-Stack Academy Server Auth + Firebase Cloud Auth, Production Mode & Simulator
+  serverAuthUser: User | null;
+  loginWithServerAccount: (email: string, password: string) => Promise<{ ok: boolean; user?: User; error?: string }>;
+  registerWithServerAccount: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    position?: string;
+    department?: string;
+    property?: string;
+    requestedRole?: UserRole;
+  }) => Promise<{ ok: boolean; user?: User; error?: string }>;
+  changeServerPassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<{ ok: boolean; error?: string }>;
+  requestServerPasswordReset: (
+    email: string
+  ) => Promise<{ ok: boolean; message?: string; devPreviewCode?: string; error?: string }>;
+  confirmServerPasswordReset: (
+    email: string,
+    code: string,
+    newPassword: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   firebaseUser: FirebaseUser | null;
   firebaseProfile: FirebaseUserProfileDoc | null;
   officialAuthUser: User | null;
@@ -414,7 +437,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   >({});
   const [lessonMaterials, setLessonMaterials] = useState<LessonMaterialDoc[]>([]);
 
-  // Firebase Auth & Production Firestore State
+  // Full-Stack Server Auth & Firebase Cloud Auth State
+  const [serverAuthUser, setServerAuthUser] = useState<User | null>(null);
+  const [serverAuthToken, setServerAuthToken] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('fc_server_auth_token');
+    } catch {
+      return null;
+    }
+  });
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(() => auth.currentUser);
   const [firebaseProfile, setFirebaseProfile] = useState<FirebaseUserProfileDoc | null>(null);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register' | 'reset' | null>(null);
@@ -471,9 +502,230 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const officialAuthUser: User | null = useMemo(() => {
-    if (!firebaseUser?.emailVerified || !firebaseProfile) return null;
-    return mapProfileDocToUser(firebaseProfile);
-  }, [firebaseUser?.emailVerified, firebaseProfile, mapProfileDocToUser]);
+    if (firebaseUser?.emailVerified && firebaseProfile) {
+      return mapProfileDocToUser(firebaseProfile);
+    }
+    if (serverAuthUser) {
+      return serverAuthUser;
+    }
+    return null;
+  }, [firebaseUser?.emailVerified, firebaseProfile, mapProfileDocToUser, serverAuthUser]);
+
+  // Restore server auth session on mount via HTTP-only cookie / Bearer token
+  useEffect(() => {
+    let active = true;
+    const headers: Record<string, string> = {};
+    if (serverAuthToken) {
+      headers.Authorization = `Bearer ${serverAuthToken}`;
+    }
+    fetch('/api/auth/me', { credentials: 'same-origin', headers })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!active) return;
+        if (data?.authenticated && data.user) {
+          setServerAuthUser(data.user);
+          setUsers((prev) =>
+            prev.some((u) => u.id === data.user.id) ? prev : [...prev, data.user]
+          );
+          if (!hasManualRoleSwitchRef.current) {
+            setCurrentUserState(data.user);
+            try {
+              localStorage.setItem('fc_active_user_id', data.user.id);
+            } catch {
+              // ignore
+            }
+          }
+        } else {
+          setServerAuthUser(null);
+          if (serverAuthToken) {
+            setServerAuthToken(null);
+            try {
+              sessionStorage.removeItem('fc_server_auth_token');
+            } catch {
+              // ignore
+            }
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [serverAuthToken]);
+
+  const loginWithServerAccount = useCallback(
+    async (email: string, password: string) => {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.user) {
+          return { ok: false, error: data.error || 'Đăng nhập thất bại.' };
+        }
+        hasManualRoleSwitchRef.current = false;
+        setServerAuthUser(data.user);
+        if (data.token) {
+          setServerAuthToken(data.token);
+          try {
+            sessionStorage.setItem('fc_server_auth_token', data.token);
+          } catch {
+            // ignore
+          }
+        }
+        setUsers((prev) =>
+          prev.some((u) => u.id === data.user.id) ? prev : [...prev, data.user]
+        );
+        setCurrentUserState(data.user);
+        try {
+          localStorage.setItem('fc_active_user_id', data.user.id);
+        } catch {
+          // ignore
+        }
+        showToast(
+          language === 'vi'
+            ? `Đăng nhập thành công: ${data.user.name}`
+            : `Signed in as ${data.user.name}`,
+          'success'
+        );
+        return { ok: true, user: data.user as User };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'Không thể kết nối máy chủ.' };
+      }
+    },
+    [language, showToast]
+  );
+
+  const registerWithServerAccount = useCallback(
+    async (payload: {
+      name: string;
+      email: string;
+      password: string;
+      position?: string;
+      department?: string;
+      property?: string;
+      requestedRole?: UserRole;
+    }) => {
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.user) {
+          return { ok: false, error: data.error || 'Đăng ký tài khoản thất bại.' };
+        }
+        hasManualRoleSwitchRef.current = false;
+        setServerAuthUser(data.user);
+        if (data.token) {
+          setServerAuthToken(data.token);
+          try {
+            sessionStorage.setItem('fc_server_auth_token', data.token);
+          } catch {
+            // ignore
+          }
+        }
+        setUsers((prev) =>
+          prev.some((u) => u.id === data.user.id) ? prev : [...prev, data.user]
+        );
+        setCurrentUserState(data.user);
+        try {
+          localStorage.setItem('fc_active_user_id', data.user.id);
+        } catch {
+          // ignore
+        }
+        showToast(
+          language === 'vi'
+            ? `Chào mừng ${data.user.name}! Tài khoản đã được tạo và đăng nhập.`
+            : `Welcome ${data.user.name}! Account created and signed in.`,
+          'success'
+        );
+        return { ok: true, user: data.user as User };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'Không thể kết nối máy chủ.' };
+      }
+    },
+    [language, showToast]
+  );
+
+  const changeServerPassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (serverAuthToken) headers.Authorization = `Bearer ${serverAuthToken}`;
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers,
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return { ok: false, error: data.error || 'Đổi mật khẩu thất bại.' };
+        }
+        if (data.token) {
+          setServerAuthToken(data.token);
+          try {
+            sessionStorage.setItem('fc_server_auth_token', data.token);
+          } catch {
+            // ignore
+          }
+        }
+        showToast(
+          language === 'vi' ? 'Đã đổi mật khẩu thành công!' : 'Password changed successfully!',
+          'success'
+        );
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'Không thể kết nối máy chủ.' };
+      }
+    },
+    [language, serverAuthToken, showToast]
+  );
+
+  const requestServerPasswordReset = useCallback(async (email: string) => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: data.error || 'Không thể tạo mã khôi phục.' };
+      return { ok: true, message: data.message, devPreviewCode: data.devPreviewCode };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Không thể kết nối máy chủ.' };
+    }
+  }, []);
+
+  const confirmServerPasswordReset = useCallback(
+    async (email: string, code: string, newPassword: string) => {
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code, newPassword }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, error: data.error || 'Đặt lại mật khẩu thất bại.' };
+        showToast(
+          language === 'vi'
+            ? 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay.'
+            : 'Password reset successful! You can sign in now.',
+          'success'
+        );
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, error: err?.message || 'Không thể kết nối máy chủ.' };
+      }
+    },
+    [language, showToast]
+  );
 
   const useOfficialAccountIdentity = useCallback(() => {
     if (!officialAuthUser) return;
@@ -643,8 +895,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'Content-Type': 'application/json',
       'x-user-id': currentUser.id,
       'x-user-role': currentUser.role,
+      ...(serverAuthToken ? { Authorization: `Bearer ${serverAuthToken}` } : {}),
     }),
-    [currentUser.id, currentUser.role]
+    [currentUser.id, currentUser.role, serverAuthToken]
   );
 
   const refreshFromFirestore = useCallback(
@@ -1276,21 +1529,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const signOutOfficialAccount = useCallback(async () => {
     hasManualRoleSwitchRef.current = false;
-    await signOutFirebase();
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: serverAuthToken ? { Authorization: `Bearer ${serverAuthToken}` } : {},
+      });
+    } catch {
+      // ignore network error during logout
+    }
+    setServerAuthUser(null);
+    setServerAuthToken(null);
+    try {
+      sessionStorage.removeItem('fc_server_auth_token');
+    } catch {
+      // ignore
+    }
+    if (auth.currentUser) {
+      await signOutFirebase().catch(() => {});
+    }
     setFirebaseProfile(null);
     setDataSourceMode('demo');
-    setUsers(INITIAL_USERS);
     const defaultDemoUser =
-      INITIAL_USERS.find((u) => u.id === 'user_learner1') || INITIAL_USERS[0];
+      users.find((u) => u.id === 'user_learner1') || INITIAL_USERS[0];
     setCurrentUserState(defaultDemoUser);
-    localStorage.setItem('fc_active_user_id', defaultDemoUser.id);
+    try {
+      localStorage.setItem('fc_active_user_id', defaultDemoUser.id);
+    } catch {
+      // ignore
+    }
     showToast(
       language === 'vi'
-        ? 'Đã đăng xuất tài khoản chính thức và quay về chế độ Demo Sandbox.'
-        : 'Signed out of official account and switched to Demo Sandbox mode.',
+        ? 'Đã đăng xuất tài khoản thành công.'
+        : 'Signed out successfully.',
       'info'
     );
-  }, [language, setDataSourceMode, showToast]);
+  }, [language, serverAuthToken, setDataSourceMode, showToast, users]);
 
   const syncAllExperienceRolesToFirestore = useCallback(
     async (overwrite = false) => {
@@ -1475,8 +1749,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [refreshFromFirestore]);
 
+  const prevDataSourceModeRef = useRef<'demo' | 'firestore'>(dataSourceMode);
+
   useEffect(() => {
-    if (dataSourceMode === 'demo') {
+    document.documentElement.lang = language === 'vi' ? 'vi' : 'en';
+  }, [language]);
+
+  useEffect(() => {
+    const prevMode = prevDataSourceModeRef.current;
+    prevDataSourceModeRef.current = dataSourceMode;
+
+    // Only reset demo catalog/users when explicitly switching BACK from firestore -> demo.
+    // Switching persona inside demo mode must NOT wipe runtime-created users/competencies
+    // or double-fire simulator/talent/governance refreshes (which have their own effects).
+    if (dataSourceMode === 'demo' && prevMode !== 'demo') {
       setUsers(INITIAL_USERS);
       setCurrentUserState((prev) =>
         INITIAL_USERS.find((u) => u.id === prev.id) ||
@@ -1492,7 +1778,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       refreshSimulatorWorkspace();
       refreshTalentData();
       refreshScenarioGovernance();
-    } else if (auth.currentUser?.emailVerified) {
+    } else if (dataSourceMode === 'firestore' && prevMode !== 'firestore' && auth.currentUser?.emailVerified) {
       refreshFromFirestore('firestore');
     }
   }, [
@@ -1504,8 +1790,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshScenarioGovernance,
   ]);
 
-  const isLiveFirestoreMode = (): boolean =>
-    dataSourceMode === 'firestore' && Boolean(auth.currentUser?.emailVerified);
+  const isLiveFirestoreMode = useCallback(
+    (): boolean => dataSourceMode === 'firestore' && Boolean(auth.currentUser?.emailVerified),
+    [dataSourceMode]
+  );
 
   const transitionScenarioStatus = async (
     scenarioId: string,
@@ -3804,20 +4092,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const t = translations[language];
 
-  const mergedNotifications = [
-    ...talentNotifications.map((n) => ({
-      id: n.id,
-      title: `${n.title}: ${n.message}`,
-      time: n.time,
-      read: n.read,
-    })),
-    ...notifications.map((n) => ({
-      id: n.id,
-      title: language === 'vi' ? n.title : n.titleEn || n.title,
-      time: language === 'vi' ? n.time : n.timeEn || n.time,
-      read: n.read,
-    })),
-  ];
+  const mergedNotifications = useMemo(
+    () => [
+      ...talentNotifications.map((n) => ({
+        id: n.id,
+        title: `${n.title}: ${n.message}`,
+        time: n.time,
+        read: n.read,
+      })),
+      ...notifications.map((n) => ({
+        id: n.id,
+        title: language === 'vi' ? n.title : n.titleEn || n.title,
+        time: language === 'vi' ? n.time : n.timeEn || n.time,
+        read: n.read,
+      })),
+    ],
+    [talentNotifications, notifications, language]
+  );
 
   return (
     <AppContext.Provider
@@ -3895,6 +4186,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateTalentIdpObjective,
         submitTalentReassessment,
         submitCareerReadinessReview,
+        serverAuthUser,
+        loginWithServerAccount,
+        registerWithServerAccount,
+        changeServerPassword,
+        requestServerPasswordReset,
+        confirmServerPasswordReset,
         firebaseUser,
         firebaseProfile,
         officialAuthUser,

@@ -490,10 +490,17 @@ export const CompetencyFrameworkView: React.FC = () => {
 
       {/* Add / Edit Competency Modal (Admin) */}
       {isAdminOrManager && isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsEditing(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+        >
           <form
             onSubmit={handleSaveForm}
-            className="bg-white rounded-2xl max-w-xl w-full p-6 sm:p-8 space-y-4 shadow-2xl border border-slate-200 my-8"
+            className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-5 sm:p-8 space-y-4 shadow-2xl border border-slate-200 my-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="text-base font-bold text-slate-900">
@@ -502,13 +509,13 @@ export const CompetencyFrameworkView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   {language === 'vi' ? 'Mã năng lực (Code)' : 'Competency Code'}

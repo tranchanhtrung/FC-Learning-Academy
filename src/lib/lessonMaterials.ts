@@ -391,11 +391,66 @@ export async function getMaterialArrayBuffer(material: LessonMaterialDoc): Promi
 
 export function sanitizeDocxHtml(html: string): string {
   if (!html) return '';
+
+  // Prefer native DOMParser allowlist sanitization in browser to eliminate regex bypass XSS vectors
+  if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const BLOCKED_TAGS = new Set([
+      'script',
+      'style',
+      'iframe',
+      'object',
+      'embed',
+      'svg',
+      'math',
+      'form',
+      'input',
+      'button',
+      'meta',
+      'link',
+      'base',
+    ]);
+    const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:|#)/i;
+
+    const sanitizeNode = (node: Element) => {
+      const children = Array.from(node.children);
+      for (const el of children) {
+        const tag = el.tagName.toLowerCase();
+        if (BLOCKED_TAGS.has(tag)) {
+          el.remove();
+          continue;
+        }
+        for (const attr of Array.from(el.attributes)) {
+          const name = attr.name.toLowerCase();
+          const val = attr.value.trim();
+          if (name.startsWith('on') || name === 'style' || name === 'srcdoc') {
+            el.removeAttribute(attr.name);
+            continue;
+          }
+          if ((name === 'href' || name === 'src' || name === 'xlink:href') && !SAFE_URL_PROTOCOLS.test(val)) {
+            if (name === 'href') {
+              el.setAttribute('href', '#');
+            } else {
+              el.removeAttribute(attr.name);
+            }
+          }
+        }
+        if (tag === 'a') {
+          el.setAttribute('rel', 'noopener noreferrer');
+          el.setAttribute('target', '_blank');
+        }
+        sanitizeNode(el);
+      }
+    };
+
+    sanitizeNode(doc.body);
+    return doc.body.innerHTML;
+  }
+
   return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
-    .replace(/href\s*=\s*(['"])\s*javascript:[^'"]*\1/gi, 'href="#"');
+    .replace(/<(script|iframe|object|embed|svg|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(?:(['"]).*?\1|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*(['"])\s*(?:javascript|data|vbscript):[^'"]*\2/gi, '$1="#"');
 }
 
 export function getMaterialBlobUrl(material: LessonMaterialDoc): string | null {
