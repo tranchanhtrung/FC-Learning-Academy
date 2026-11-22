@@ -57,6 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
     closeAuthModal,
     dataSourceMode,
     setDataSourceMode,
+    systemConfig,
     refreshFromFirestore,
     showToast,
   } = useApp();
@@ -126,8 +127,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
   }, [users, officialAuthUser]);
 
   const isSignedIn = Boolean(serverAuthUser || firebaseUser);
+  const isOfficialProduction =
+    dataSourceMode === 'firestore' || !systemConfig.demoModeEnabled;
   const canSwitchRoles =
-    dataSourceMode === 'demo' ||
+    (systemConfig.demoModeEnabled && dataSourceMode === 'demo') ||
     Boolean(firebaseProfile?.isAdmin) ||
     serverAuthUser?.role === 'super_admin' ||
     serverAuthUser?.role === 'lnd_manager';
@@ -163,12 +166,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
                 </span>
                 <span
                   className={`hidden xl:inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-full border whitespace-nowrap shrink-0 ${
-                    dataSourceMode === 'firestore'
+                    isOfficialProduction
                       ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40'
                       : 'bg-amber-400/10 text-amber-300 border-amber-400/30'
                   }`}
                 >
-                  {dataSourceMode === 'firestore'
+                  {isOfficialProduction
                     ? isVi
                       ? 'CHÍNH THỨC · LIVE'
                       : 'OFFICIAL · LIVE'

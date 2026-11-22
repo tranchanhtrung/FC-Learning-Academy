@@ -70,6 +70,16 @@ import {
   pickAllowedFields,
 } from './server/securityMiddleware.ts';
 import { createAuthEngine } from './server/authEngine.ts';
+import { createStorageRouter } from './server/storage/storageRoutes.ts';
+import { getR2Config } from './server/storage/r2StorageEngine.ts';
+import { createBillingEngine } from './server/payments/billingEngine.ts';
+import { getPaymentProvidersStatus } from './server/payments/providers.ts';
+import {
+  checkPostgresHealth,
+  isPostgresEnabled,
+  loadPgSnapshot,
+  queuePgSnapshotSave,
+} from './server/db/postgresStore.ts';
 import {
   IMPORT_ORDER_SPEC,
   detectWorkbookSheets,
@@ -381,9 +391,36 @@ const DATA_DIR = IS_VERCEL
   : path.join(__dirname, '.data');
 const DB_FILE = path.join(DATA_DIR, 'academy-db.json');
 
+const IS_DEMO_SEED_ENABLED =
+  process.env.DEMO_MODE === 'true' || (!IS_PRODUCTION && process.env.DEMO_MODE !== 'false');
+
 function getSeedDB(): AcademyDB {
-  const users = JSON.parse(JSON.stringify(INITIAL_USERS));
   const competencies = JSON.parse(JSON.stringify(COMPETENCIES));
+  if (!IS_DEMO_SEED_ENABLED) {
+    // Clean Production Seed: zero synthetic demo users, enrollments, assessments, or certificates
+    return {
+      users: [],
+      competencies,
+      enrollments: [],
+      quizAttempts: [],
+      submissions: [],
+      assessments: [],
+      idps: [],
+      certificates: [],
+      auditLogs: [],
+      talentConfig: DEFAULT_TALENT_CONFIG,
+      competencyAssessments: [],
+      talentIdps: [],
+      developmentActivities: [],
+      competencyReassessments: [],
+      careerReadinessReviews: [],
+      idpReviewLogs: [],
+      talentNotifications: [],
+      rolePermissions: normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS),
+      lessonMaterials: [],
+    };
+  }
+  const users = JSON.parse(JSON.stringify(INITIAL_USERS));
   const talentSeed = createSeedTalentState(users, competencies);
   return {
     users,
@@ -531,6 +568,7 @@ function persistDB(state: AcademyDB) {
   } catch (err) {
     console.error('Failed to persist DB file:', err);
   }
+  void queuePgSnapshotSave('academy_db', state);
 }
 
 let db: AcademyDB = loadDB();
@@ -560,6 +598,39 @@ const authEngine = createAuthEngine({
   },
   recordAudit,
   persistMainDB: () => persistDB(db),
+});
+
+// Cold-start PostgreSQL hydration middleware (runs once per server/serverless instance when DATABASE_URL is set)
+let pgHydrationPromise: Promise<void> | null = null;
+function ensurePostgresHydrated(): Promise<void> {
+  if (!isPostgresEnabled()) return Promise.resolve();
+  if (!pgHydrationPromise) {
+    pgHydrationPromise = (async () => {
+      const remoteDb = await loadPgSnapshot<AcademyDB>('academy_db');
+      if (remoteDb && typeof remoteDb === 'object' && Array.isArray(remoteDb.users)) {
+        db = {
+          ...db,
+          ...remoteDb,
+          rolePermissions: normalizeRolePermissionsMap(remoteDb.rolePermissions),
+          lessonMaterials: Array.isArray(remoteDb.lessonMaterials) ? remoteDb.lessonMaterials : [],
+        };
+        writeJsonAtomic(DB_FILE, db);
+      } else {
+        await queuePgSnapshotSave('academy_db', db);
+      }
+      await authEngine.hydrateFromPostgres();
+      await billingEngine.hydrateFromPostgres();
+    })().catch((err) => {
+      console.error('[PostgreSQL] Hydration failed, continuing with local fallback:', err);
+      pgHydrationPromise = null;
+    });
+  }
+  return pgHydrationPromise;
+}
+
+app.use('/api', async (_req, _res, next) => {
+  await ensurePostgresHydrated();
+  next();
 });
 
 app.use('/api/auth', authRateLimiter, authEngine.router);
@@ -623,9 +694,15 @@ function hasActorPermission(req: express.Request, permission: PermissionKey): bo
 }
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const pgHealth = await checkPostgresHealth();
   res.json({
     status: 'ok',
+    demoModeEnabled: IS_DEMO_SEED_ENABLED,
+    databaseDriver: isPostgresEnabled() ? 'postgresql' : 'local_json',
+    postgresConnected: pgHealth.connected,
+    postgresLatencyMs: pgHealth.latencyMs,
+    storageDriver: getR2Config().enabled ? 'cloudflare_r2' : 'local_upload',
     geminiConfigured: !!apiKey,
     model: GEMINI_MODEL,
     persistenceFile: fs.existsSync(DB_FILE),
@@ -639,6 +716,38 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Public runtime configuration summary (safe, zero secrets)
+app.get('/api/system/config', (_req, res) => {
+  const r2 = getR2Config();
+  res.json({
+    appMode: IS_DEMO_SEED_ENABLED ? 'demo' : 'production',
+    demoModeEnabled: IS_DEMO_SEED_ENABLED,
+    databaseDriver: process.env.DATABASE_URL ? 'postgresql' : 'local_json',
+    storageDriver: r2.enabled ? 'cloudflare_r2' : 'local_upload',
+    storageLimits: { maxDocumentMb: 50, maxVideoMb: 250 },
+    paymentProviders: getPaymentProvidersStatus(),
+    sandboxPaymentsEnabled: !IS_PRODUCTION || process.env.PAYMENT_SANDBOX === 'true',
+  });
+});
+
+// Mount Cloudflare R2 / Direct Upload Storage Engine (/api/storage/*)
+const storageRouter = createStorageRouter({
+  getRequestActor,
+  canManageCourseMaterials: (req) => hasActorPermission(req, 'manage_lesson_materials'),
+  recordAudit,
+});
+app.use('/api/storage', storageRouter);
+
+// Mount Glitch-Proof Billing, Entitlement & Webhook Engine (/api/billing/*)
+const billingEngine = createBillingEngine({
+  dataDir: DATA_DIR,
+  getRequestActor,
+  isAdminActor: (req) => hasActorPermission(req, 'view_administration'),
+  recordAudit,
+  persistMainDB: () => persistDB(db),
+});
+app.use('/api/billing', billingEngine.router);
 
 // Helper for resilient Gemini calls with retry on transient 503/429
 async function generateContentWithRetry(params: any, retries = 2, delayMs = 1500): Promise<any> {

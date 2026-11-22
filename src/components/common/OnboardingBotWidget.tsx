@@ -691,6 +691,23 @@ export const OnboardingBotWidget: React.FC = () => {
         };
       }
 
+      if (/(thanh toán|học phí|gói học|momo|vietqr|payos|vnpay|stripe|mua khóa|giá|pricing|billing|upgrade)/.test(q)) {
+        return {
+          text: isVi
+            ? 'Bạn có thể xem toàn bộ Bảng Giá (Pro theo tháng/năm, Mua lẻ khóa học trọn đời, Gói Doanh nghiệp khách sạn xuất hóa đơn VAT) và thanh toán an toàn qua VietQR, Ví MoMo, VNPay hoặc Stripe tại mục Gói Học & Thanh Toán!'
+            : 'Explore Flexible Monthly/Yearly Pro plans, Single Course lifetime unlocks, and B2B Hotel Cluster VAT licensing with VietQR, MoMo, VNPay & Stripe in Plans & Billing!',
+          actions: canAccessRoute('pricing')
+            ? [
+                {
+                  label: isVi ? 'Mở Bảng Giá & Gói Học →' : 'Open Plans & Billing →',
+                  primary: true,
+                  onClick: () => navigateFromChat('pricing'),
+                },
+              ]
+            : undefined,
+        };
+      }
+
       if (/(chứng chỉ|certificate|bằng cấp|verify|xác thực)/.test(q)) {
         return {
           text: isVi

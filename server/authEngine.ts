@@ -4,6 +4,7 @@ import path from 'path';
 import type { User, UserRole } from '../src/types/index.ts';
 import { loadOrCreateAuthSecret, readJsonSafe, writeJsonAtomic } from './persistence.ts';
 import { isValidEmail, validatePasswordStrength } from './securityMiddleware.ts';
+import { loadPgSnapshot, queuePgSnapshotSave } from './db/postgresStore.ts';
 
 export const SESSION_COOKIE_NAME = 'fc_session';
 export const DEFAULT_DEMO_PASSWORD = process.env.DEFAULT_DEMO_PASSWORD || 'FCAcademy@2026';
@@ -123,10 +124,72 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
       if (exp <= now) delete store.revokedTokens[jti];
     }
     writeJsonAtomic(authStorePath, store);
+    void queuePgSnapshotSave('auth_accounts', store);
   };
 
-  // Seed default credentials for existing Academy users that do not yet have a password record
+  const hydrateFromPostgres = async () => {
+    const remote = await loadPgSnapshot<AuthStoreFile>('auth_accounts');
+    if (remote && typeof remote === 'object' && remote.accounts) {
+      store = {
+        accounts: remote.accounts || {},
+        revokedTokens: remote.revokedTokens || {},
+      };
+      writeJsonAtomic(authStorePath, store);
+    }
+    ensureSeedAccounts();
+  };
+
+  const isDemoAccountsAllowed = () =>
+    process.env.DEMO_MODE === 'true' ||
+    (process.env.NODE_ENV !== 'production' && process.env.DEMO_MODE !== 'false');
+
+  // Seed 1 official Bootstrap Super Admin if BOOTSTRAP_ADMIN_EMAIL + BOOTSTRAP_ADMIN_PASSWORD are configured
+  const ensureBootstrapAdmin = () => {
+    const adminEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || '').trim().toLowerCase();
+    const adminPassword = (process.env.BOOTSTRAP_ADMIN_PASSWORD || '').trim();
+    const adminName = (process.env.BOOTSTRAP_ADMIN_NAME || 'System Administrator').trim();
+    if (!adminEmail || !isValidEmail(adminEmail) || adminPassword.length < 8) return;
+
+    const existingUser = deps.getUsers().find((u) => u.email.toLowerCase() === adminEmail);
+    const now = new Date().toISOString();
+    let targetUserId = existingUser?.id;
+
+    if (!existingUser) {
+      targetUserId = `user_owner_${crypto.createHash('sha256').update(adminEmail).digest('hex').slice(0, 10)}`;
+      deps.addUser({
+        id: targetUserId,
+        name: adminName,
+        email: adminEmail,
+        role: 'super_admin',
+        position: 'System Owner & Super Administrator',
+        department: 'Executive Administration',
+        property: 'FC Learning Academy',
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(adminName)}&background=0A192F&color=D4AF37`,
+        currentLevel: 4,
+        targetLevel: 4,
+        joinedDate: now.split('T')[0],
+      });
+      deps.persistMainDB();
+    }
+
+    if (targetUserId && !store.accounts[adminEmail]) {
+      store.accounts[adminEmail] = {
+        userId: targetUserId,
+        email: adminEmail,
+        passwordHash: hashPasswordScrypt(adminPassword),
+        failedAttempts: 0,
+        tokenVersion: 1,
+        createdAt: now,
+      };
+      persistAuthStore();
+    }
+  };
+
+  // Seed default credentials ONLY when demo mode is enabled (never in clean Production!)
   const ensureSeedAccounts = () => {
+    ensureBootstrapAdmin();
+    if (!isDemoAccountsAllowed()) return;
+
     let changed = false;
     const now = new Date().toISOString();
     for (const user of deps.getUsers()) {
@@ -255,8 +318,7 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
 
   router.get('/demo-accounts', (_req, res) => {
     ensureSeedAccounts();
-    const isProd = process.env.NODE_ENV === 'production' && process.env.DEMO_MODE !== 'true';
-    if (isProd) {
+    if (!isDemoAccountsAllowed()) {
       return res.json({ enabled: false, accounts: [] });
     }
     const rolePriority: UserRole[] = [
@@ -563,5 +625,6 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
     router,
     resolveAuthenticatedUser,
     ensureSeedAccounts,
+    hydrateFromPostgres,
   };
 }

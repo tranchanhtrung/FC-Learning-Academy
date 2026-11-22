@@ -7,6 +7,9 @@ coverage/
 .env*
 !.env.example
 .data/.auth-secret
+.data/academy-db.json
 .data/auth-accounts.json
+.data/billing-store.json
+.data/uploads/
 .data/*.tmp
 .vercel/

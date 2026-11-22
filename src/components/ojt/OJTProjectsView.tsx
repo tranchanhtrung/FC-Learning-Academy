@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { OJTAssignment, AssignmentSubmission } from '../../types';
+import { uploadFileWithProgress } from '../../lib/r2ClientUpload';
 import {
   Briefcase,
   Download,
@@ -15,6 +16,7 @@ import {
   FileText,
   User,
   ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 
 export const OJTProjectsView: React.FC = () => {
@@ -29,6 +31,8 @@ export const OJTProjectsView: React.FC = () => {
     t,
     showToast,
     hasPermission,
+    getAuthHeaders,
+    systemConfig,
   } = useApp();
 
   const isSupervisorOrAdmin = hasPermission('grade_ojt_submissions');
@@ -41,6 +45,10 @@ export const OJTProjectsView: React.FC = () => {
   // Submission Form State
   const [notes, setNotes] = useState<string>('');
   const [fileName, setFileName] = useState<string>('OJT_Deliverable_Model.xlsx');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadedDownloadUrl, setUploadedDownloadUrl] = useState<string | null>(null);
   const [isAiEvaluating, setIsAiEvaluating] = useState<boolean>(false);
   const [aiEvalResult, setAiEvalResult] = useState<any>(null);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -121,9 +129,43 @@ export const OJTProjectsView: React.FC = () => {
       );
       return;
     }
-    await submitAssignment(selectedAssignment.id, notes.trim(), fileName, aiEvalResult);
+
+    let finalFileLabel = fileName;
+    let finalNotes = notes.trim();
+
+    if (selectedFile && !uploadedDownloadUrl) {
+      try {
+        setIsUploadingFile(true);
+        setUploadProgress(5);
+        const uploaded = await uploadFileWithProgress({
+          file: selectedFile,
+          category: 'ojt_evidence',
+          recordId: selectedAssignment.id,
+          authHeaders: getAuthHeaders(),
+          onProgress: (pct) => setUploadProgress(pct),
+        });
+        setUploadedDownloadUrl(uploaded.downloadApiUrl);
+        finalFileLabel = `${uploaded.fileName} (${uploaded.driver === 'cloudflare_r2' ? 'R2' : 'Storage'})`;
+        finalNotes = `${finalNotes}\n\n[Đính kèm Storage: ${uploaded.fileName} | ${uploaded.downloadApiUrl}]`;
+      } catch (err: any) {
+        showToast(
+          err?.message ||
+            (language === 'vi' ? 'Tải tệp OJT lên lưu trữ thất bại.' : 'OJT file upload failed.'),
+          'error'
+        );
+        setIsUploadingFile(false);
+        return;
+      } finally {
+        setIsUploadingFile(false);
+      }
+    }
+
+    await submitAssignment(selectedAssignment.id, finalNotes, finalFileLabel, aiEvalResult);
     setSubmissionModalOpen(false);
     setNotes('');
+    setSelectedFile(null);
+    setUploadProgress(0);
+    setUploadedDownloadUrl(null);
     setAiEvalResult(null);
     setAiError(null);
     showToast(
@@ -388,27 +430,62 @@ export const OJTProjectsView: React.FC = () => {
               />
             </div>
 
-            {/* File Attachment Picker */}
-            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs">
-              <FileSpreadsheet className="w-6 h-6 text-emerald-600 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-800 truncate">{fileName}</p>
-                <p className="text-[11px] text-slate-500">
-                  {language === 'vi' ? 'Tài liệu nộp bài OJT (.xlsx, .pdf, .docx)' : 'OJT Deliverable Attachment (.xlsx, .pdf, .docx)'}
-                </p>
+            {/* File Attachment Picker (Direct Upload to Cloudflare R2 / Local Storage) */}
+            <div className="space-y-2 p-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs">
+              <div className="flex flex-wrap items-center gap-3">
+                <FileSpreadsheet className="w-6 h-6 text-emerald-600 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-slate-800 truncate">{fileName}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {selectedFile
+                      ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB · ${
+                          systemConfig.storageDriver === 'cloudflare_r2'
+                            ? 'Cloudflare R2 Direct Upload'
+                            : language === 'vi'
+                            ? 'Lưu trữ trực tiếp trên máy chủ'
+                            : 'Direct Server Storage'
+                        }`
+                      : language === 'vi'
+                      ? 'Tài liệu nộp bài OJT (.xlsx, .pdf, .docx — tối đa 50MB)'
+                      : 'OJT Deliverable Attachment (.xlsx, .pdf, .docx — up to 50MB)'}
+                  </p>
+                </div>
+                <label className="px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer shrink-0 whitespace-nowrap">
+                  {language === 'vi' ? 'Chọn tệp...' : 'Choose File...'}
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx,.png,.jpg,.jpeg"
+                    className="hidden"
+                    disabled={isUploadingFile}
+                    onChange={(e) => {
+                      const picked = e.target.files?.[0];
+                      if (picked) {
+                        setSelectedFile(picked);
+                        setFileName(picked.name);
+                        setUploadedDownloadUrl(null);
+                        setUploadProgress(0);
+                      }
+                    }}
+                  />
+                </label>
               </div>
-              <label className="px-3 py-1.5 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 rounded-lg cursor-pointer shrink-0 whitespace-nowrap">
-                {language === 'vi' ? 'Chọn tệp...' : 'Choose File...'}
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv,.pdf,.docx,.pptx"
-                  className="hidden"
-                  onChange={(e) => {
-                    const picked = e.target.files?.[0];
-                    if (picked) setFileName(picked.name);
-                  }}
-                />
-              </label>
+              {isUploadingFile && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-amber-700">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {language === 'vi' ? 'Đang tải tệp lên lưu trữ...' : 'Uploading deliverable...'}
+                    </span>
+                    <span className="font-mono">{uploadProgress}%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-200"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* AI Preliminary Review Trigger */}
@@ -506,9 +583,11 @@ export const OJTProjectsView: React.FC = () => {
               </button>
               <button
                 onClick={handleFinalSubmit}
-                className="px-5 py-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white font-bold rounded-xl transition-all shadow-md cursor-pointer"
+                disabled={isUploadingFile}
+                className="px-5 py-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white font-bold rounded-xl transition-all shadow-md cursor-pointer disabled:opacity-60 inline-flex items-center gap-1.5"
               >
-                {t.common.submit}
+                {isUploadingFile && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{t.common.submit}</span>
               </button>
             </div>
           </div>

@@ -42,7 +42,7 @@ export function readJsonSafe<T>(filePath: string): T | null {
  * inside `.data/.auth-secret` so signed sessions remain valid across local server restarts.
  */
 export function loadOrCreateAuthSecret(dataDir: string): string {
-  const envSecret = (process.env.AUTH_SECRET || '').trim();
+  const envSecret = (process.env.AUTH_TOKEN_SECRET || process.env.AUTH_SECRET || '').trim();
   if (envSecret.length >= 24) return envSecret;
 
   const secretPath = path.join(dataDir, '.auth-secret');

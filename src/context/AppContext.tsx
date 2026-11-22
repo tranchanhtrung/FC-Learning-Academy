@@ -121,6 +121,14 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'info';
 }
 
+export interface SystemRuntimeConfig {
+  appMode: 'demo' | 'production';
+  demoModeEnabled: boolean;
+  databaseDriver: 'postgresql' | 'local_json';
+  storageDriver: 'cloudflare_r2' | 'local_upload';
+  sandboxPaymentsEnabled: boolean;
+}
+
 interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -273,6 +281,8 @@ interface AppContextType {
   }>;
   dataSourceMode: 'demo' | 'firestore';
   setDataSourceMode: (mode: 'demo' | 'firestore') => void;
+  systemConfig: SystemRuntimeConfig;
+  getAuthHeaders: () => Record<string, string>;
   productionCounts: Record<string, number>;
   refreshFromFirestore: (forceMode?: 'demo' | 'firestore') => Promise<void>;
   simulatorData: {
@@ -474,6 +484,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDataSourceModeState(mode);
   }, []);
   const [productionCounts, setProductionCounts] = useState<Record<string, number>>({});
+  const [systemConfig, setSystemConfig] = useState<SystemRuntimeConfig>({
+    appMode: 'demo',
+    demoModeEnabled: true,
+    databaseDriver: 'local_json',
+    storageDriver: 'local_upload',
+    sandboxPaymentsEnabled: true,
+  });
+
+  useEffect(() => {
+    fetch('/api/system/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        setSystemConfig({
+          appMode: cfg.appMode === 'production' ? 'production' : 'demo',
+          demoModeEnabled: Boolean(cfg.demoModeEnabled),
+          databaseDriver: cfg.databaseDriver === 'postgresql' ? 'postgresql' : 'local_json',
+          storageDriver: cfg.storageDriver === 'cloudflare_r2' ? 'cloudflare_r2' : 'local_upload',
+          sandboxPaymentsEnabled: Boolean(cfg.sandboxPaymentsEnabled),
+        });
+      })
+      .catch(() => {
+        // Keep safe defaults if config endpoint is temporarily unreachable
+      });
+  }, []);
 
   const mapProfileDocToUser = useCallback((docItem: Record<string, any>): User => {
     const uid = String(docItem.uid || docItem.id || docItem.employeeId || '');
@@ -923,7 +958,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         let syncedUserProfiles = txData.userProfiles;
-        if (activeMode === 'firestore' && isAdminOrLnd) {
+        if (activeMode === 'firestore' && isAdminOrLnd && systemConfig.demoModeEnabled) {
           const existingProfileIds = new Set(
             syncedUserProfiles.map((p: any) => String(p.uid || p.id || ''))
           );
@@ -4206,6 +4241,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncAllExperienceRolesToFirestore,
         dataSourceMode,
         setDataSourceMode,
+        systemConfig,
+        getAuthHeaders: authHeaders,
         productionCounts,
         refreshFromFirestore,
         simulatorData,

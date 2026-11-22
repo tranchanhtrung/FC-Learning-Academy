@@ -522,6 +522,7 @@ export const TAB_REQUIRED_PERMISSION: Record<string, PermissionKey> = {
   simAdmin: 'manage_sim_admin',
   simVersionHistory: 'manage_sim_admin',
   certifications: 'view_certifications',
+  pricing: 'view_dashboard',
   reports: 'view_reports',
   administration: 'view_administration',
   dataImportCenter: 'access_data_import_center',

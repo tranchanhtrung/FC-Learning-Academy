@@ -23,6 +23,7 @@ import {
   MessageSquare,
   History,
   X,
+  CreditCard,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -153,6 +154,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, isMobileDrawer = f
       icon: Award,
       badge: isVi ? '5 cấp' : '5 Lvls',
       hidden: !canAccessRoute('certifications'),
+    },
+    {
+      id: 'pricing',
+      label: t.nav.pricing,
+      icon: CreditCard,
+      badge: 'Pro',
+      hidden: !canAccessRoute('pricing'),
     },
     {
       id: 'reports',

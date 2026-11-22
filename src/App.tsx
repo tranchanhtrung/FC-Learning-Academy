@@ -40,6 +40,9 @@ const AIAssistantView = lazy(() =>
 const CertificationsView = lazy(() =>
   import('./components/certifications/CertificationsView').then((m) => ({ default: m.CertificationsView }))
 );
+const PricingBillingView = lazy(() =>
+  import('./components/billing/PricingBillingView').then((m) => ({ default: m.PricingBillingView }))
+);
 const ReportsView = lazy(() =>
   import('./components/reports/ReportsView').then((m) => ({ default: m.ReportsView }))
 );
@@ -212,6 +215,7 @@ const MainAppContent: React.FC = () => {
             {activeTab === 'simAdmin' && canAccessRoute('simAdmin') && <SimulationAdminTab />}
             {activeTab === 'simVersionHistory' && canAccessRoute('simVersionHistory') && <ScenarioVersionHistoryTab />}
             {activeTab === 'certifications' && canAccessRoute('certifications') && <CertificationsView />}
+            {activeTab === 'pricing' && canAccessRoute('pricing') && <PricingBillingView />}
             {activeTab === 'reports' && canAccessRoute('reports') && <ReportsView />}
             {activeTab === 'administration' && canAccessRoute('administration') && <AdminManagementView />}
             {activeTab === 'dataImportCenter' && canAccessRoute('dataImportCenter') && <DataImportCenterView />}
