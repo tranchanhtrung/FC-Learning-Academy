@@ -64,6 +64,7 @@ export const AdminManagementView: React.FC = () => {
     firebaseProfile,
     officialAuthUser,
     dataSourceMode,
+    systemConfig,
     syncAllExperienceRolesToFirestore,
     hasPermission,
   } = useApp();
@@ -310,7 +311,7 @@ export const AdminManagementView: React.FC = () => {
               </h3>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {firebaseProfile?.isAdmin && (
+              {firebaseProfile?.isAdmin && systemConfig.demoModeEnabled && (
                 <button
                   type="button"
                   disabled={syncingRoles}
@@ -469,9 +470,17 @@ export const AdminManagementView: React.FC = () => {
               </div>
 
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
-                <span className="text-[10px] text-blue-700 font-bold block uppercase">Data Store Engine</span>
-                <p className="font-bold text-slate-900 mt-1">Full-Stack State & Disk Persistence</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Express REST + Local JSON Store (.data/academy-db.json)</p>
+                <span className="text-[10px] text-blue-700 font-bold block uppercase">Data & Storage Engine</span>
+                <p className="font-bold text-slate-900 mt-1">
+                  {systemConfig.databaseDriver === 'postgresql'
+                    ? 'PostgreSQL Production'
+                    : dataSourceMode === 'firestore'
+                    ? 'Firebase Firestore Live'
+                    : 'Express REST Persistence'}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  Storage: {systemConfig.storageDriver === 'cloudflare_r2' ? 'Cloudflare R2 (0đ Egress)' : 'Direct Server Storage (/api/storage)'}
+                </p>
               </div>
 
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">

@@ -222,7 +222,8 @@ export function sortLessonMaterialsAsc(items: LessonMaterialDoc[]): LessonMateri
 }
 
 export const FIRESTORE_INLINE_MAX_BYTES = 650 * 1024; // ~867KB base64, safely under Firestore 1MB doc limit
-export const FIREBASE_STORAGE_MAX_BYTES = 10 * 1024 * 1024; // 10MB max per storage.rules
+export const FIREBASE_STORAGE_MAX_BYTES = 50 * 1024 * 1024; // 50MB max for documents via R2 / Direct Storage
+export const VIDEO_STORAGE_MAX_BYTES = 250 * 1024 * 1024; // 250MB max for MP4/WebM videos via R2 / Direct Storage
 
 export function formatFileSizeLabel(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return 'External';
@@ -239,6 +240,9 @@ export function inferMaterialTypeFromFile(file: File): LessonMaterialType {
   }
   if (['ppt', 'pptx'].includes(ext) || file.type.includes('presentation') || file.type.includes('powerpoint')) {
     return 'slide';
+  }
+  if (['mp4', 'webm', 'mov', 'ogg'].includes(ext) || file.type.startsWith('video/')) {
+    return 'video';
   }
   if (['doc', 'docx', 'txt', 'md'].includes(ext) || file.type.includes('word')) {
     return 'docx';
@@ -287,6 +291,7 @@ export function getMaterialExtension(material: Pick<LessonMaterialDoc, 'fileName
 export type MaterialPreviewKind =
   | 'docx'
   | 'excel'
+  | 'pptx'
   | 'pdf'
   | 'image'
   | 'text'
@@ -339,6 +344,14 @@ export function detectPreviewKind(material: LessonMaterialDoc): MaterialPreviewK
   if (ext === 'csv') {
     return 'excel';
   }
+  if (
+    ext === 'pptx' ||
+    ext === 'ppt' ||
+    mime.includes('presentationml') ||
+    mime.includes('ms-powerpoint')
+  ) {
+    return 'pptx';
+  }
   if (ext === 'pdf' || mime === 'application/pdf') {
     return 'pdf';
   }
@@ -382,7 +395,9 @@ export async function getMaterialArrayBuffer(material: LessonMaterialDoc): Promi
   if (!targetUrl) {
     throw new Error('No file payload or URL available for this material.');
   }
-  const res = await fetch(targetUrl);
+  const res = await fetch(targetUrl, {
+    credentials: targetUrl.startsWith('/') ? 'same-origin' : 'omit',
+  });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} while loading material.`);
   }
@@ -411,6 +426,7 @@ export function sanitizeDocxHtml(html: string): string {
       'base',
     ]);
     const SAFE_URL_PROTOCOLS = /^(https?:|mailto:|tel:|#)/i;
+    const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
 
     const sanitizeNode = (node: Element) => {
       const children = Array.from(node.children);
@@ -427,11 +443,14 @@ export function sanitizeDocxHtml(html: string): string {
             el.removeAttribute(attr.name);
             continue;
           }
-          if ((name === 'href' || name === 'src' || name === 'xlink:href') && !SAFE_URL_PROTOCOLS.test(val)) {
-            if (name === 'href') {
-              el.setAttribute('href', '#');
-            } else {
-              el.removeAttribute(attr.name);
+          if (name === 'href' || name === 'src' || name === 'xlink:href') {
+            const isSafeImageSrc = tag === 'img' && name === 'src' && SAFE_DATA_IMAGE.test(val);
+            if (!SAFE_URL_PROTOCOLS.test(val) && !isSafeImageSrc) {
+              if (name === 'href') {
+                el.setAttribute('href', '#');
+              } else {
+                el.removeAttribute(attr.name);
+              }
             }
           }
         }

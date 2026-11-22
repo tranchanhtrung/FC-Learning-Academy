@@ -24,6 +24,9 @@ import {
   Loader2,
   AlertCircle,
   BookOpen,
+  Search,
+  Printer,
+  Presentation,
 } from 'lucide-react';
 
 interface ParsedSheet {
@@ -49,7 +52,10 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
   const [docxHtml, setDocxHtml] = useState<string | null>(null);
   const [sheets, setSheets] = useState<ParsedSheet[]>([]);
   const [activeSheetIndex, setActiveSheetIndex] = useState<number>(0);
+  const [sheetSearch, setSheetSearch] = useState<string>('');
   const [textContent, setTextContent] = useState<string | null>(null);
+  const [pptxSlides, setPptxSlides] = useState<Array<{ number: number; lines: string[] }>>([]);
+  const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
 
   useEffect(() => {
     let active = true;
@@ -61,7 +67,10 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
     setDocxHtml(null);
     setSheets([]);
     setActiveSheetIndex(0);
+    setSheetSearch('');
     setTextContent(null);
+    setPptxSlides([]);
+    setActiveSlideIdx(0);
 
     const loadContent = async () => {
       try {
@@ -97,11 +106,12 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
 
         if (kind === 'docx') {
           if (active) setLoading(true);
-          const [buffer, mammoth] = await Promise.all([
+          const [buffer, mammothMod] = await Promise.all([
             getMaterialArrayBuffer(material),
             import('mammoth'),
           ]);
-          const result = await mammoth.convertToHtml({ arrayBuffer: buffer });
+          const mammothApi: any = (mammothMod as any).default || mammothMod;
+          const result = await mammothApi.convertToHtml({ arrayBuffer: buffer });
           const cleanHtml = sanitizeDocxHtml(result.value || '');
           if (active) {
             setDocxHtml(
@@ -111,6 +121,65 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
                     ? 'Tài liệu Word không có nội dung văn bản hiển thị.'
                     : 'This Word document contains no displayable text.'
                 }</p>`
+            );
+          }
+          return;
+        }
+
+        if (kind === 'pptx') {
+          if (active) setLoading(true);
+          const remoteUrl = material.downloadUrl || material.externalUrl || '';
+          if (remoteUrl.startsWith('http://') || remoteUrl.startsWith('https://')) {
+            if (active) {
+              setBlobUrl(
+                `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(remoteUrl)}`
+              );
+            }
+            return;
+          }
+          // Inline/local .pptx: parse slide XML text via SheetJS CFB/ZIP reader or show clear fallback
+          try {
+            const buffer = await getMaterialArrayBuffer(material);
+            const XLSXMod: any = await import('xlsx');
+            const cfb = XLSXMod.CFB?.read?.(new Uint8Array(buffer), { type: 'array' });
+            const extracted: Array<{ number: number; lines: string[] }> = [];
+            if (cfb && Array.isArray(cfb.FullPaths)) {
+              const slideEntries = cfb.FullPaths.map((p: string, i: number) => ({ path: p, idx: i }))
+                .filter((e: { path: string }) => /ppt\/slides\/slide\d+\.xml$/i.test(e.path))
+                .sort((a: { path: string }, b: { path: string }) => {
+                  const na = Number(a.path.match(/slide(\d+)\.xml/i)?.[1] || 0);
+                  const nb = Number(b.path.match(/slide(\d+)\.xml/i)?.[1] || 0);
+                  return na - nb;
+                });
+              for (const entry of slideEntries) {
+                const rawContent = cfb.FileIndex[entry.idx]?.content;
+                if (!rawContent) continue;
+                const xml = new TextDecoder('utf-8').decode(new Uint8Array(rawContent));
+                const matches = Array.from(xml.matchAll(/<a:t[^>]*>([\s\S]*?)<\/a:t>/g)).map((m) =>
+                  m[1]
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .trim()
+                );
+                const lines = matches.filter(Boolean);
+                extracted.push({ number: extracted.length + 1, lines });
+              }
+            }
+            if (active && extracted.length > 0) {
+              setPptxSlides(extracted);
+              setActiveSlideIdx(0);
+              return;
+            }
+          } catch {
+            // Fall through to clean download prompt
+          }
+          if (active) {
+            setErrorMsg(
+              isVi
+                ? 'Slide PowerPoint này chưa thể đọc trực tiếp trong trình duyệt. Nhấn Tải Xuống để mở bằng PowerPoint.'
+                : 'This PowerPoint slide deck cannot be rendered inline. Click Download to open in PowerPoint.'
             );
           }
           return;
@@ -219,15 +288,37 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
   }
 
   if (kind === 'docx' && docxHtml !== null) {
+    const handlePrintDocx = () => {
+      const win = window.open('', '_blank', 'width=900,height=700');
+      if (!win) return;
+      win.document.write(
+        `<!doctype html><html><head><meta charset="utf-8"><title>${
+          (material.titleVi || material.fileName || 'Document').replace(/</g, '&lt;')
+        }</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:820px;margin:32px auto;padding:0 24px;line-height:1.65;color:#1e293b}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #cbd5e1;padding:6px 10px;text-align:left}img{max-width:100%}</style></head><body>${docxHtml}</body></html>`
+      );
+      win.document.close();
+      setTimeout(() => win.print(), 250);
+    };
+
     return (
       <div className={`w-full ${containerHeight} overflow-y-auto p-3 sm:p-5`}>
         <div className="max-w-3xl mx-auto bg-white rounded-xl border border-slate-200 shadow-xs p-6 sm:p-10">
-          <div className="flex items-center justify-between gap-2 pb-4 mb-5 border-b border-slate-100 text-[11px] font-mono text-slate-500">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-4 mb-5 border-b border-slate-100 text-[11px] font-mono text-slate-500">
             <span className="inline-flex items-center gap-1.5 font-semibold text-blue-700">
               <FileText className="w-3.5 h-3.5" />
               {material.fileName || 'Document.docx'}
             </span>
-            <span className="tabular-nums">{material.fileSizeLabel}</span>
+            <div className="flex items-center gap-3">
+              <span className="tabular-nums">{material.fileSizeLabel}</span>
+              <button
+                type="button"
+                onClick={handlePrintDocx}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-sans font-bold cursor-pointer"
+              >
+                <Printer className="w-3 h-3" />
+                <span>{isVi ? 'In / Lưu PDF' : 'Print / PDF'}</span>
+              </button>
+            </div>
           </div>
           <article
             className="text-slate-800 text-sm leading-relaxed space-y-3
@@ -252,9 +343,81 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
     );
   }
 
+  if (kind === 'pptx' && pptxSlides.length > 0) {
+    const slide = pptxSlides[activeSlideIdx] || pptxSlides[0];
+    return (
+      <div className={`w-full ${containerHeight} flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden`}>
+        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 font-bold text-slate-800">
+            <Presentation className="w-4 h-4 text-amber-600" />
+            <span>
+              Slide {slide.number} / {pptxSlides.length}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={activeSlideIdx <= 0}
+              onClick={() => setActiveSlideIdx((i) => Math.max(0, i - 1))}
+              className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 font-bold cursor-pointer"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={activeSlideIdx >= pptxSlides.length - 1}
+              onClick={() => setActiveSlideIdx((i) => Math.min(pptxSlides.length - 1, i + 1))}
+              className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 disabled:opacity-40 font-bold cursor-pointer"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 sm:p-10 bg-slate-100/80 flex items-start justify-center">
+          <div className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-10 space-y-3">
+            {slide.lines.length === 0 ? (
+              <p className="text-xs text-slate-500 italic">
+                {isVi ? '(Slide chỉ chứa hình ảnh hoặc biểu đồ)' : '(Visual-only slide)'}
+              </p>
+            ) : (
+              slide.lines.map((line, i) => (
+                <p
+                  key={i}
+                  className={
+                    i === 0
+                      ? 'text-lg sm:text-xl font-extrabold text-slate-900 pb-2 border-b border-slate-100'
+                      : 'text-sm text-slate-700 leading-relaxed'
+                  }
+                >
+                  {line}
+                </p>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === 'pptx' && blobUrl) {
+    return (
+      <div className={`w-full ${containerHeight} flex flex-col gap-2`}>
+        <iframe
+          src={blobUrl}
+          title={isVi ? material.titleVi : material.titleEn}
+          className="w-full flex-1 min-h-[420px] rounded-xl border border-slate-200 bg-white"
+        />
+      </div>
+    );
+  }
+
   if (kind === 'excel' && sheets.length > 0) {
     const currentSheet = sheets[activeSheetIndex] || sheets[0];
     const maxCols = currentSheet.rows.reduce((m, r) => Math.max(m, r.length), 0);
+    const query = sheetSearch.trim().toLowerCase();
+    const bodyRows = currentSheet.rows.slice(1).filter((row) =>
+      !query ? true : row.some((cell) => cell.toLowerCase().includes(query))
+    );
 
     return (
       <div className={`w-full ${containerHeight} flex flex-col bg-white rounded-xl border border-slate-200 overflow-hidden`}>
@@ -265,7 +428,10 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
               <button
                 key={sheet.name}
                 type="button"
-                onClick={() => setActiveSheetIndex(idx)}
+                onClick={() => {
+                  setActiveSheetIndex(idx);
+                  setSheetSearch('');
+                }}
                 className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-colors cursor-pointer ${
                   idx === activeSheetIndex
                     ? 'bg-[#0A192F] text-amber-400'
@@ -276,9 +442,21 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
               </button>
             ))}
           </div>
-          <span className="text-[11px] font-mono text-slate-500 tabular-nums shrink-0">
-            {currentSheet.rows.length} {isVi ? 'dòng' : 'rows'} · {maxCols} {isVi ? 'cột' : 'cols'}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={sheetSearch}
+                onChange={(e) => setSheetSearch(e.target.value)}
+                placeholder={isVi ? 'Lọc dòng...' : 'Filter rows...'}
+                className="pl-7 pr-2.5 py-1 text-[11px] rounded-lg border border-slate-300 bg-white w-36 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+            <span className="text-[11px] font-mono text-slate-500 tabular-nums shrink-0">
+              {bodyRows.length}/{Math.max(0, currentSheet.rows.length - 1)} {isVi ? 'dòng' : 'rows'} · {maxCols} {isVi ? 'cột' : 'cols'}
+            </span>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto">
@@ -304,7 +482,7 @@ export const LessonMaterialContentRenderer: React.FC<LessonMaterialContentRender
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {currentSheet.rows.slice(1).map((row, rIdx) => (
+                {bodyRows.map((row, rIdx) => (
                   <tr key={rIdx} className="hover:bg-amber-50/40">
                     <td className="px-2.5 py-1.5 text-right text-[10px] text-slate-400 bg-slate-50/70 border-r border-slate-200">
                       {rIdx + 2}
@@ -469,21 +647,30 @@ export const LessonMaterialPreviewModal: React.FC<LessonMaterialPreviewModalProp
 }) => {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  if (!material) return null;
-
-  const list = materials && materials.length > 0 ? materials : [material];
-  const currentIdx = list.findIndex((m) => m.id === material.id);
+  const list = materials && materials.length > 0 ? materials : material ? [material] : [];
+  const currentIdx = material ? list.findIndex((m) => m.id === material.id) : -1;
   const hasPrev = currentIdx > 0;
   const hasNext = currentIdx >= 0 && currentIdx < list.length - 1;
-  const liveLesson = resolveMaterialLessonInfo(material, COURSES);
 
+  // CRITICAL: Hooks MUST run unconditionally before early `if (!material) return null;`!
   useEffect(() => {
+    if (!material) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && hasPrev && onSelectMaterial) {
+        onSelectMaterial(list[currentIdx - 1]);
+      }
+      if (e.key === 'ArrowRight' && hasNext && onSelectMaterial) {
+        onSelectMaterial(list[currentIdx + 1]);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [material, onClose, hasPrev, hasNext, onSelectMaterial, list, currentIdx]);
+
+  if (!material) return null;
+
+  const liveLesson = resolveMaterialLessonInfo(material, COURSES);
 
   return (
     <div

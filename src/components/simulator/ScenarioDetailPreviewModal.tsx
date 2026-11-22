@@ -245,7 +245,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
     <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl border border-slate-200 max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         {/* Top Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-start justify-between gap-4 bg-white">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-start justify-between gap-4 bg-white shrink-0">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500">
               <span className="font-bold text-slate-900">{activeScenario.scenarioCode || activeScenario.id}</span>
@@ -277,7 +277,7 @@ export const ScenarioDetailPreviewModal: React.FC<ScenarioDetailPreviewModalProp
         </div>
 
         {/* Modal Tab Bar */}
-        <div className="px-6 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2 overflow-x-auto">
+        <div className="px-6 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center gap-2 overflow-x-auto shrink-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}

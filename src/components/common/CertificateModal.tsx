@@ -46,14 +46,14 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ certificate,
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto print:static print:inset-auto print:p-0 print:bg-white print:overflow-visible"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-4xl max-h-[94vh] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-amber-200/60 my-auto">
+      <div className="relative w-full max-w-4xl max-h-[94vh] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden border border-amber-200/60 my-auto print:max-w-none print:max-h-none print:overflow-visible print:shadow-none print:border-none print:rounded-none">
         {/* Top Control Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800 print:hidden shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -89,7 +89,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ certificate,
         </div>
 
         {/* Scrollable Certificate Canvas */}
-        <div className="overflow-y-auto flex-1">
+        <div className="overflow-y-auto flex-1 print:overflow-visible">
           <div className="p-4 sm:p-8 lg:p-12 bg-gradient-to-br from-[#FCFBF7] to-[#FAF8F0] text-slate-800 relative select-none">
             {/* Ornate Gold Border */}
             <div className="border-4 border-[#C5A059] p-1.5 sm:p-2 rounded-xl relative">

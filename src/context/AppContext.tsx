@@ -35,7 +35,9 @@ import {
   sortLessonMaterialsAsc,
   FIRESTORE_INLINE_MAX_BYTES,
   FIREBASE_STORAGE_MAX_BYTES,
+  VIDEO_STORAGE_MAX_BYTES,
 } from '../lib/lessonMaterials';
+import { uploadFileWithProgress } from '../lib/r2ClientUpload';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   SYSTEM_ROLES,
@@ -384,6 +386,7 @@ interface AppContextType {
     externalUrl?: string;
     preferredStorage?: 'auto' | LessonMaterialStorageMode;
     forceFirestore?: boolean;
+    onProgress?: (percent: number) => void;
   }) => Promise<LessonMaterialDoc | null>;
   deleteLessonMaterial: (materialId: string) => Promise<boolean>;
 }
@@ -3871,6 +3874,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       externalUrl?: string;
       preferredStorage?: 'auto' | LessonMaterialStorageMode;
       forceFirestore?: boolean;
+      onProgress?: (percent: number) => void;
     }): Promise<LessonMaterialDoc | null> => {
       try {
         const courseObj = findCourseMatch(courses, params.courseId, COURSES);
@@ -3970,46 +3974,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             storageMode = 'firestore_inline';
             inlineBase64 = b64;
           } else {
-            if (params.file.size > FIREBASE_STORAGE_MAX_BYTES) {
+            const isVideoFile =
+              resolvedType === 'video' ||
+              params.file.type.startsWith('video/') ||
+              /\.(mp4|webm)$/i.test(params.file.name);
+            const maxAllowed = isVideoFile ? VIDEO_STORAGE_MAX_BYTES : FIREBASE_STORAGE_MAX_BYTES;
+            if (params.file.size > maxAllowed) {
+              const limitMb = Math.round(maxAllowed / (1024 * 1024));
               showToast(
-                language === 'vi' ? 'Tệp vượt giới hạn 10MB.' : 'File exceeds 10MB limit.',
+                language === 'vi'
+                  ? `Tệp vượt giới hạn ${limitMb}MB.`
+                  : `File exceeds ${limitMb}MB limit.`,
                 'error'
               );
               return null;
             }
-            if (useFirestore) {
-              try {
-                const uploaded = await uploadAuthorizedTrainingFile({
-                  file: params.file,
-                  category: 'course_materials',
-                  recordId: courseObj.id,
-                  filePrefix: lessonObj.id,
-                });
-                storageMode = 'firebase_storage';
-                downloadUrl = uploaded.downloadUrl;
-                storagePath = uploaded.fullPath;
-              } catch (storageErr: any) {
-                if (canInline) {
-                  const b64 = await fileToBase64(params.file);
-                  if (b64.length <= 920000) {
-                    storageMode = 'firestore_inline';
-                    inlineBase64 = b64;
+            // Prefer unified Cloudflare R2 / Direct Storage (/api/storage/*) with real-time % progress
+            try {
+              const uploaded = await uploadFileWithProgress({
+                file: params.file,
+                category: isVideoFile ? 'course_videos' : 'course_materials',
+                recordId: courseObj.id,
+                authHeaders: authHeaders(),
+                onProgress: params.onProgress,
+              });
+              storageMode = 'firebase_storage';
+              downloadUrl = uploaded.downloadApiUrl;
+              storagePath = uploaded.objectKey;
+            } catch (r2Err: any) {
+              // Fallback to Firebase Storage (if verified Firebase) or Firestore inline (if <= 650KB)
+              if (useFirestore && params.file.size <= 10 * 1024 * 1024) {
+                try {
+                  const uploaded = await uploadAuthorizedTrainingFile({
+                    file: params.file,
+                    category: 'course_materials',
+                    recordId: courseObj.id,
+                    filePrefix: lessonObj.id,
+                  });
+                  storageMode = 'firebase_storage';
+                  downloadUrl = uploaded.downloadUrl;
+                  storagePath = uploaded.fullPath;
+                } catch (storageErr: any) {
+                  if (canInline) {
+                    const b64 = await fileToBase64(params.file);
+                    if (b64.length <= 920000) {
+                      storageMode = 'firestore_inline';
+                      inlineBase64 = b64;
+                    } else {
+                      throw storageErr;
+                    }
                   } else {
-                    throw storageErr;
+                    throw r2Err;
                   }
-                } else {
-                  throw storageErr;
                 }
-              }
-            } else {
-              // Demo sandbox supports larger simulated inline or fallback check
-              if (canInline) {
+              } else if (canInline) {
                 storageMode = 'firestore_inline';
                 inlineBase64 = await fileToBase64(params.file);
               } else {
-                storageMode = 'firebase_storage';
-                downloadUrl = trimmedUrl || `demo://storage/course_materials/${courseObj.id}/${lessonObj.id}_${params.file.name}`;
-                storagePath = `course_materials/${courseObj.id}/${lessonObj.id}_${params.file.name}`;
+                throw r2Err;
               }
             }
           }
@@ -4114,6 +4136,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteLessonMaterial = useCallback(
     async (materialId: string): Promise<boolean> => {
       try {
+        const targetMat = lessonMaterials.find((m) => m.id === materialId);
+        if (targetMat?.storagePath && (targetMat.downloadUrl || '').startsWith('/api/storage/file')) {
+          fetch(`/api/storage/object?key=${encodeURIComponent(targetMat.storagePath)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: authHeaders(),
+          }).catch(() => {});
+        }
         const useFirestore = isLiveFirestoreMode() && Boolean(auth.currentUser?.emailVerified);
         if (useFirestore) {
           await deleteLessonMaterialFromFirestore(materialId);

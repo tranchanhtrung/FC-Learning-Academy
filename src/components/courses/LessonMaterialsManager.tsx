@@ -11,6 +11,7 @@ import {
   doesMaterialMatchCourse,
   FIRESTORE_INLINE_MAX_BYTES,
   FIREBASE_STORAGE_MAX_BYTES,
+  VIDEO_STORAGE_MAX_BYTES,
   formatFileSizeLabel,
   inferMaterialTypeFromFile,
   downloadLessonMaterial,
@@ -178,6 +179,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
   const [forceFirestore, setForceFirestore] = useState<boolean>(dataSourceMode === 'firestore');
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
 
   useEffect(() => {
     setForceFirestore(dataSourceMode === 'firestore');
@@ -225,6 +227,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
     if (!canManage || !selectedCourseId || !selectedLessonId) return;
 
     setUploading(true);
+    setUploadProgress(5);
     try {
       const saved = await uploadLessonMaterial({
         courseId: selectedCourseId,
@@ -239,6 +242,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
         externalUrl: sourceKind === 'url' ? externalUrl.trim() : undefined,
         preferredStorage: sourceKind === 'url' ? 'external_link' : preferredStorage,
         forceFirestore: isVerifiedFirebase ? forceFirestore : false,
+        onProgress: (pct) => setUploadProgress(pct),
       });
 
       if (saved) {
@@ -254,6 +258,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
       }
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -502,7 +507,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt,.txt,.md,.png,.jpg,.jpeg,.webp"
+                  accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.pptx,.ppt,.txt,.md,.png,.jpg,.jpeg,.webp,.mp4,.webm"
                   onChange={(e) => handleFileChosen(e.target.files?.[0] || null)}
                   className="hidden"
                 />
@@ -520,13 +525,13 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                         ? isVi
                           ? 'Đủ chuẩn Firestore Inline (≤650KB)'
                           : 'Fits Firestore Inline (≤650KB)'
-                        : selectedFile.size <= FIREBASE_STORAGE_MAX_BYTES
+                        : selectedFile.size <= (materialType === 'video' ? VIDEO_STORAGE_MAX_BYTES : FIREBASE_STORAGE_MAX_BYTES)
                         ? isVi
-                          ? 'Dùng Firebase Storage (≤10MB)'
-                          : 'Uses Firebase Storage (≤10MB)'
+                          ? 'Dùng Cloud Storage (R2 / Direct Upload)'
+                          : 'Uses Cloud Storage (R2 / Direct Upload)'
                         : isVi
-                        ? 'Vượt giới hạn 10MB'
-                        : 'Exceeds 10MB cap'}
+                        ? 'Vượt dung lượng cho phép'
+                        : 'Exceeds max size'}
                     </span>
                   </div>
                 ) : (
@@ -538,7 +543,7 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
                         : 'Drag & drop file here or click to browse'}
                     </p>
                     <p className="text-[11px] text-slate-500 font-mono">
-                      PDF · XLSX / XLS / CSV · PPTX / PPT · DOCX · TXT / MD · PNG / JPG (Max 10 MB)
+                      PDF · XLSX · PPTX · DOCX · PNG/JPG (≤ 50 MB) · Video MP4/WEBM (≤ 250 MB)
                     </p>
                   </div>
                 )}
@@ -709,14 +714,22 @@ export const LessonMaterialsManager: React.FC<LessonMaterialsManagerProps> = ({
               <span>
                 {uploading
                   ? isVi
-                    ? 'Đang lưu học liệu...'
-                    : 'Uploading Material...'
+                    ? `Đang tải lên (${uploadProgress}%)...`
+                    : `Uploading (${uploadProgress}%)...`
                   : isVi
                   ? 'Lưu Học Liệu Vào Bài Học'
                   : 'Save Lesson Material'}
               </span>
             </button>
           </div>
+          {uploading && (
+            <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+              <div
+                className="h-full bg-amber-500 transition-all duration-200"
+                style={{ width: `${Math.max(8, uploadProgress)}%` }}
+              />
+            </div>
+          )}
         </form>
       )}
 

@@ -27,6 +27,8 @@ export const ReportsView: React.FC = () => {
     certificates,
     language,
     t,
+    systemConfig,
+    dataSourceMode,
   } = useApp();
 
   const [activeReportTab, setActiveReportTab] = useState<
@@ -35,13 +37,21 @@ export const ReportsView: React.FC = () => {
 
   const [selectedPropertyFilter, setSelectedPropertyFilter] = useState<string>('all');
 
-  const properties = [
-    'all',
-    'Grand Horizon Saigon Hotel & Residences',
-    'Royal Palm Resort & Spa Danang',
-    'Marina Bay Heritage Hotel Hanoi',
-    'Emerald Bay Luxury Suites Nha Trang',
-  ];
+  const properties = React.useMemo(() => {
+    const defaults =
+      systemConfig.demoModeEnabled && dataSourceMode === 'demo'
+        ? [
+            'Grand Horizon Saigon Hotel & Residences',
+            'Royal Palm Resort & Spa Danang',
+            'Marina Bay Heritage Hotel Hanoi',
+            'Emerald Bay Luxury Suites Nha Trang',
+          ]
+        : [];
+    const dynamic = users
+      .map((u) => u.property)
+      .filter((p): p is string => Boolean(p && p.trim()));
+    return ['all', ...Array.from(new Set([...defaults, ...dynamic]))];
+  }, [dataSourceMode, systemConfig.demoModeEnabled, users]);
 
   const filteredCandidates = React.useMemo(() => {
     return successionCandidates.filter((cand) => {
@@ -100,17 +110,12 @@ export const ReportsView: React.FC = () => {
   const readyNowCount = filteredCandidates.filter((c) => c.readiness === 'Ready Now').length;
   const readySoonCount = filteredCandidates.filter((c) => c.readiness === 'Ready in 1-2 Years').length;
 
-  const handleExportCSV = (filename: string, headers: string[], rows: string[][]) => {
-    const csvContent =
-      'data:text/csv;charset=utf-8,\uFEFF' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `${filename}_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportWorkbook = async (filename: string, sheetName: string, headers: string[], rows: (string | number)[][]) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+    XLSX.writeFile(wb, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleExportCurrentReport = () => {
@@ -118,37 +123,37 @@ export const ReportsView: React.FC = () => {
       const headers = ['Candidate Name', 'Current Position', 'Property', 'Target Role', 'Readiness', 'Competency Attainment', 'OJT Completed'];
       const rows = filteredCandidates.map((c) => {
         const u = users.find((user) => user.id === c.userId);
-        return [`"${u?.name || ''}"`, `"${c.currentRole}"`, `"${u?.property || ''}"`, `"${c.targetRole}"`, `"${c.readiness}"`, `"${c.competencyScorePercent}%"`, `"${c.completedOJTCount}"`];
+        return [u?.name || '', c.currentRole, u?.property || '', c.targetRole, c.readiness, `${c.competencyScorePercent}%`, c.completedOJTCount];
       });
-      handleExportCSV('FC_Succession_Pipeline_Report', headers, rows);
+      void handleExportWorkbook('FC_Succession_Pipeline_Report', 'Succession_Pipeline', headers, rows);
     } else if (activeReportTab === 'gap') {
       const headers = ['Competency Code', 'Competency Title', 'Average Gap (Levels)', 'Priority', 'Learners Assessed'];
       const rows = clusterGapMatrix.map((item) => [
-        `"${item.code}"`,
-        `"${item.title}"`,
-        `"${item.avgGap}"`,
-        `"${item.priority}"`,
-        `"${item.sampleSize}"`,
+        item.code,
+        item.title,
+        item.avgGap,
+        item.priority,
+        item.sampleSize,
       ]);
-      handleExportCSV('Cluster_Competency_Gap_Matrix', headers, rows);
+      void handleExportWorkbook('Cluster_Competency_Gap_Matrix', 'Gap_Matrix', headers, rows);
     } else if (activeReportTab === 'investment') {
       const headers = ['Metric', 'Value', 'Notes'];
       const rows = [
-        ['"Total Training Investment"', '"$18,500"', '"Curriculum, certification, and OJT audits"'],
-        ['"Estimated Cost Savings"', '"$142,000"', '"F&B leakage reduction & overtime optimization"'],
-        ['"Approved OJT Projects"', `"${submissions.filter((s) => s.status === 'approved').length}"`, '"Audited deliverables"'],
-        ['"Certificates Issued"', `"${certificates.length}"`, '"Verified academy credentials"'],
-        ['"Calculated Training ROI"', '"668%"', '"Annualized cluster impact"'],
+        ['Total Training Investment', '$18,500', 'Curriculum, certification, and OJT audits'],
+        ['Estimated Cost Savings', '$142,000', 'F&B leakage reduction & overtime optimization'],
+        ['Approved OJT Projects', submissions.filter((s) => s.status === 'approved').length, 'Audited deliverables'],
+        ['Certificates Issued', certificates.length, 'Verified academy credentials'],
+        ['Calculated Training ROI', '668%', 'Annualized cluster impact'],
       ];
-      handleExportCSV('FC_Academy_Training_ROI_Report', headers, rows);
+      void handleExportWorkbook('FC_Academy_Training_ROI_Report', 'Training_ROI', headers, rows);
     } else {
       const headers = ['Learner Name', 'Property', 'Course Code', 'Progress %', 'Status', 'Enrolled Date', 'Quiz Score'];
       const rows = filteredEnrollments.map((e) => {
         const u = users.find((user) => user.id === e.userId);
         const c = courses.find((course) => course.id === e.courseId);
-        return [`"${u?.name || ''}"`, `"${u?.property || ''}"`, `"${c?.code || ''}"`, `"${e.progressPercent}%"`, `"${e.status}"`, `"${e.enrolledDate}"`, `"${e.quizScore || 'N/A'}"`];
+        return [u?.name || '', u?.property || '', c?.code || '', `${e.progressPercent}%`, e.status, e.enrolledDate, e.quizScore ?? 'N/A'];
       });
-      handleExportCSV('Training_Completion_Analytics_Report', headers, rows);
+      void handleExportWorkbook('Training_Completion_Analytics_Report', 'Course_Completion', headers, rows);
     }
   };
 

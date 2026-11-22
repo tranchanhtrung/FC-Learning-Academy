@@ -84,7 +84,7 @@ interface EntitlementDoc {
 const formatVnd = (n: number) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
 
 export const PricingBillingView: React.FC = () => {
-  const { currentUser, courses, language, showToast, hasPermission } = useApp();
+  const { currentUser, courses, language, showToast, hasPermission, getAuthHeaders } = useApp();
   const isVi = language === 'vi';
   const isAdmin = hasPermission('view_administration');
 
@@ -121,14 +121,7 @@ export const PricingBillingView: React.FC = () => {
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
-  const authHeaders = useCallback(
-    () => ({
-      'Content-Type': 'application/json',
-      'x-user-id': currentUser.id,
-      'x-user-role': currentUser.role,
-    }),
-    [currentUser.id, currentUser.role]
-  );
+  const authHeaders = useCallback(() => getAuthHeaders(), [getAuthHeaders]);
 
   const loadBillingData = useCallback(async () => {
     setLoading(true);

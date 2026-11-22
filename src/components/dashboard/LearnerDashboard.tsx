@@ -288,8 +288,8 @@ export const LearnerDashboard: React.FC = () => {
               {myAssessment
                 ? `${myAssessment.overallGapAverage.toFixed(1)} ${isVi ? 'cấp độ' : 'Levels'}`
                 : isVi
-                ? '1.2 cấp độ'
-                : '1.2 Levels'}
+                ? 'Chưa đánh giá'
+                : 'Not Assessed'}
             </span>
           </div>
         </div>

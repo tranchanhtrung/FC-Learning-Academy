@@ -235,6 +235,53 @@ export const TalentReadinessView: React.FC = () => {
         col4: 'CRITICAL BLOCKER',
       }));
     }
+    if (selectedReport === 'department_gap_heatmap') {
+      return domains.map((d) => {
+        const domainRows = gapSummary.rows.filter((r) => r.domainId === d.id);
+        const avgGap =
+          domainRows.length > 0
+            ? (domainRows.reduce((s, r) => s + r.gap, 0) / domainRows.length).toFixed(2)
+            : '0.00';
+        const blockers = domainRows.filter((r) => r.gap > 0 && r.isCritical).length;
+        return {
+          col1: d.code,
+          col2: language === 'vi' ? d.nameVi : d.nameEn,
+          col3: `Avg Gap: ${avgGap}`,
+          col4: `${blockers} critical gaps`,
+        };
+      });
+    }
+    if (selectedReport === 'overdue_idp_actions') {
+      const todayMs = Date.now();
+      const overdue: Array<{ col1: string; col2: string; col3: string; col4: string }> = [];
+      talentIdps
+        .filter((i) => !isLearner || i.employeeId === currentUser.id)
+        .forEach((idp) => {
+          idp.objectives.forEach((obj) => {
+            const dueMs = obj.targetDate ? new Date(obj.targetDate).getTime() : Infinity;
+            if (obj.status !== 'completed' && dueMs < todayMs) {
+              overdue.push({
+                col1: idp.employeeName,
+                col2: obj.competencyCode,
+                col3: obj.status,
+                col4: `Due ${obj.targetDate}`,
+              });
+            }
+          });
+        });
+      return overdue;
+    }
+    if (selectedReport === 'learning_activity_completion') {
+      return developmentActivities
+        .filter((a) => !isLearner || a.employeeId === currentUser.id)
+        .slice(0, 15)
+        .map((a) => ({
+          col1: a.competencyCode,
+          col2: language === 'vi' ? a.titleVi : a.titleEn,
+          col3: `${a.ratioCategory} · ${a.status}`,
+          col4: a.evidenceFileName || a.evidenceNotes ? 'Evidence Attached' : 'Pending Evidence',
+        }));
+    }
     // Career Readiness & Cohort preview
     return scopeUsers.slice(0, 8).map((u) => {
       const targetPos = u.position.includes('Assistant Financial Controller')

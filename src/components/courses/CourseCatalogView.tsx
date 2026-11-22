@@ -61,12 +61,19 @@ export const CourseCatalogView: React.FC = () => {
     t,
     lessonMaterials,
     hasPermission,
+    activeTab,
   } = useApp();
 
   const isVi = language === 'vi';
+  const isMyLearningTab = activeTab === 'myLearning';
   const canManageLessonMaterials = hasPermission('manage_lesson_materials');
   const [viewMode, setViewMode] = useState<CatalogViewMode>('cards');
+  const [showEnrolledOnly, setShowEnrolledOnly] = useState<boolean>(isMyLearningTab);
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
+
+  React.useEffect(() => {
+    setShowEnrolledOnly(activeTab === 'myLearning');
+  }, [activeTab]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCourseForDetail, setSelectedCourseForDetail] = useState<Course | null>(null);
@@ -75,9 +82,22 @@ export const CourseCatalogView: React.FC = () => {
   });
   const [failedThumbnails, setFailedThumbnails] = useState<Record<string, boolean>>({});
 
+  const myEnrolledCourseIds = useMemo(() => {
+    const set = new Set<string>();
+    enrollments
+      .filter((e) => e.userId === currentUser.id)
+      .forEach((e) => {
+        set.add(e.courseId);
+        const matched = findCourseMatch(courses, e.courseId, COURSES);
+        if (matched) set.add(matched.id);
+      });
+    return set;
+  }, [courses, currentUser.id, enrollments]);
+
   const filteredCourses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return courses.filter((c) => {
+      if (showEnrolledOnly && !myEnrolledCourseIds.has(c.id)) return false;
       const matchesDomain = selectedDomain === 'all' || c.domainId === selectedDomain;
       const matchesDifficulty = selectedDifficulty === 'all' || c.difficulty === selectedDifficulty;
       if (!q) return matchesDomain && matchesDifficulty;
@@ -227,17 +247,34 @@ export const CourseCatalogView: React.FC = () => {
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Segmented View Mode Switch */}
-          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 self-start">
+          <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 self-start overflow-x-auto max-w-full">
             <button
-              onClick={() => setViewMode('cards')}
+              onClick={() => {
+                setViewMode('cards');
+                setShowEnrolledOnly(false);
+              }}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                viewMode === 'cards'
+                viewMode === 'cards' && !showEnrolledOnly
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5 text-blue-600" />
-              <span>{isVi ? `Danh Sách Khóa Học (${courses.length})` : `Course Grid (${courses.length})`}</span>
+              <span>{isVi ? `Tất Cả Khóa Học (${courses.length})` : `All Courses (${courses.length})`}</span>
+            </button>
+            <button
+              onClick={() => {
+                setViewMode('cards');
+                setShowEnrolledOnly(true);
+              }}
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                viewMode === 'cards' && showEnrolledOnly
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isVi ? `Khóa Tôi Đang Học (${myEnrolledCourseIds.size})` : `My Learning (${myEnrolledCourseIds.size})`}</span>
             </button>
             <button
               onClick={() => setViewMode('syllabus_matrix')}

@@ -513,29 +513,29 @@ export const AssessmentView: React.FC = () => {
       </div>
 
       {/* Main Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-        <div className="flex items-center gap-2 text-xs font-bold">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2 text-xs font-bold overflow-x-auto max-w-full">
           <button
             onClick={() => setActiveTabSub('matrix')}
-            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTabSub === 'matrix'
                 ? 'bg-[#0A192F] text-amber-400 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <Sliders className="w-4 h-4" />
+            <Sliders className="w-4 h-4 shrink-0" />
             <span>{language === 'vi' ? 'Ma Trận & Đánh Giá Năng Lực' : 'Competency Matrix & Scoring'}</span>
           </button>
 
           <button
             onClick={() => setActiveTabSub('idp')}
-            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTabSub === 'idp'
                 ? 'bg-[#0A192F] text-amber-400 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4 shrink-0" />
             <span>{t.assessment.idpTitle}</span>
             {idpTotal > 0 && (
               <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-400/20 text-amber-300 font-mono">
@@ -546,13 +546,13 @@ export const AssessmentView: React.FC = () => {
 
           <button
             onClick={() => setActiveTabSub('history')}
-            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap shrink-0 ${
               activeTabSub === 'history'
                 ? 'bg-[#0A192F] text-amber-400 shadow-sm'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
+            <History className="w-4 h-4 shrink-0" />
             <span>{language === 'vi' ? 'Lịch Sử & Xu Hướng Thu Hẹp Gap' : 'History & Gap Reduction Trend'}</span>
           </button>
         </div>

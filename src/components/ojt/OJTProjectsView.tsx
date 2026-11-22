@@ -57,22 +57,48 @@ export const OJTProjectsView: React.FC = () => {
   const [gradeScore, setGradeScore] = useState<number>(85);
   const [gradeFeedback, setGradeFeedback] = useState<string>('');
 
-  const handleDownloadTemplate = (assignment: OJTAssignment) => {
+  const extractAttachmentUrl = (text?: string): string | null => {
+    if (!text) return null;
+    const match = text.match(/\/api\/storage\/file\?key=[^\]\s|]+/);
+    return match ? match[0] : null;
+  };
+
+  const handleDownloadTemplate = async (assignment: OJTAssignment) => {
     const contextText =
       language === 'vi'
         ? assignment.propertyContext
         : assignment.propertyContextEn || assignment.propertyContext;
-    const csvData = `FC LEARNING ACADEMY - OJT DELIVERABLE TEMPLATE\nAssignment: ${assignment.code} - ${assignment.titleEn}\nContext: ${contextText}\nDeliverables Required: ${assignment.deliverablesEn.join('; ')}\n\nMonth,Room Revenue,F&B Revenue,Other Revenue,Total Revenue,Departmental Expenses,GOP,Flow-Through %\nJan,$850000,$420000,$110000,$1380000,$780000,$600000,-\nFeb,$920000,$460000,$120000,$1500000,$810000,$690000,75.0%\nMar,$980000,$490000,$130000,$1600000,$845000,$755000,65.0%`;
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', assignment.templateFileName || `${assignment.code}_Template.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const briefRows: (string | number)[][] = [
+      ['FC LEARNING ACADEMY — OFFICIAL OJT DELIVERABLE WORKBOOK'],
+      ['Assignment Code', assignment.code, 'Domain', assignment.domainId],
+      ['Title (VI)', assignment.titleVi],
+      ['Title (EN)', assignment.titleEn],
+      ['Hotel Context', contextText],
+      [],
+      ['#', 'Required Deliverable (VI)', 'Required Deliverable (EN)', 'Completion Status'],
+      ...assignment.deliverablesEn.map((dEn, idx) => [
+        idx + 1,
+        assignment.deliverablesVi[idx] || dEn,
+        dEn,
+        'In Progress',
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(briefRows), '1_OJT_Brief');
+
+    const modelRows: (string | number)[][] = [
+      ['Month', 'Room Revenue ($)', 'F&B Revenue ($)', 'Other Revenue ($)', 'Total Revenue ($)', 'Dept Expenses ($)', 'GOP ($)', 'GOP Margin (%)', 'Flow-Through (%)'],
+      ['Jan', 850000, 420000, 110000, 1380000, 780000, 600000, 43.5, '-'],
+      ['Feb', 920000, 460000, 120000, 1500000, 810000, 690000, 46.0, 75.0],
+      ['Mar', 980000, 490000, 130000, 1600000, 845000, 755000, 47.2, 65.0],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(modelRows), '2_Financial_Model');
+
+    const baseName = (assignment.templateFileName || `${assignment.code}_Template`)
+      .replace(/\.(xlsx|xls|csv|docx|pptx)$/i, '');
+    XLSX.writeFile(wb, `${baseName}.xlsx`);
   };
 
   const handleAiPreAudit = async () => {
@@ -342,7 +368,24 @@ export const OJTProjectsView: React.FC = () => {
                       <td className="py-3 px-3 text-slate-700 font-medium">
                         {language === 'vi' ? a?.titleVi : a?.titleEn}
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-500">{sub.fileName}</td>
+                      <td className="py-3 px-3 font-mono text-slate-600">
+                        {(() => {
+                          const dlUrl = extractAttachmentUrl(sub.submissionNotes);
+                          return dlUrl ? (
+                            <a
+                              href={dlUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-blue-700 hover:underline font-semibold"
+                            >
+                              <Download className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate max-w-[200px]">{sub.fileName}</span>
+                            </a>
+                          ) : (
+                            <span>{sub.fileName}</span>
+                          );
+                        })()}
+                      </td>
                       <td className="py-3 px-3">
                         <span
                           className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
@@ -611,6 +654,40 @@ export const OJTProjectsView: React.FC = () => {
             </div>
 
             <div className="space-y-3 text-xs">
+              {/* Learner Submitted Deliverable & Notes for Grader Review */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-slate-800">
+                    {language === 'vi' ? 'Nội dung bài nộp của học viên:' : 'Learner Submission:'}
+                  </span>
+                  {(() => {
+                    const dlUrl = extractAttachmentUrl(selectedSubmissionForGrade.submissionNotes);
+                    return dlUrl ? (
+                      <a
+                        href={dlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0A192F] text-amber-400 font-bold text-[11px] hover:bg-slate-800"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>{selectedSubmissionForGrade.fileName || (language === 'vi' ? 'Tải tệp đính kèm' : 'Download File')}</span>
+                      </a>
+                    ) : (
+                      <span className="font-mono text-[11px] text-slate-500">{selectedSubmissionForGrade.fileName}</span>
+                    );
+                  })()}
+                </div>
+                <p className="text-slate-700 whitespace-pre-wrap leading-relaxed max-h-36 overflow-y-auto bg-white p-2.5 rounded-lg border border-slate-200/80">
+                  {selectedSubmissionForGrade.submissionNotes || (language === 'vi' ? '(Không có ghi chú)' : '(No notes)')}
+                </p>
+                {selectedSubmissionForGrade.aiGraded && typeof selectedSubmissionForGrade.score === 'number' && (
+                  <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    <strong>AI Pre-Audit:</strong> {selectedSubmissionForGrade.score}/100
+                    {selectedSubmissionForGrade.feedback ? ` — ${selectedSubmissionForGrade.feedback}` : ''}
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
                   {language === 'vi' ? 'Điểm số (0 - 100):' : 'Score (0 - 100):'}

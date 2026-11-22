@@ -147,21 +147,170 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
     }
   };
 
-  const handleDownloadExcel = (fileName?: string) => {
-    // Generate realistic Excel / CSV template file for financial models
-    const sampleContent = `FC LEARNING ACADEMY - WORKING FINANCIAL MODEL\nCourse: ${course.code} - ${course.titleEn}\nAuthor: ${course.instructorName} (${course.instructorTitle})\nStandard: USALI 11th & 12th Edition\nGenerated for: ${currentUser.name} (${currentUser.position})\n\nPeriod,Occupancy,ADR,RevPAR,Total Revenue,Rooms Expense,F&B Cost,GOP,GOP Margin,Flow-Through\nMonth 1,74.5%,$185,$137.83,$1420000,$240000,$285000,$520000,36.6%,-\nMonth 2,82.0%,$192,$157.44,$1620000,$260000,$310000,$645000,39.8%,62.5%\nMonth 3,85.0%,$198,$168.30,$1730000,$272000,$325000,$715000,41.3%,63.6%\nMonth 4,88.5%,$205,$181.43,$1880000,$285000,$340000,$805000,42.8%,60.0%`;
+  const buildBuiltInWorkbook = async (matTitle?: string) => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([sampleContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const downloadName = fileName
-      ? `${course.code}_${fileName.replace(/\s+/g, '_')}.csv`
-      : `${course.code}_Working_Model_${currentUser.name.replace(/\s+/g, '_')}.csv`;
-    link.setAttribute('download', downloadName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Sheet 1: Course Overview & USALI Key Formulas from Real Syllabus
+    const overviewRows: (string | number)[][] = [
+      ['FC LEARNING ACADEMY — OFFICIAL WORKING MODEL (USALI 11th & 12th EDITION)'],
+      ['Course Code', course.code, 'Difficulty', course.difficulty],
+      ['Course Title', isVi ? course.titleVi : course.titleEn, 'Duration (hrs)', course.durationHours],
+      ['Template / Document', matTitle || `${course.code} Financial Model`, 'Prepared For', `${currentUser.name} (${currentUser.position})`],
+      ['Instructor', `${course.instructorName} — ${course.instructorTitle}`, 'Generated Date', new Date().toISOString().split('T')[0]],
+      [],
+      ['Session', 'Topic', 'Standards & USALI / IFRS Formulas', 'Practical Deliverables'],
+      ...(syllabus?.sessions || []).map((s) => [
+        `Session ${s.sessionNumber}`,
+        isVi ? s.titleVi : s.titleEn,
+        s.keyStandardsAndFormulas.join(' | '),
+        (isVi ? s.deliverablesVi : s.deliverablesEn).join('; '),
+      ]),
+    ];
+    const wsOverview = XLSX.utils.aoa_to_sheet(overviewRows);
+    XLSX.utils.book_append_sheet(wb, wsOverview, '1_USALI_Overview');
+
+    // Sheet 2: Working Hotel P&L & GOP Flow-Through Model
+    const pnlRows: (string | number)[][] = [
+      ['Period', 'Occupancy (%)', 'ADR ($)', 'RevPAR ($)', 'Rooms Revenue ($)', 'F&B Revenue ($)', 'Total Revenue ($)', 'Dept Expenses ($)', 'Undistributed OpEx ($)', 'GOP ($)', 'GOP Margin (%)', 'Flow-Through (%)'],
+      ['Month 1 (Base)', 74.5, 185, 137.83, 980000, 340000, 1420000, 480000, 420000, 520000, 36.6, '-'],
+      ['Month 2 (Ramp)', 82.0, 192, 157.44, 1120000, 390000, 1620000, 525000, 450000, 645000, 39.8, 62.5],
+      ['Month 3 (Peak)', 85.0, 198, 168.30, 1195000, 420000, 1730000, 555000, 460000, 715000, 41.3, 63.6],
+      ['Month 4 (Target)', 88.5, 205, 181.43, 1300000, 455000, 1880000, 595000, 480000, 805000, 42.8, 60.0],
+      ['Q1/Q2 Total / Avg', 82.5, 195, 161.25, 4595000, 1605000, 6650000, 2155000, 1810000, 2685000, 40.4, 62.0],
+    ];
+    const wsPnl = XLSX.utils.aoa_to_sheet(pnlRows);
+    XLSX.utils.book_append_sheet(wb, wsPnl, '2_Hotel_PnL_Model');
+
+    // Sheet 3: Practical Action & Control Checklist
+    const checklistRows: (string | number)[][] = [
+      ['#', 'Control / Deliverable Area', 'Status', 'Owner', 'Target Evidence'],
+      ...(isVi ? course.learningObjectivesVi : course.learningObjectivesEn).map((obj, idx) => [
+        idx + 1,
+        obj,
+        'Pending Review',
+        currentUser.name,
+        `Reconciled USALI Schedule & FC Sign-off (${course.code})`,
+      ]),
+    ];
+    const wsCheck = XLSX.utils.aoa_to_sheet(checklistRows);
+    XLSX.utils.book_append_sheet(wb, wsCheck, '3_Control_Checklist');
+
+    return { XLSX, wb };
+  };
+
+  const buildBuiltInGuidebookText = (matTitle: string, matDesc?: string) => {
+    const lines: string[] = [
+      `====================================================================`,
+      `FC LEARNING ACADEMY — OFFICIAL USALI GUIDEBOOK & REFERENCE`,
+      `====================================================================`,
+      `Document: ${matTitle}`,
+      `Course:   ${course.code} — ${isVi ? course.titleVi : course.titleEn}`,
+      `Author:   ${course.instructorName} (${course.instructorTitle})`,
+      `Learner:  ${currentUser.name} (${currentUser.position})`,
+      ``,
+      matDesc ? `SUMMARY:\n${matDesc}\n` : '',
+      `CORE LEARNING OBJECTIVES:`,
+      ...(isVi ? course.learningObjectivesVi : course.learningObjectivesEn).map((o, i) => `  ${i + 1}. ${o}`),
+      ``,
+      `STRUCTURED SESSIONS & USALI FORMULAS:`,
+      ...(syllabus?.sessions || []).flatMap((s) => [
+        `\n[Session ${s.sessionNumber}] ${isVi ? s.titleVi : s.titleEn} (${s.durationHours}h · ${s.format})`,
+        `  Topics: ${(isVi ? s.topicsVi : s.topicsEn).join(' | ')}`,
+        `  Formulas/Standards: ${s.keyStandardsAndFormulas.join(' | ')}`,
+        `  Practical Lab: ${isVi ? s.practicalLabVi : s.practicalLabEn}`,
+        `  Deliverables: ${(isVi ? s.deliverablesVi : s.deliverablesEn).join(', ')}`,
+      ]),
+    ];
+    return lines.join('\n');
+  };
+
+  const handleDownloadExcel = async (fileName?: string, matType: string = 'excel', matDesc?: string) => {
+    const safeBase = (fileName || `${course.code}_Working_Model`)
+      .replace(/[^a-zA-Z0-9À-ỹ._\-\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '_')
+      .slice(0, 80);
+
+    if (matType.toLowerCase() === 'pdf' || matType.toLowerCase() === 'checklist' || matType.toLowerCase() === 'slide') {
+      const content = buildBuiltInGuidebookText(fileName || course.titleVi, matDesc);
+      const htmlDoc = `<!doctype html><html lang="${isVi ? 'vi' : 'en'}"><head><meta charset="utf-8"><title>${(fileName || course.code).replace(/</g, '&lt;')}</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:860px;margin:32px auto;padding:0 24px;line-height:1.65;color:#0f172a}pre{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;background:#f8fafc;border:1px solid #cbd5e1;padding:24px;border-radius:12px;font-size:13px}.btn{display:inline-block;margin-bottom:16px;padding:10px 18px;background:#0a192f;color:#fbbf24;font-weight:700;border-radius:8px;border:none;cursor:pointer}@media print{.btn{display:none}}</style></head><body><button class="btn" onclick="window.print()">${isVi ? 'In / Lưu thành PDF' : 'Print / Save as PDF'}</button><pre>${content.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre></body></html>`;
+      const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${course.code}_${safeBase}_Guidebook.html`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return;
+    }
+
+    const { XLSX, wb } = await buildBuiltInWorkbook(fileName);
+    XLSX.writeFile(wb, `${course.code}_${safeBase}.xlsx`);
+  };
+
+  const handlePreviewBuiltInMaterial = async (mat: {
+    id: string;
+    title: string;
+    titleEn?: string;
+    type: string;
+    fileSize: string;
+    descriptionVi?: string;
+    descriptionEn?: string;
+  }) => {
+    const matTitle = isVi ? mat.title : mat.titleEn || mat.title;
+    const matDesc = isVi ? mat.descriptionVi || mat.descriptionEn : mat.descriptionEn || mat.descriptionVi;
+    const isExcelLike = mat.type.toLowerCase() === 'excel' || mat.type.toLowerCase() === 'xlsx';
+    let inlineBase64 = '';
+    let fileName = '';
+    let mimeType = '';
+    let materialType: LessonMaterialDoc['materialType'] = 'checklist';
+
+    if (isExcelLike) {
+      const { XLSX, wb } = await buildBuiltInWorkbook(matTitle);
+      inlineBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+      fileName = `${course.code}_${mat.id}.xlsx`;
+      mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      materialType = 'excel';
+    } else {
+      const text = buildBuiltInGuidebookText(matTitle, matDesc);
+      const bytes = new TextEncoder().encode(text);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      inlineBase64 = btoa(bin);
+      fileName = `${course.code}_${mat.id}_Guidebook.txt`;
+      mimeType = 'text/plain;charset=utf-8';
+      materialType = 'checklist';
+    }
+
+    const virtualDoc: LessonMaterialDoc = {
+      id: `builtin_${course.id}_${mat.id}`,
+      courseId: course.id,
+      courseCode: course.code,
+      lessonId: activeModule?.id || course.modules[0]?.id || 'mod_1',
+      lessonOrder: activeModuleIndex + 1,
+      lessonTitleVi: activeModule?.titleVi || course.titleVi,
+      lessonTitleEn: activeModule?.titleEn || course.titleEn,
+      titleVi: mat.title,
+      titleEn: mat.titleEn || mat.title,
+      descriptionVi: mat.descriptionVi,
+      descriptionEn: mat.descriptionEn,
+      materialType,
+      storageMode: 'firestore_inline',
+      fileName,
+      mimeType,
+      fileSizeLabel: mat.fileSize || 'USALI Standard',
+      inlineBase64,
+      isRequired: true,
+      uploadedByUid: 'academy_standard',
+      uploadedByName: course.instructorName,
+      uploadedByRole: 'lnd_manager',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setPreviewDoc(virtualDoc);
   };
 
   return (
@@ -205,86 +354,86 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
           </div>
         </div>
 
-        {/* Section Navigation Tabs */}
-        <div className="flex items-center gap-1 sm:gap-2 px-6 py-2 bg-slate-100 border-b border-slate-200 overflow-x-auto text-xs font-bold">
-          <button
-            onClick={() => setActiveTabSub('modules')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTabSub === 'modules'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-            <span>{language === 'vi' ? 'Nội Dung Bài Học' : 'Lessons & Video'}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTabSub('syllabus')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-              activeTabSub === 'syllabus'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-amber-600" />
-            <span>{language === 'vi' ? 'Đề Cương (Syllabus)' : 'Full Syllabus'}</span>
-            {syllabus && (
-              <span className="font-mono text-[10px] text-slate-500">({syllabus.sessions.length})</span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTabSub('materials')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              activeTabSub === 'materials'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{language === 'vi' ? 'Tài Liệu & File Excel Mẫu' : 'Working Materials & Excel'}</span>
-            <span className="font-mono text-[10px] text-emerald-800 bg-emerald-100 px-1.5 rounded-full tabular-nums">
-              {(course.materials?.length || 0) + courseLessonMaterials.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTabSub('case_study')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              activeTabSub === 'case_study'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-600" />
-            <span>{language === 'vi' ? 'Nghiên Cứu Tình Huống' : 'Case Study'}</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTabSub('assignment')}
-            className={`px-3.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-              activeTabSub === 'assignment'
-                ? 'bg-white text-slate-950 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
-            <span>{language === 'vi' ? 'Bài Tập Thực Tế (OJT)' : 'Practical Assignment'}</span>
-          </button>
-
-          <div className="ml-auto">
+        {/* Section Navigation Tabs — flex-wrap ensures Start Quiz button NEVER clips off-screen */}
+        <div className="flex flex-wrap items-center justify-between gap-1.5 px-4 sm:px-6 py-2 bg-slate-100 border-b border-slate-200 text-xs font-bold shrink-0">
+          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
             <button
-              onClick={() => {
-                onClose();
-                onStartQuiz(course);
-              }}
-              className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+              onClick={() => setActiveTabSub('modules')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                activeTabSub === 'modules'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <Award className="w-3.5 h-3.5" />
-              <span>{t.quiz.startExam}</span>
+              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+              <span>{language === 'vi' ? 'Nội Dung Bài Học' : 'Lessons'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTabSub('syllabus')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                activeTabSub === 'syllabus'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-600" />
+              <span>{language === 'vi' ? 'Đề Cương' : 'Syllabus'}</span>
+              {syllabus && (
+                <span className="font-mono text-[10px] text-slate-500">({syllabus.sessions.length})</span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTabSub('materials')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                activeTabSub === 'materials'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{language === 'vi' ? 'Tài Liệu & Excel Mẫu' : 'Materials & Excel'}</span>
+              <span className="font-mono text-[10px] text-emerald-800 bg-emerald-100 px-1.5 rounded-full tabular-nums">
+                {(course.materials?.length || 0) + courseLessonMaterials.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTabSub('case_study')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                activeTabSub === 'case_study'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-amber-600" />
+              <span>{language === 'vi' ? 'Tình Huống' : 'Case Study'}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTabSub('assignment')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                activeTabSub === 'assignment'
+                  ? 'bg-white text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Briefcase className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{language === 'vi' ? 'Bài Tập OJT' : 'OJT Project'}</span>
             </button>
           </div>
+
+          <button
+            onClick={() => {
+              onClose();
+              onStartQuiz(course);
+            }}
+            className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>{t.quiz.startExam}</span>
+          </button>
         </div>
 
         {/* Content Body */}
@@ -894,13 +1043,30 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                           </p>
                         </div>
 
-                        <button
-                          onClick={() => handleDownloadExcel(matTitle)}
-                          className="w-full py-2 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>{isVi ? 'Tải Về Máy Ngay' : 'Download Template'}</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewBuiltInMaterial(mat)}
+                            className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-blue-600" />
+                            <span>{isVi ? 'Xem Trực Tiếp' : 'Preview'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDownloadExcel(
+                                matTitle,
+                                mat.type,
+                                isVi ? mat.descriptionVi || mat.descriptionEn : mat.descriptionEn || mat.descriptionVi
+                              )
+                            }
+                            className="flex-1 py-2 px-3 bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>{isVi ? 'Tải Về Máy' : 'Download'}</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

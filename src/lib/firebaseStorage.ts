@@ -18,7 +18,8 @@ export interface StorageUploadResult {
   uploadedAt: string;
 }
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB limit per Spark-compatible security rules
+const MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB for documents via R2 / Direct Storage
+const MAX_VIDEO_SIZE_BYTES = 250 * 1024 * 1024; // 250 MB for MP4/WebM videos
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -34,6 +35,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/png',
   'image/jpeg',
   'image/webp',
+  'video/mp4',
+  'video/webm',
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -51,22 +54,27 @@ const ALLOWED_EXTENSIONS = new Set([
   'jpg',
   'jpeg',
   'webp',
+  'mp4',
+  'webm',
 ]);
 
 export function validateStorageFile(file: File): { valid: boolean; error?: string } {
   if (!file) return { valid: false, error: 'No file selected.' };
   if (file.size <= 0) return { valid: false, error: 'Selected file is empty.' };
-  if (file.size > MAX_FILE_SIZE_BYTES) {
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  const isVideo = ext === 'mp4' || ext === 'webm' || file.type.startsWith('video/');
+  const maxBytes = isVideo ? MAX_VIDEO_SIZE_BYTES : MAX_DOCUMENT_SIZE_BYTES;
+  if (file.size > maxBytes) {
+    const limitMb = Math.round(maxBytes / (1024 * 1024));
     return {
       valid: false,
-      error: `File "${file.name}" exceeds the 10MB limit (${(file.size / (1024 * 1024)).toFixed(2)}MB).`,
+      error: `File "${file.name}" exceeds the ${limitMb}MB limit (${(file.size / (1024 * 1024)).toFixed(2)}MB).`,
     };
   }
-  const ext = file.name.split('.').pop()?.toLowerCase() || '';
   if (!ALLOWED_EXTENSIONS.has(ext) && !ALLOWED_MIME_TYPES.has(file.type)) {
     return {
       valid: false,
-      error: `Unsupported file type "${ext || file.type}". Allowed: PDF, XLSX, CSV, DOCX, PPTX, TXT, MD, PNG, JPG, WEBP.`,
+      error: `Unsupported file type "${ext || file.type}". Allowed: PDF, XLSX, CSV, DOCX, PPTX, TXT, MD, PNG, JPG, WEBP, MP4, WEBM.`,
     };
   }
   return { valid: true };
