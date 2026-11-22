@@ -123,6 +123,8 @@ export {
   buildFirestoreUserProfilePayload,
   syncOfficialUserToFirestore,
   seedOfficialUsersToFirestore,
+  isDemoUserRecord,
+  purgeDemoUsersFromFirestore,
   fetchRolePermissionsFromFirestore,
   saveRolePermissionPolicyToFirestore,
   seedDefaultRolePermissionsToFirestore,

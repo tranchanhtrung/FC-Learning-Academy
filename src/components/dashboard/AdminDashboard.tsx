@@ -25,6 +25,8 @@ export const AdminDashboard: React.FC = () => {
     language,
     setActiveTab,
     canAccessRoute,
+    dataSourceMode,
+    systemConfig,
   } = useApp();
 
   const isVi = language === 'vi';
@@ -49,13 +51,16 @@ export const AdminDashboard: React.FC = () => {
   const readyNowCount = successionCandidates.filter((c) => c.readiness === 'Ready Now').length;
   const ready1To2Count = successionCandidates.filter((c) => c.readiness === 'Ready in 1-2 Years').length;
 
-  // Dynamically include all hotel properties represented by learners so newly imported properties appear automatically
-  const defaultProperties = [
-    'Grand Horizon Saigon Hotel & Residences',
-    'Royal Palm Resort & Spa Danang',
-    'Marina Bay Heritage Hotel Hanoi',
-    'Emerald Bay Luxury Suites Nha Trang',
-  ];
+  // Only show sample hotel properties in Demo mode; in Official Production show actual learner properties
+  const defaultProperties =
+    systemConfig.demoModeEnabled && dataSourceMode === 'demo'
+      ? [
+          'Grand Horizon Saigon Hotel & Residences',
+          'Royal Palm Resort & Spa Danang',
+          'Marina Bay Heritage Hotel Hanoi',
+          'Emerald Bay Luxury Suites Nha Trang',
+        ]
+      : [];
   const dynamicProperties = Array.from(
     new Set([
       ...defaultProperties,
@@ -276,26 +281,34 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {propertyStats.map((prop, idx) => (
-              <div key={idx} className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-bold text-slate-800 truncate">{prop.name}</span>
-                  <span className="font-bold text-slate-600 font-mono tabular-nums shrink-0">{prop.rate}%</span>
-                </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div
-                    className={`${prop.color} h-full rounded-full transition-all duration-500`}
-                    style={{ width: `${prop.rate}%` }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span>
-                    {prop.count} {isVi ? 'học viên tài chính' : 'finance learners'}
-                  </span>
-                  <span>{isVi ? 'Chuẩn hóa USALI' : 'USALI Standardized'}</span>
-                </div>
+            {propertyStats.length === 0 ? (
+              <div className="p-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center text-xs text-slate-500">
+                {isVi
+                  ? 'Chưa có học viên chính thức theo khách sạn. Dữ liệu sẽ tự cập nhật khi có tài khoản học viên mới.'
+                  : 'No official hotel learners yet. Property stats populate automatically as learners join.'}
               </div>
-            ))}
+            ) : (
+              propertyStats.map((prop, idx) => (
+                <div key={idx} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-slate-800 truncate">{prop.name}</span>
+                    <span className="font-bold text-slate-600 font-mono tabular-nums shrink-0">{prop.rate}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div
+                      className={`${prop.color} h-full rounded-full transition-all duration-500`}
+                      style={{ width: `${prop.rate}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>
+                      {prop.count} {isVi ? 'học viên tài chính' : 'finance learners'}
+                    </span>
+                    <span>{isVi ? 'Chuẩn hóa USALI' : 'USALI Standardized'}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

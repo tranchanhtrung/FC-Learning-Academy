@@ -359,6 +359,92 @@ export async function seedOfficialUsersToFirestore(
   };
 }
 
+const DEMO_USER_ID_SET = new Set([
+  'user_admin',
+  'user_lnd',
+  'user_fc1',
+  'user_fc2',
+  'user_gm',
+  'user_learner1',
+  'user_learner2',
+  'user_learner3',
+  'user_learner4',
+  'user_learner5',
+  'user_learner6',
+  'user_learner7',
+  'user_learner8',
+  'user_learner9',
+  'user_learner10',
+]);
+
+export function isDemoUserRecord(record: {
+  id?: string;
+  uid?: string;
+  employeeId?: string;
+  email?: string;
+}): boolean {
+  const id = String(record.id || '').trim();
+  const uid = String(record.uid || '').trim();
+  const empId = String(record.employeeId || '').trim();
+  const email = String(record.email || '').trim().toLowerCase();
+  return (
+    DEMO_USER_ID_SET.has(id) ||
+    DEMO_USER_ID_SET.has(uid) ||
+    DEMO_USER_ID_SET.has(empId) ||
+    email.endsWith('@fclearning.com')
+  );
+}
+
+/**
+ * Permanently deletes all synthetic demo user profiles and demo admin entries
+ * from Firestore (`userProfiles` & `admins`), keeping real user accounts intact.
+ */
+export async function purgeDemoUsersFromFirestore(): Promise<{
+  deletedProfiles: number;
+  deletedAdmins: number;
+  failedCount: number;
+}> {
+  let deletedProfiles = 0;
+  let deletedAdmins = 0;
+  let failedCount = 0;
+
+  try {
+    const profileSnap = await getDocs(collection(db, 'userProfiles'));
+    for (const docSnap of profileSnap.docs) {
+      const data = docSnap.data() as Record<string, any>;
+      if (isDemoUserRecord({ id: docSnap.id, uid: data.uid, employeeId: data.employeeId, email: data.email })) {
+        try {
+          await deleteDoc(doc(db, 'userProfiles', docSnap.id));
+          deletedProfiles++;
+        } catch {
+          failedCount++;
+        }
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'userProfiles');
+  }
+
+  try {
+    const adminSnap = await getDocs(collection(db, 'admins'));
+    for (const docSnap of adminSnap.docs) {
+      const data = docSnap.data() as Record<string, any>;
+      if (isDemoUserRecord({ id: docSnap.id, uid: data.uid, email: data.email })) {
+        try {
+          await deleteDoc(doc(db, 'admins', docSnap.id));
+          deletedAdmins++;
+        } catch {
+          failedCount++;
+        }
+      }
+    }
+  } catch {
+    // non-owner admins may not have delete permission on `admins` collection
+  }
+
+  return { deletedProfiles, deletedAdmins, failedCount };
+}
+
 export async function fetchRolePermissionsFromFirestore(): Promise<RolePermissionPolicyDoc[]> {
   try {
     const snap = await getDocs(collection(db, 'rolePermissions'));

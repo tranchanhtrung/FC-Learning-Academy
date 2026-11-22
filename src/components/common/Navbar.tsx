@@ -486,7 +486,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
                   )}
 
                   {/* Official / Experience Role Switcher */}
-                  {canSwitchRoles && (
+                  {canSwitchRoles && orderedRoleUsers.length > 0 && (
                     <div>
                       <div className="px-4 py-1.5 bg-slate-950/50 flex items-center justify-between">
                         <span className="text-[11px] uppercase font-bold tracking-wider text-slate-400">

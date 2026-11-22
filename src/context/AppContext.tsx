@@ -14,6 +14,8 @@ import {
   writeScenarioVersionToFirestore,
   syncOfficialUserToFirestore,
   seedOfficialUsersToFirestore,
+  isDemoUserRecord,
+  purgeDemoUsersFromFirestore,
   saveRolePermissionPolicyToFirestore,
   seedDefaultRolePermissionsToFirestore,
   fetchLessonMaterialsFromFirestore,
@@ -279,6 +281,11 @@ interface AppContextType {
     failedCount: number;
     adminSyncedCount: number;
   }>;
+  purgeDemoUsersInFirestore: () => Promise<{
+    deletedProfiles: number;
+    deletedAdmins: number;
+    failedCount: number;
+  }>;
   dataSourceMode: 'demo' | 'firestore';
   setDataSourceMode: (mode: 'demo' | 'firestore') => void;
   systemConfig: SystemRuntimeConfig;
@@ -485,28 +492,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
   const [productionCounts, setProductionCounts] = useState<Record<string, number>>({});
   const [systemConfig, setSystemConfig] = useState<SystemRuntimeConfig>({
-    appMode: 'demo',
-    demoModeEnabled: true,
+    appMode: 'production',
+    demoModeEnabled: false,
     databaseDriver: 'local_json',
     storageDriver: 'local_upload',
-    sandboxPaymentsEnabled: true,
+    sandboxPaymentsEnabled: false,
   });
+  const systemConfigRef = useRef<SystemRuntimeConfig>(systemConfig);
 
   useEffect(() => {
     fetch('/api/system/config')
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (!cfg) return;
-        setSystemConfig({
+        const resolved: SystemRuntimeConfig = {
           appMode: cfg.appMode === 'production' ? 'production' : 'demo',
           demoModeEnabled: Boolean(cfg.demoModeEnabled),
           databaseDriver: cfg.databaseDriver === 'postgresql' ? 'postgresql' : 'local_json',
           storageDriver: cfg.storageDriver === 'cloudflare_r2' ? 'cloudflare_r2' : 'local_upload',
           sandboxPaymentsEnabled: Boolean(cfg.sandboxPaymentsEnabled),
-        });
+        };
+        systemConfigRef.current = resolved;
+        setSystemConfig(resolved);
+        // Immediately strip synthetic initial demo state when server confirms Production mode
+        if (!resolved.demoModeEnabled) {
+          setUsers((prev) => prev.filter((u) => !isDemoUserRecord(u)));
+          setAssessments((prev) => prev.filter((a) => !isDemoUserRecord({ id: a.learnerId })));
+          setIdps((prev) => prev.filter((p) => !isDemoUserRecord({ id: p.learnerId })));
+          setCertificates((prev) => prev.filter((c) => !isDemoUserRecord({ id: c.userId })));
+        }
       })
       .catch(() => {
-        // Keep safe defaults if config endpoint is temporarily unreachable
+        // Keep fail-closed production defaults if config endpoint is temporarily unreachable
       });
   }, []);
 
@@ -897,9 +914,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then((data) => {
         if (!data) return;
         if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) return;
-        if (Array.isArray(data.users) && data.users.length > 0) {
-          setUsers(data.users);
-          setCurrentUserState((prev) => data.users.find((u: User) => u.id === prev.id) || prev);
+        if (Array.isArray(data.users)) {
+          const cleanUsers = systemConfigRef.current.demoModeEnabled
+            ? data.users
+            : data.users.filter((u: User) => !isDemoUserRecord(u));
+          if (cleanUsers.length > 0 || !systemConfigRef.current.demoModeEnabled) {
+            setUsers(cleanUsers);
+            if (cleanUsers.length > 0) {
+              setCurrentUserState((prev) => cleanUsers.find((u: User) => u.id === prev.id) || prev);
+            }
+          }
         }
         if (Array.isArray(data.competencies) && data.competencies.length > 0) {
           setCompetencies(data.competencies);
@@ -907,11 +931,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (Array.isArray(data.enrollments)) setEnrollments(data.enrollments);
         if (Array.isArray(data.quizAttempts)) setQuizAttempts(data.quizAttempts);
         if (Array.isArray(data.submissions)) setSubmissions(data.submissions);
-        if (Array.isArray(data.assessments) && data.assessments.length > 0) {
-          setAssessments(data.assessments);
+        if (Array.isArray(data.assessments)) {
+          if (data.assessments.length > 0 || !systemConfigRef.current.demoModeEnabled) {
+            setAssessments(data.assessments);
+          }
         }
-        if (Array.isArray(data.idps) && data.idps.length > 0) {
-          setIdps(data.idps);
+        if (Array.isArray(data.idps)) {
+          if (data.idps.length > 0 || !systemConfigRef.current.demoModeEnabled) {
+            setIdps(data.idps);
+          }
         }
         if (Array.isArray(data.certificates)) setCertificates(data.certificates);
         if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
@@ -957,25 +985,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           fetchProductionTransactionalData(fb.uid, isAdminOrLnd),
         ]);
 
-        let syncedUserProfiles = txData.userProfiles;
-        if (activeMode === 'firestore' && isAdminOrLnd && systemConfig.demoModeEnabled) {
-          const existingProfileIds = new Set(
-            syncedUserProfiles.map((p: any) => String(p.uid || p.id || ''))
-          );
-          const missingExperienceUsers = INITIAL_USERS.filter((u) => !existingProfileIds.has(u.id));
-          if (missingExperienceUsers.length > 0) {
-            try {
-              await seedOfficialUsersToFirestore(missingExperienceUsers, {
-                overwrite: false,
-                existingIds: existingProfileIds,
-              });
-              const refreshed = await getFirestoreCollectionDocs('userProfiles');
-              syncedUserProfiles = refreshed.docs;
-            } catch (seedErr) {
-              console.warn('Auto-seed experience roles note:', seedErr);
-            }
-          }
-        }
+        // Never auto-seed synthetic demo accounts into Official Firestore!
+        // Filter out legacy demo documents when Production mode is active (DEMO_MODE=false).
+        const syncedUserProfiles = systemConfigRef.current.demoModeEnabled
+          ? txData.userProfiles
+          : txData.userProfiles.filter(
+              (p: any) =>
+                !isDemoUserRecord({
+                  id: p.id,
+                  uid: p.uid,
+                  employeeId: p.employeeId,
+                  email: p.email,
+                })
+            );
 
         let syncedRolePermissions = txData.rolePermissions || [];
         if (activeMode === 'firestore' && isAdminOrLnd) {
@@ -1040,14 +1062,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             for (const u of firestoreUsers) {
               if (!byId.has(u.id)) {
                 byId.set(u.id, u);
-              }
-            }
-            if (!isAdminOrLnd) {
-              // Non-admin verified user sees their official profile plus experience roster metadata for supervisor lookup
-              for (const u of INITIAL_USERS) {
-                if (!byId.has(u.id)) {
-                  byId.set(u.id, u);
-                }
               }
             }
             const mergedUsers = Array.from(byId.values());
@@ -1622,6 +1636,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [dataSourceMode, language, refreshFromFirestore, showToast]
   );
+
+  const purgeDemoUsersInFirestore = useCallback(async () => {
+    if (!auth.currentUser?.emailVerified) {
+      throw new Error(
+        language === 'vi'
+          ? 'Cần đăng nhập tài khoản Firebase Admin đã xác minh email.'
+          : 'Verified Firebase Admin login is required.'
+      );
+    }
+    const res = await purgeDemoUsersFromFirestore();
+    await refreshFromFirestore('firestore');
+    showToast(
+      language === 'vi'
+        ? `Đã xóa vĩnh viễn ${res.deletedProfiles} hồ sơ mẫu và ${res.deletedAdmins} quyền admin mẫu trên Firestore.`
+        : `Permanently deleted ${res.deletedProfiles} demo profiles and ${res.deletedAdmins} demo admin records from Firestore.`,
+      res.failedCount > 0 ? 'error' : 'success'
+    );
+    return res;
+  }, [language, refreshFromFirestore, showToast]);
 
   const refreshTalentData = useCallback(async () => {
     if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) {
@@ -4145,6 +4178,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [talentNotifications, notifications, language]
   );
 
+  const effectiveSuccessionCandidates = useMemo<SuccessionCandidate[]>(() => {
+    if (systemConfig.demoModeEnabled && dataSourceMode === 'demo') {
+      return SUCCESSION_CANDIDATES;
+    }
+    // Derive succession bench dynamically from real non-demo users & readiness reviews
+    const realLearners = users.filter((u) => !isDemoUserRecord(u) && u.role === 'learner');
+    return realLearners
+      .map((u): SuccessionCandidate => {
+        const latestReview = careerReadinessReviews.find((r) => r.employeeId === u.id);
+        const pct = latestReview
+          ? Math.round(latestReview.achievementPct)
+          : Math.min(100, Math.round((u.currentLevel / Math.max(1, u.targetLevel)) * 100));
+        const statusStr = String(latestReview?.finalStatus || '');
+        const readiness: SuccessionCandidate['readiness'] =
+          statusStr === 'Ready for Promotion' || statusStr === 'Ready for Review' || pct >= 90
+            ? 'Ready Now'
+            : statusStr === 'Approaching Readiness' || pct >= 70
+            ? 'Ready in 1-2 Years'
+            : 'Developing';
+        const supervisor = u.supervisorId ? users.find((m) => m.id === u.supervisorId) : undefined;
+        const userCerts = certificates.filter((c) => c.userId === u.id);
+        const highestCertLevel = userCerts.reduce((max, c) => Math.max(max, Number(c.level) || 0), 0);
+        return {
+          userId: u.id,
+          currentRole: u.position || 'Accountant',
+          targetRole: latestReview?.targetPosition || 'Financial Controller',
+          readiness,
+          competencyScorePercent: pct,
+          completedOJTCount: submissions.filter((s) => s.userId === u.id && s.status === 'approved').length,
+          certLevel: highestCertLevel,
+          mentorName: latestReview?.reviewerName || supervisor?.name || 'FC Mentor',
+        };
+      })
+      .sort((a, b) => b.competencyScorePercent - a.competencyScorePercent);
+  }, [careerReadinessReviews, certificates, dataSourceMode, submissions, systemConfig.demoModeEnabled, users]);
+
   return (
     <AppContext.Provider
       value={{
@@ -4170,7 +4239,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assessments,
         idps,
         certificates,
-        successionCandidates: SUCCESSION_CANDIDATES,
+        successionCandidates: effectiveSuccessionCandidates,
         auditLogs,
         enrollCourse,
         updateCourseProgress,
@@ -4239,6 +4308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openAuthModal,
         closeAuthModal,
         syncAllExperienceRolesToFirestore,
+        purgeDemoUsersInFirestore,
         dataSourceMode,
         setDataSourceMode,
         systemConfig,

@@ -98,6 +98,8 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
     refreshFromFirestore,
     signOutOfficialAccount,
     syncAllExperienceRolesToFirestore,
+    purgeDemoUsersInFirestore,
+    systemConfig,
     showToast,
     hasPermission,
   } = useApp();
@@ -545,6 +547,24 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
     setErrorMsg(null);
     try {
       await syncAllExperienceRolesToFirestore(overwrite);
+      await runReadWriteCheck();
+    } catch (err: any) {
+      setErrorMsg(formatFirebaseErrorVi(err, isVi));
+    } finally {
+      setSeedingRoles(false);
+    }
+  };
+
+  const handlePurgeDemoRoles = async () => {
+    setSeedingRoles(true);
+    setErrorMsg(null);
+    try {
+      const res = await purgeDemoUsersInFirestore();
+      setInfoMsg(
+        isVi
+          ? `Đã dọn sạch ${res.deletedProfiles} hồ sơ mẫu và ${res.deletedAdmins} bản ghi admin mẫu trên Firestore.`
+          : `Purged ${res.deletedProfiles} demo profiles and ${res.deletedAdmins} demo admin records from Firestore.`
+      );
       await runReadWriteCheck();
     } catch (err: any) {
       setErrorMsg(formatFirebaseErrorVi(err, isVi));
@@ -1414,18 +1434,39 @@ export const FirebaseAuthModal: React.FC<FirebaseAuthModalProps> = ({
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-bold text-slate-900 flex items-center gap-1.5">
-                          <Users className="w-4 h-4 text-amber-600" />
-                          <span>{isVi ? `Đồng bộ ${INITIAL_USERS.length} hồ sơ mẫu lên Firestore` : 'Seed Experience Roles'}</span>
+                          <Users className="w-4 h-4 text-rose-600" />
+                          <span>
+                            {isVi
+                              ? 'Dọn sạch toàn bộ tài khoản mẫu (@fclearning.com) trên Firestore'
+                              : 'Purge Demo Accounts (@fclearning.com) from Firestore'}
+                          </span>
                         </span>
                         <button
                           type="button"
                           disabled={seedingRoles}
-                          onClick={() => handleSeedExperienceRoles(false)}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer disabled:opacity-50"
+                          onClick={handlePurgeDemoRoles}
+                          className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer disabled:opacity-50"
                         >
-                          {seedingRoles ? '...' : isVi ? 'Đồng bộ ngay' : 'Sync Roles'}
+                          {seedingRoles ? '...' : isVi ? 'Xóa sạch hồ sơ mẫu' : 'Purge Demo Users'}
                         </button>
                       </div>
+
+                      {systemConfig.demoModeEnabled && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+                          <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <Users className="w-4 h-4 text-amber-600" />
+                            <span>{isVi ? `Đồng bộ ${INITIAL_USERS.length} hồ sơ mẫu lên Firestore` : 'Seed Experience Roles'}</span>
+                          </span>
+                          <button
+                            type="button"
+                            disabled={seedingRoles}
+                            onClick={() => handleSeedExperienceRoles(false)}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer disabled:opacity-50"
+                          >
+                            {seedingRoles ? '...' : isVi ? 'Đồng bộ ngay' : 'Sync Roles'}
+                          </button>
+                        </div>
+                      )}
 
                       <form onSubmit={handleGrantAdmin} className="pt-3 border-t border-slate-200 space-y-2">
                         <div className="font-bold text-slate-800 flex items-center gap-1.5">
