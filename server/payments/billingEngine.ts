@@ -4,7 +4,7 @@ import path from 'path';
 import type { User } from '../../src/types/index.ts';
 import { readJsonSafe, writeJsonAtomic } from '../persistence.ts';
 import { loadPgSnapshot, queuePgSnapshotSave } from '../db/postgresStore.ts';
-import {
+import type {
   BillingCoupon,
   BillingOrder,
   BillingProduct,

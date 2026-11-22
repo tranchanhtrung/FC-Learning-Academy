@@ -1,5 +1,5 @@
-import { Course, LearningPath, CourseMaterial, CourseCaseStudy } from '../types';
-import { COURSE_SYLLABI_BY_CODE } from './courseSyllabi';
+import type { Course, LearningPath, CourseMaterial, CourseCaseStudy } from '../types/index.ts';
+import { COURSE_SYLLABI_BY_CODE } from './courseSyllabi.ts';
 
 const RAW_COMPREHENSIVE_COURSES: Course[] = [
   // =========================================================================

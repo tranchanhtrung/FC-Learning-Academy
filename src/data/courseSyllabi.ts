@@ -1,6 +1,6 @@
-import { CompetencyDomain, Course, CourseSyllabus } from '../types';
-import { DOMAIN_1_TO_3_SYLLABI } from './syllabi/domain1to3';
-import { DOMAIN_4_TO_6_SYLLABI } from './syllabi/domain4to6';
+import type { CompetencyDomain, Course, CourseSyllabus } from '../types/index.ts';
+import { DOMAIN_1_TO_3_SYLLABI } from './syllabi/domain1to3.ts';
+import { DOMAIN_4_TO_6_SYLLABI } from './syllabi/domain4to6.ts';
 
 export const COURSE_SYLLABI_BY_CODE: Record<string, CourseSyllabus> = {
   ...DOMAIN_1_TO_3_SYLLABI,

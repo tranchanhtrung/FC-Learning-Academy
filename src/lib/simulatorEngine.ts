@@ -1,4 +1,4 @@
-import {
+import type {
   CalculationAuditItem,
   CapexAssumptions,
   Competency,
@@ -24,7 +24,7 @@ import {
   SimulationRoleplayPromptDoc,
   SimulationScenarioDoc,
   SimulationTaskDoc,
-} from '../types';
+} from '../types/index.ts';
 
 export const STANDARD_EVALUATION_RUBRIC_BLUEPRINT: Array<{
   criterionCode: string;

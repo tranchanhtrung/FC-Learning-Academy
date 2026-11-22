@@ -75,7 +75,7 @@ export function getR2Config(): R2Config {
   const accountId = (process.env.R2_ACCOUNT_ID || '').trim();
   const accessKeyId = (process.env.R2_ACCESS_KEY_ID || '').trim();
   const secretAccessKey = (process.env.R2_SECRET_ACCESS_KEY || '').trim();
-  const bucket = (process.env.R2_BUCKET || '').trim();
+  const bucket = (process.env.R2_BUCKET || process.env.R2_BUCKET_NAME || '').trim();
   const publicBaseUrl = (process.env.R2_PUBLIC_URL || '').trim().replace(/\/+$/, '');
   const enabled = Boolean(accountId && accessKeyId && secretAccessKey && bucket);
   return { enabled, accountId, accessKeyId, secretAccessKey, bucket, publicBaseUrl };

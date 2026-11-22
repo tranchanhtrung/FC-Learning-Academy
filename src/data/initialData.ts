@@ -1,4 +1,4 @@
-import {
+import type {
   User,
   CompetencyDomain,
   Competency,
@@ -10,8 +10,8 @@ import {
   SuccessionCandidate,
   AssessmentRecord,
   IndividualDevelopmentPlan,
-} from '../types';
-import { COMPREHENSIVE_COURSES, PROGRESSIVE_LEARNING_PATHS } from './curriculumData';
+} from '../types/index.ts';
+import { COMPREHENSIVE_COURSES, PROGRESSIVE_LEARNING_PATHS } from './curriculumData.ts';
 
 export const INITIAL_USERS: User[] = [
   {

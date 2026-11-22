@@ -1,4 +1,4 @@
-import { CourseSyllabus } from '../../types';
+import type { CourseSyllabus } from '../../types/index.ts';
 
 export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
   // =========================================================================

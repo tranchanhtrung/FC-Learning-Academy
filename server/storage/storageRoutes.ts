@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import type { User } from '../../src/types/index.ts';
 import {
-  R2ObjectCategory,
+  type R2ObjectCategory,
   buildSafeObjectKey,
   createR2PresignedUrl,
   deleteR2ObjectIfConfigured,

@@ -1,8 +1,11 @@
-import { Pool } from 'pg';
+import pg from 'pg';
+
+const { Pool } = pg;
+type PgPool = InstanceType<typeof Pool>;
 
 export type PgStoreKey = 'academy_db' | 'auth_accounts' | 'billing_store';
 
-let pool: Pool | null = null;
+let pool: PgPool | null = null;
 let tableReadyPromise: Promise<boolean> | null = null;
 const writeQueues = new Map<PgStoreKey, Promise<void>>();
 
@@ -15,7 +18,7 @@ export function isPostgresEnabled(): boolean {
   return url.startsWith('postgres://') || url.startsWith('postgresql://');
 }
 
-function getPool(): Pool | null {
+function getPool(): PgPool | null {
   if (!isPostgresEnabled()) return null;
   if (pool) return pool;
 

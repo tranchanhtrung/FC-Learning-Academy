@@ -5,7 +5,7 @@ import type {
   RolePermissionPolicyDoc,
   RolePermissionsMap,
   UserRole,
-} from '../types';
+} from '../types/index.ts';
 
 export const SYSTEM_ROLES: UserRole[] = [
   'super_admin',
