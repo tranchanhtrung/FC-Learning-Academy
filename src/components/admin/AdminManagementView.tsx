@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole, ProficiencyLevel } from '../../types';
+import { isUserDisabledRecord } from '../../lib/firebase';
 import { DataImportCenterView } from './DataImportCenterView';
 import { RolePermissionsControlPanel } from './RolePermissionsControlPanel';
 import { LessonMaterialsManager } from '../courses/LessonMaterialsManager';
@@ -9,6 +10,8 @@ import {
   Database,
   Plus,
   Edit2,
+  Trash2,
+  AlertTriangle,
   X,
   RefreshCw,
   ShieldCheck,
@@ -58,6 +61,7 @@ export const AdminManagementView: React.FC = () => {
     auditLogs,
     addUser,
     updateUser,
+    disableUser,
     showToast,
     language,
     t,
@@ -74,6 +78,12 @@ export const AdminManagementView: React.FC = () => {
   const [syncingRoles, setSyncingRoles] = useState<boolean>(false);
   const [userModalOpen, setUserModalOpen] = useState<boolean>(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [pendingDisableUser, setPendingDisableUser] = useState<User | null>(null);
+  const [disablingUser, setDisablingUser] = useState<boolean>(false);
+  const visibleUsers = useMemo(
+    () => users.filter((u) => !isUserDisabledRecord(u)),
+    [users]
+  );
   const [userForm, setUserForm] = useState<{
     name: string;
     email: string;
@@ -296,8 +306,8 @@ export const AdminManagementView: React.FC = () => {
               <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
                 <span>
                   {language === 'vi'
-                    ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${users.length})`
-                    : `System Users & Role Permissions (${users.length})`}
+                    ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${visibleUsers.length})`
+                    : `System Users & Role Permissions (${visibleUsers.length})`}
                 </span>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
@@ -360,8 +370,12 @@ export const AdminManagementView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((u) => {
+                {visibleUsers.map((u) => {
                   const isSignedInOwner = officialAuthUser?.id === u.id;
+                  const isProtectedAccount =
+                    isSignedInOwner ||
+                    currentUser.id === u.id ||
+                    (u.email || '').toLowerCase() === 'tranchanhtrung@gmail.com';
                   return (
                   <tr key={u.id} className="hover:bg-slate-50/80">
                     <td className="py-3 px-3 font-bold text-slate-900 flex items-center gap-2.5">
@@ -400,14 +414,31 @@ export const AdminManagementView: React.FC = () => {
                       Level {u.currentLevel} / {u.targetLevel}
                     </td>
                     {canManageUsers && (
-                      <td className="py-3 px-3 text-right">
-                        <button
-                          onClick={() => openEditModal(u)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>{language === 'vi' ? 'Sửa' : 'Edit'}</span>
-                        </button>
+                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer transition-colors"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{language === 'vi' ? 'Sửa' : 'Edit'}</span>
+                          </button>
+                          {!isProtectedAccount && (
+                            <button
+                              type="button"
+                              onClick={() => setPendingDisableUser(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 font-bold text-[11px] cursor-pointer transition-colors"
+                              title={
+                                language === 'vi'
+                                  ? 'Chuyển tài khoản sang trạng thái vô hiệu hóa (Disabled) và ẩn khỏi danh sách'
+                                  : 'Disable and hide this user account'
+                              }
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>{language === 'vi' ? 'Xoá' : 'Delete'}</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -682,6 +713,124 @@ export const AdminManagementView: React.FC = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Soft-Disable User Confirmation Modal */}
+      {pendingDisableUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !disablingUser) setPendingDisableUser(null);
+          }}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    {language === 'vi' ? 'Xác Nhận Xoá (Vô Hiệu Hóa) Tài Khoản' : 'Confirm Disable User Account'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {language === 'vi'
+                      ? 'Chuyển trạng thái sang Disabled và ẩn khỏi hệ thống'
+                      : 'Set account status to disabled and hide from directory'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={disablingUser}
+                onClick={() => setPendingDisableUser(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer disabled:opacity-40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3">
+              <img
+                src={pendingDisableUser.avatar}
+                alt={pendingDisableUser.name}
+                className="w-10 h-10 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900 truncate">{pendingDisableUser.name}</p>
+                <p className="text-[11px] text-slate-500 truncate">{pendingDisableUser.email}</p>
+                <span className="inline-block mt-1 px-2 py-0.5 rounded bg-slate-200/80 text-slate-700 font-bold text-[10px]">
+                  {t.roles[pendingDisableUser.role]}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200 text-rose-900 space-y-1 leading-relaxed">
+              <p className="font-bold">
+                {language === 'vi'
+                  ? 'Thao tác này sẽ thực hiện:'
+                  : 'This action will:'}
+              </p>
+              <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-rose-800">
+                <li>
+                  {language === 'vi'
+                    ? 'Chuyển trạng thái tài khoản sang Disabled (vô hiệu hóa) và thu hồi quyền đăng nhập.'
+                    : 'Set account status to Disabled and revoke sign-in access.'}
+                </li>
+                <li>
+                  {language === 'vi'
+                    ? 'Ẩn hoàn toàn khỏi danh sách nhân sự và menu chuyển đổi vai trò.'
+                    : 'Hide the user completely from the staff directory and role menus.'}
+                </li>
+                <li>
+                  {language === 'vi'
+                    ? 'Bảo toàn lịch sử đào tạo, kết quả đánh giá và nhật ký kiểm toán.'
+                    : 'Preserve historical training, assessment, and audit trail records.'}
+                </li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={disablingUser}
+                onClick={() => setPendingDisableUser(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+              >
+                {t.common.cancel}
+              </button>
+              <button
+                type="button"
+                disabled={disablingUser}
+                onClick={async () => {
+                  setDisablingUser(true);
+                  try {
+                    const ok = await disableUser(pendingDisableUser.id);
+                    if (ok) {
+                      setPendingDisableUser(null);
+                    }
+                  } finally {
+                    setDisablingUser(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold cursor-pointer disabled:opacity-60"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>
+                  {disablingUser
+                    ? language === 'vi'
+                      ? 'Đang xử lý...'
+                      : 'Disabling...'
+                    : language === 'vi'
+                    ? 'Xác Nhận Xoá'
+                    : 'Confirm Disable'}
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

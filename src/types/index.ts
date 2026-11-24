@@ -22,6 +22,9 @@ export interface User {
   targetLevel: ProficiencyLevel;
   careerPathId?: string;
   joinedDate: string;
+  status?: 'active' | 'disabled';
+  disabledAt?: string;
+  disabledBy?: string;
 }
 
 export interface CompetencyDomain {
@@ -777,6 +780,9 @@ export interface FirebaseUserProfileDoc {
   targetLevel?: ProficiencyLevel;
   careerPathId?: string;
   joinedDate?: string;
+  status?: 'active' | 'disabled';
+  disabledAt?: string;
+  disabledBy?: string;
   isAdmin?: boolean;
   emailVerified?: boolean;
   updatedAt: string;

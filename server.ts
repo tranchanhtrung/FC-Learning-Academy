@@ -73,7 +73,7 @@ import { createAuthEngine } from './server/authEngine.ts';
 import { createStorageRouter } from './server/storage/storageRoutes.ts';
 import { getR2Config } from './server/storage/r2StorageEngine.ts';
 import { createBillingEngine } from './server/payments/billingEngine.ts';
-import { getPaymentProvidersStatus } from './server/payments/providers.ts';
+import { getPaymentProvidersStatus, isSandboxPaymentAllowed } from './server/payments/providers.ts';
 import {
   checkPostgresHealth,
   isPostgresEnabled,
@@ -707,7 +707,7 @@ app.get('/api/health', async (req, res) => {
     model: GEMINI_MODEL,
     persistenceFile: fs.existsSync(DB_FILE),
     counts: {
-      users: db.users.length,
+      users: db.users.filter((u) => u.status !== 'disabled' && u.careerPathId !== '__DISABLED__').length,
       courses: COURSES.length,
       competencies: db.competencies.length,
       assessments: db.assessments.length,
@@ -727,7 +727,7 @@ app.get('/api/system/config', (_req, res) => {
     storageDriver: r2.enabled ? 'cloudflare_r2' : 'local_upload',
     storageLimits: { maxDocumentMb: 50, maxVideoMb: 250 },
     paymentProviders: getPaymentProvidersStatus(),
-    sandboxPaymentsEnabled: !IS_PRODUCTION || process.env.PAYMENT_SANDBOX === 'true',
+    sandboxPaymentsEnabled: isSandboxPaymentAllowed(),
   });
 });
 
@@ -742,8 +742,23 @@ app.use('/api/storage', storageRouter);
 // Mount Glitch-Proof Billing, Entitlement & Webhook Engine (/api/billing/*)
 const billingEngine = createBillingEngine({
   dataDir: DATA_DIR,
+  orderSigningSecret: authEngine.getSigningSecret(),
   getRequestActor,
   isAdminActor: (req) => hasActorPermission(req, 'view_administration'),
+  onCourseUnlocked: (userId, courseId) => {
+    const existing = db.enrollments.find((e) => e.userId === userId && e.courseId === courseId);
+    if (!existing) {
+      db.enrollments.unshift({
+        id: `enr_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        userId,
+        courseId,
+        progressPercent: 0,
+        completedModules: [],
+        status: 'in_progress',
+        enrolledDate: new Date().toISOString().split('T')[0],
+      });
+    }
+  },
   recordAudit,
   persistMainDB: () => persistDB(db),
 });
@@ -1391,7 +1406,7 @@ Evaluate rigorously in ${language === 'vi' ? 'Vietnamese' : 'English'}.`;
 // Bootstrap entire persisted LMS dataset
 app.get('/api/bootstrap', (req, res) => {
   res.json({
-    users: db.users,
+    users: db.users.filter((u) => u.status !== 'disabled' && u.careerPathId !== '__DISABLED__'),
     competencies: db.competencies,
     enrollments: db.enrollments,
     quizAttempts: db.quizAttempts,
@@ -1639,12 +1654,19 @@ app.put('/api/users/:id', (req, res) => {
     'targetLevel',
     'careerPathId',
     'supervisorId',
+    'status',
   ];
   editableFields.forEach((field) => {
     if (req.body[field] !== undefined) {
       (allowedUpdates as any)[field] = req.body[field];
     }
   });
+
+  if (allowedUpdates.status === 'disabled') {
+    allowedUpdates.disabledAt = new Date().toISOString();
+    allowedUpdates.disabledBy = actor?.name || 'System Admin';
+    authEngine.revokeUserSessions(db.users[idx].id, db.users[idx].email);
+  }
 
   db.users[idx] = { ...db.users[idx], ...allowedUpdates };
   recordAudit(
@@ -1656,6 +1678,45 @@ app.put('/api/users/:id', (req, res) => {
   persistDB(db);
   return res.json({ success: true, user: db.users[idx] });
 });
+
+const handleSoftDisableUser = (req: express.Request, res: express.Response) => {
+  const { id } = req.params;
+  const actor = getRequestActor(req);
+  if (!hasActorPermission(req, 'manage_users_rbac')) {
+    return res.status(403).json({ error: 'Current role lacks permission to disable user accounts.' });
+  }
+  const idx = db.users.findIndex((u) => u.id === id);
+  if (idx < 0) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+  const target = db.users[idx];
+  if (actor && actor.id === target.id) {
+    return res.status(400).json({ error: 'Không thể tự vô hiệu hóa tài khoản đang đăng nhập.' });
+  }
+  if ((target.email || '').toLowerCase() === 'tranchanhtrung@gmail.com') {
+    return res.status(403).json({ error: 'Không thể vô hiệu hóa tài khoản chủ sở hữu hệ thống.' });
+  }
+
+  const now = new Date().toISOString();
+  db.users[idx] = {
+    ...target,
+    status: 'disabled',
+    disabledAt: now,
+    disabledBy: actor ? actor.name : 'System Admin',
+  };
+  authEngine.revokeUserSessions(target.id, target.email);
+  recordAudit(
+    'DISABLE_USER',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    `${target.name} (${target.email})`,
+    'Account status set to disabled and hidden from active directory'
+  );
+  persistDB(db);
+  return res.json({ success: true, user: db.users[idx] });
+};
+
+app.post('/api/users/:id/disable', handleSoftDisableUser);
+app.delete('/api/users/:id', handleSoftDisableUser);
 
 // --- COMPETENCIES ---
 app.post('/api/competencies', (req, res) => {

@@ -8,6 +8,7 @@ import {
 } from '../../data/courseSyllabi';
 import { LessonMaterialsManager } from './LessonMaterialsManager';
 import { doesMaterialMatchCourse, findCourseMatch } from '../../lib/lessonMaterials';
+import { getCoursePriceVnd, formatVnd } from '../../lib/coursePricing';
 import { COURSES } from '../../data/initialData';
 import {
   Search,
@@ -31,6 +32,8 @@ import {
   Target,
   Upload,
   Paperclip,
+  CreditCard,
+  Sparkles,
 } from 'lucide-react';
 
 type CatalogViewMode = 'cards' | 'syllabus_matrix' | 'lesson_materials';
@@ -54,6 +57,9 @@ export const CourseCatalogView: React.FC = () => {
     competencies,
     enrollments,
     enrollCourse,
+    hasCourseAccess,
+    hasAllAccess,
+    startCourseCheckout,
     setSelectedCourseForPlayer,
     setSelectedLessonIdForPlayer,
     currentUser,
@@ -123,7 +129,7 @@ export const CourseCatalogView: React.FC = () => {
         syllabusText.includes(q);
       return matchesDomain && matchesDifficulty && matchesSearch;
     });
-  }, [courses, selectedDomain, selectedDifficulty, searchQuery]);
+  }, [courses, selectedDomain, selectedDifficulty, searchQuery, showEnrolledOnly, myEnrolledCourseIds]);
 
   const totalCurriculumHours = useMemo(
     () => courses.reduce((sum, c) => sum + Number(c.durationHours || 0), 0),
@@ -169,12 +175,20 @@ export const CourseCatalogView: React.FC = () => {
     downloadMarkdownFile(`${course.code}_Syllabus_${language.toUpperCase()}.md`, md);
   };
 
+  const handleEnrollOrOpenCourse = async (course: Course, lessonId: string | null = null) => {
+    if (hasCourseAccess(course)) {
+      await enrollCourse(course.id);
+      setSelectedLessonIdForPlayer(lessonId);
+      setSelectedCourseForPlayer(course);
+    } else {
+      startCourseCheckout(course, lessonId);
+    }
+  };
+
   const handleOpenCourseAtSession = (course: Course, sessionNumber: number) => {
     const mod = course.modules[Math.max(0, sessionNumber - 1)] || course.modules[0];
     setSelectedCourseForDetail(null);
-    enrollCourse(course.id);
-    setSelectedLessonIdForPlayer(mod?.id || null);
-    setSelectedCourseForPlayer(course);
+    void handleEnrollOrOpenCourse(course, mod?.id || null);
   };
 
   const detailSyllabus = selectedCourseForDetail ? getCourseSyllabus(selectedCourseForDetail) : undefined;
@@ -396,6 +410,8 @@ export const CourseCatalogView: React.FC = () => {
             });
             const isEnrolled = !!enrollment;
             const isCompleted = enrollment?.status === 'completed';
+            const isUnlocked = hasCourseAccess(course);
+            const coursePriceVnd = getCoursePriceVnd(course);
             const syllabus = getCourseSyllabus(course);
             const domainObj = domains.find((d) => d.id === course.domainId);
             const imgFailed = !!failedThumbnails[course.id];
@@ -439,6 +455,20 @@ export const CourseCatalogView: React.FC = () => {
                         </span>
                       )}
                     </div>
+
+                    <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-slate-900/90 border border-slate-700/80 text-amber-300 font-mono tabular-nums">
+                      {isEnrolled
+                        ? isVi
+                          ? 'Đã Ghi Danh'
+                          : 'Enrolled'
+                        : isUnlocked
+                        ? hasAllAccess
+                          ? 'Pro All-Access'
+                          : isVi
+                          ? 'Đã Mở Khóa'
+                          : 'Unlocked'
+                        : formatVnd(coursePriceVnd)}
+                    </span>
 
                     <span className="absolute bottom-3 right-3 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-900/85 text-slate-100 font-mono tabular-nums">
                       {course.durationHours}h
@@ -514,17 +544,14 @@ export const CourseCatalogView: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => {
-                        if (!isEnrolled) {
-                          enrollCourse(course.id);
-                        }
-                        setSelectedCourseForPlayer(course);
-                      }}
+                      onClick={() => void handleEnrollOrOpenCourse(course)}
                       className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0 ${
                         isCompleted
                           ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                           : isEnrolled
                           ? 'bg-blue-600 text-white hover:bg-blue-500'
+                          : isUnlocked
+                          ? 'bg-emerald-700 text-white hover:bg-emerald-600'
                           : 'bg-[#0A192F] hover:bg-[#1E293B] text-amber-400'
                       }`}
                     >
@@ -540,9 +567,14 @@ export const CourseCatalogView: React.FC = () => {
                             {isVi ? 'Tiếp Tục' : 'Continue'} ({enrollment.progressPercent}%)
                           </span>
                         </>
+                      ) : isUnlocked ? (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{isVi ? 'Vào Học Ngay' : 'Start Learning'}</span>
+                        </>
                       ) : (
                         <>
-                          <PlayCircle className="w-3.5 h-3.5" />
+                          <CreditCard className="w-3.5 h-3.5" />
                           <span>{t.courses.enroll}</span>
                         </>
                       )}
@@ -702,14 +734,22 @@ export const CourseCatalogView: React.FC = () => {
                               {isVi ? 'Mở Toàn Bộ Syllabus' : 'Full Modal'}
                             </button>
                             <button
-                              onClick={() => {
-                                if (!enrollment) enrollCourse(course.id);
-                                setSelectedCourseForPlayer(course);
-                              }}
+                              onClick={() => void handleEnrollOrOpenCourse(course)}
                               className="px-3.5 py-1.5 rounded-lg bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-xs font-bold cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                             >
-                              <PlayCircle className="w-3.5 h-3.5" />
-                              <span>{isVi ? 'Vào Học' : 'Launch'}</span>
+                              {hasCourseAccess(course) ? (
+                                <>
+                                  <PlayCircle className="w-3.5 h-3.5" />
+                                  <span>{isVi ? 'Vào Học' : 'Launch'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CreditCard className="w-3.5 h-3.5" />
+                                  <span>
+                                    {isVi ? 'Ghi Danh' : 'Enroll'} · {formatVnd(getCoursePriceVnd(course))}
+                                  </span>
+                                </>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -1189,13 +1229,25 @@ export const CourseCatalogView: React.FC = () => {
                   onClick={() => {
                     const course = selectedCourseForDetail;
                     setSelectedCourseForDetail(null);
-                    enrollCourse(course.id);
-                    setSelectedCourseForPlayer(course);
+                    void handleEnrollOrOpenCourse(course);
                   }}
                   className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  <PlayCircle className="w-4 h-4" />
-                  <span>{isVi ? 'Bắt Đầu Khóa Học Ngay' : 'Start Course Now'}</span>
+                  {hasCourseAccess(selectedCourseForDetail) ? (
+                    <>
+                      <PlayCircle className="w-4 h-4" />
+                      <span>{isVi ? 'Bắt Đầu Khóa Học Ngay' : 'Start Course Now'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-4 h-4" />
+                      <span>
+                        {isVi
+                          ? `Ghi Danh & Thanh Toán (${formatVnd(getCoursePriceVnd(selectedCourseForDetail))})`
+                          : `Enroll & Pay (${formatVnd(getCoursePriceVnd(selectedCourseForDetail))})`}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

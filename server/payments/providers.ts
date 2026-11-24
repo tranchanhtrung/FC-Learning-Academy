@@ -1,6 +1,37 @@
 import crypto from 'crypto';
 import type express from 'express';
-import type { BillingOrder, NormalizedWebhookOutcome, PaymentProviderId } from './types.ts';
+import type { BankTransferInfo, BillingOrder, NormalizedWebhookOutcome, PaymentProviderId } from './types.ts';
+
+const BANK_NAME_BY_BIN: Record<string, string> = {
+  '970436': 'Vietcombank (VCB)',
+  '970422': 'MB Bank (MB)',
+  '970407': 'Techcombank (TCB)',
+  '970415': 'VietinBank (ICB)',
+  '970418': 'BIDV',
+  '970416': 'ACB',
+  '970432': 'VPBank',
+  '970423': 'TPBank',
+  '970403': 'Sacombank',
+  '970448': 'OCB',
+  '970405': 'Agribank',
+  '970437': 'HDBank',
+};
+
+export function hasAnyLivePaymentGateway(): boolean {
+  return Boolean(
+    (process.env.PAYOS_CLIENT_ID && process.env.PAYOS_API_KEY && process.env.PAYOS_CHECKSUM_KEY) ||
+      process.env.SEPAY_API_KEY ||
+      (process.env.MOMO_PARTNER_CODE && process.env.MOMO_ACCESS_KEY && process.env.MOMO_SECRET_KEY) ||
+      (process.env.VNPAY_TMN_CODE && process.env.VNPAY_HASH_SECRET) ||
+      (process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET)
+  );
+}
+
+export function isSandboxPaymentAllowed(): boolean {
+  if (process.env.PAYMENT_SANDBOX === 'true') return true;
+  if (process.env.PAYMENT_SANDBOX === 'false') return false;
+  return process.env.NODE_ENV !== 'production' || !hasAnyLivePaymentGateway();
+}
 
 function timingSafeHexEqual(a: string, b: string): boolean {
   try {
@@ -87,20 +118,29 @@ export async function createProviderPaymentSession(order: BillingOrder): Promise
   paymentUrl?: string;
   qrCodeUrl?: string;
   bankTransferNote: string;
+  bankInfo?: BankTransferInfo;
 }> {
   const bankTransferNote = `${order.orderCode} FC ACADEMY`;
   const providerRequestId = `${order.provider.toUpperCase()}_${order.orderCode}_${Date.now()}`;
 
+  const bankBin = (process.env.VIETQR_BANK_BIN || '970436').trim(); // Default Vietcombank BIN
+  const accountNo = (process.env.VIETQR_ACCOUNT_NO || '0071001288688').trim();
+  const accountNameRaw = (process.env.VIETQR_ACCOUNT_NAME || 'FC LEARNING ACADEMY').trim();
+  const bankInfo: BankTransferInfo = {
+    bankName: BANK_NAME_BY_BIN[bankBin] || `Bank BIN ${bankBin}`,
+    bankBin,
+    accountNo,
+    accountName: accountNameRaw,
+  };
+  const vietQrUrl = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact2.png?amount=${order.totalAmount}&addInfo=${encodeURIComponent(bankTransferNote)}&accountName=${encodeURIComponent(accountNameRaw)}`;
+
   // 1. VietQR / PayOS — generates scannable VietQR preview even before PayOS API key is configured
   if (order.provider === 'payos_vietqr') {
-    const bankBin = (process.env.VIETQR_BANK_BIN || '970436').trim(); // Default Vietcombank BIN
-    const accountNo = (process.env.VIETQR_ACCOUNT_NO || '0000000000').trim();
-    const accountName = encodeURIComponent(process.env.VIETQR_ACCOUNT_NAME || 'FC LEARNING ACADEMY');
-    const qrCodeUrl = `https://img.vietqr.io/image/${bankBin}-${accountNo}-compact2.png?amount=${order.totalAmount}&addInfo=${encodeURIComponent(bankTransferNote)}&accountName=${accountName}`;
     return {
       providerRequestId,
-      qrCodeUrl,
+      qrCodeUrl: vietQrUrl,
       bankTransferNote,
+      bankInfo,
     };
   }
 
@@ -162,7 +202,9 @@ export async function createProviderPaymentSession(order: BillingOrder): Promise
 
   return {
     providerRequestId,
+    qrCodeUrl: vietQrUrl,
     bankTransferNote,
+    bankInfo,
   };
 }
 

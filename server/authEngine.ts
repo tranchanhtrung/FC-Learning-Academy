@@ -1,10 +1,34 @@
 import express from 'express';
 import crypto from 'crypto';
+import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import type { User, UserRole } from '../src/types/index.ts';
 import { loadOrCreateAuthSecret, readJsonSafe, writeJsonAtomic } from './persistence.ts';
 import { isValidEmail, validatePasswordStrength } from './securityMiddleware.ts';
 import { loadPgSnapshot, queuePgSnapshotSave } from './db/postgresStore.ts';
+
+const __authFilename = fileURLToPath(import.meta.url);
+const __authDirname = path.dirname(__authFilename);
+const BOOTSTRAPPED_OWNER_EMAIL = 'tranchanhtrung@gmail.com';
+
+function isUserDisabled(user: User | undefined | null): boolean {
+  return Boolean(user && (user.status === 'disabled' || user.careerPathId === '__DISABLED__'));
+}
+
+function getFirebasePublicApiKey(): string {
+  if (process.env.FIREBASE_WEB_API_KEY) return process.env.FIREBASE_WEB_API_KEY.trim();
+  try {
+    const cfgPath = path.resolve(__authDirname, '..', 'firebase-applet-config.json');
+    if (fs.existsSync(cfgPath)) {
+      const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      return String(parsed?.apiKey || '').trim();
+    }
+  } catch {
+    // ignore missing config
+  }
+  return '';
+}
 
 export const SESSION_COOKIE_NAME = 'fc_session';
 export const DEFAULT_DEMO_PASSWORD = process.env.DEFAULT_DEMO_PASSWORD || 'FCAcademy@2026';
@@ -272,8 +296,22 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
     const session = verifyToken(token);
     if (!session) return null;
     const user = deps.getUsers().find((u) => u.id === session.sub);
-    if (!user) return null;
+    if (!user || isUserDisabled(user)) return null;
     return { user, session };
+  };
+
+  const revokeUserSessions = (userId: string, email?: string) => {
+    const normEmail = email ? email.trim().toLowerCase() : '';
+    let changed = false;
+    for (const acc of Object.values(store.accounts)) {
+      if (acc.userId === userId || (normEmail && acc.email === normEmail)) {
+        acc.tokenVersion = (acc.tokenVersion || 1) + 1;
+        changed = true;
+      }
+    }
+    if (changed) {
+      persistAuthStore();
+    }
   };
 
   const setSessionCookie = (res: express.Response, token: string) => {
@@ -328,7 +366,7 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
       'general_manager',
       'learner',
     ];
-    const users = deps.getUsers();
+    const users = deps.getUsers().filter((x) => !isUserDisabled(x));
     const featured: Array<{ id: string; name: string; email: string; role: UserRole; position: string }> = [];
     for (const r of rolePriority) {
       const u = users.find((x) => x.role === r && x.email);
@@ -490,6 +528,11 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
     if (!user) {
       return res.status(404).json({ error: 'Hồ sơ người dùng không tồn tại trong hệ thống.' });
     }
+    if (isUserDisabled(user)) {
+      return res.status(403).json({
+        error: 'Tài khoản này đã bị vô hiệu hóa bởi quản trị viên.',
+      });
+    }
 
     account.failedAttempts = 0;
     account.lockedUntil = undefined;
@@ -621,10 +664,129 @@ export function createAuthEngine(deps: AuthEngineDependencies) {
     return res.json({ success: true });
   });
 
+  // Exchange a verified Firebase ID Token for a signed Academy Server session cookie & Bearer token
+  router.post('/firebase-exchange', async (req, res) => {
+    const idToken = String(req.body?.idToken || '').trim();
+    const requestedName = String(req.body?.name || '').trim().slice(0, 150);
+    const requestedRoleRaw = String(req.body?.role || '').trim() as UserRole;
+    const requestedPosition = String(req.body?.position || '').trim().slice(0, 150);
+    const requestedProperty = String(req.body?.property || '').trim().slice(0, 200);
+    const apiKey = getFirebasePublicApiKey();
+
+    if (!idToken || !apiKey) {
+      return res.status(400).json({ error: 'Thiếu mã xác thực Firebase.' });
+    }
+
+    try {
+      const lookupRes = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        }
+      );
+      const lookupData = (await lookupRes.json().catch(() => ({}))) as any;
+      const fbAccount = Array.isArray(lookupData?.users) ? lookupData.users[0] : null;
+      if (!lookupRes.ok || !fbAccount?.localId || !fbAccount?.email) {
+        return res.status(401).json({ error: 'Phiên đăng nhập Firebase không hợp lệ hoặc đã hết hạn.' });
+      }
+      if (!fbAccount.emailVerified) {
+        return res.status(403).json({ error: 'Vui lòng xác minh email Firebase trước khi tiếp tục.' });
+      }
+
+      const uid = String(fbAccount.localId).trim();
+      const normEmail = String(fbAccount.email).trim().toLowerCase();
+      const isOwner = normEmail === BOOTSTRAPPED_OWNER_EMAIL;
+      const now = new Date().toISOString();
+
+      let user =
+        deps.getUsers().find((u) => u.id === uid) ||
+        deps.getUsers().find((u) => u.email.toLowerCase() === normEmail);
+
+      if (user && isUserDisabled(user)) {
+        return res.status(403).json({
+          error: 'Tài khoản này đã bị vô hiệu hóa bởi quản trị viên.',
+        });
+      }
+
+      const validRoles: UserRole[] = [
+        'super_admin',
+        'lnd_manager',
+        'financial_controller',
+        'general_manager',
+        'learner',
+      ];
+      const safeBootstrapRole: UserRole = isOwner
+        ? 'super_admin'
+        : user?.role || (validRoles.includes(requestedRoleRaw) ? requestedRoleRaw : 'learner');
+
+      if (!user) {
+        const displayName =
+          requestedName || String(fbAccount.displayName || '').trim() || normEmail.split('@')[0] || 'Academy Member';
+        user = {
+          id: uid,
+          name: displayName,
+          email: normEmail,
+          role: safeBootstrapRole,
+          position:
+            requestedPosition ||
+            (isOwner ? 'System Owner & Super Administrator' : 'Hospitality Finance Professional'),
+          department: 'Finance & Accounting',
+          property: requestedProperty || 'FC Learning Academy',
+          avatar:
+            String(fbAccount.photoUrl || '').trim() ||
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0A192F&color=D4AF37`,
+          currentLevel: isOwner ? 4 : 2,
+          targetLevel: 4,
+          joinedDate: now.split('T')[0],
+          status: 'active',
+        };
+        deps.addUser(user);
+        deps.persistMainDB();
+      } else if (isOwner && user.role !== 'super_admin') {
+        user.role = 'super_admin';
+        deps.persistMainDB();
+      }
+
+      let account = store.accounts[normEmail];
+      if (!account) {
+        account = {
+          userId: user.id,
+          email: normEmail,
+          passwordHash: hashPasswordScrypt(crypto.randomBytes(24).toString('hex')),
+          failedAttempts: 0,
+          tokenVersion: 1,
+          createdAt: now,
+          lastLoginAt: now,
+        };
+        store.accounts[normEmail] = account;
+      } else {
+        account.userId = user.id;
+        account.lastLoginAt = now;
+      }
+      persistAuthStore();
+
+      const sessionInfo = issueSession(user, account, res);
+      return res.json({
+        success: true,
+        user,
+        token: sessionInfo.token,
+        expiresAt: sessionInfo.expiresAt,
+      });
+    } catch (err: any) {
+      return res.status(502).json({
+        error: err?.message || 'Không thể xác thực phiên Firebase với máy chủ.',
+      });
+    }
+  });
+
   return {
     router,
     resolveAuthenticatedUser,
+    revokeUserSessions,
     ensureSeedAccounts,
     hydrateFromPostgres,
+    getSigningSecret: () => secret,
   };
 }

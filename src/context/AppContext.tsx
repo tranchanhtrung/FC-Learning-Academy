@@ -13,6 +13,8 @@ import {
   getFirestoreCollectionDocs,
   writeScenarioVersionToFirestore,
   syncOfficialUserToFirestore,
+  disableOfficialUserInFirestore,
+  isUserDisabledRecord,
   seedOfficialUsersToFirestore,
   isDemoUserRecord,
   purgeDemoUsersFromFirestore,
@@ -133,6 +135,18 @@ export interface SystemRuntimeConfig {
   sandboxPaymentsEnabled: boolean;
 }
 
+export interface UserEntitlementSummary {
+  id: string;
+  scope: string;
+  resourceId: string;
+  status: string;
+  validFrom: string;
+  validUntil: string | null;
+  sourceOrderId: string;
+  productId: string;
+  seatsTotal?: number;
+}
+
 interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -202,7 +216,18 @@ interface AppContextType {
   issueCertificate: (userId: string, level: 1 | 2 | 3 | 4 | 5) => Promise<Certificate | null>;
   addUser: (userData: Partial<User>) => Promise<User | null>;
   updateUser: (userId: string, updates: Partial<User>) => Promise<User | null>;
+  disableUser: (userId: string) => Promise<boolean>;
   updateUserCareerPath: (pathId: string) => Promise<void>;
+  // Billing, Entitlements & Direct Course Checkout Flow
+  pendingCheckoutCourse: Course | null;
+  pendingCheckoutLessonId: string | null;
+  startCourseCheckout: (course: Course, lessonId?: string | null) => void;
+  clearCourseCheckout: () => void;
+  userEntitlements: UserEntitlementSummary[];
+  hasAllAccess: boolean;
+  refreshEntitlements: () => Promise<void>;
+  hasCourseAccess: (courseOrId: Course | string) => boolean;
+  completeCourseUnlock: (course: Course, lessonId?: string | null) => Promise<void>;
   selectedCourseForPlayer: Course | null;
   setSelectedCourseForPlayer: (c: Course | null) => void;
   selectedLessonIdForPlayer: string | null;
@@ -409,6 +434,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedCourseForPlayer, setSelectedCourseForPlayer] = useState<Course | null>(null);
   const [selectedLessonIdForPlayer, setSelectedLessonIdForPlayer] = useState<string | null>(null);
+  const [pendingCheckoutCourse, setPendingCheckoutCourse] = useState<Course | null>(null);
+  const [pendingCheckoutLessonId, setPendingCheckoutLessonId] = useState<string | null>(null);
+  const [userEntitlements, setUserEntitlements] = useState<UserEntitlementSummary[]>([]);
+  const [hasAllAccess, setHasAllAccess] = useState<boolean>(false);
   const [selectedCertificateForView, setSelectedCertificateForView] = useState<Certificate | null>(null);
   const [activeQuizTopic, setActiveQuizTopic] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -553,6 +582,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetLevel: (Math.min(4, Math.max(1, Number(docItem.targetLevel || seedMatch?.targetLevel || 4))) as ProficiencyLevel),
       careerPathId: docItem.careerPathId || seedMatch?.careerPathId,
       joinedDate: String(docItem.joinedDate || seedMatch?.joinedDate || new Date().toISOString().split('T')[0]),
+      status: isUserDisabledRecord(docItem) ? 'disabled' : 'active',
+      disabledAt: docItem.disabledAt,
+      disabledBy: docItem.disabledBy,
     };
   }, []);
 
@@ -918,9 +950,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!data) return;
         if (dataSourceMode === 'firestore' && auth.currentUser?.emailVerified) return;
         if (Array.isArray(data.users)) {
+          const activeRawUsers = data.users.filter((u: User) => !isUserDisabledRecord(u));
           const cleanUsers = systemConfigRef.current.demoModeEnabled
-            ? data.users
-            : data.users.filter((u: User) => !isDemoUserRecord(u));
+            ? activeRawUsers
+            : activeRawUsers.filter((u: User) => !isDemoUserRecord(u));
           if (cleanUsers.length > 0 || !systemConfigRef.current.demoModeEnabled) {
             setUsers(cleanUsers);
             if (cleanUsers.length > 0) {
@@ -975,6 +1008,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         const profile = await resolveAuthenticatedUserProfile(fb);
+        if (profile && isUserDisabledRecord(profile)) {
+          await signOutFirebase().catch(() => {});
+          setFirebaseProfile(null);
+          showToast(
+            language === 'vi'
+              ? 'Tài khoản của bạn đã bị vô hiệu hóa bởi quản trị viên.'
+              : 'Your account has been disabled by an administrator.',
+            'error'
+          );
+          return;
+        }
         if (profile) {
           setFirebaseProfile(profile);
         }
@@ -989,10 +1033,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]);
 
         // Never auto-seed synthetic demo accounts into Official Firestore!
-        // Filter out legacy demo documents when Production mode is active (DEMO_MODE=false).
+        // Always exclude soft-disabled accounts and legacy demo documents when Production mode is active.
+        const activeProfiles = txData.userProfiles.filter((p: any) => !isUserDisabledRecord(p));
         const syncedUserProfiles = systemConfigRef.current.demoModeEnabled
-          ? txData.userProfiles
-          : txData.userProfiles.filter(
+          ? activeProfiles
+          : activeProfiles.filter(
               (p: any) =>
                 !isDemoUserRecord({
                   id: p.id,
@@ -1811,14 +1856,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setFirebaseUser(user);
       if (user && user.emailVerified) {
         const profile = await resolveAuthenticatedUserProfile(user);
+        if (profile && isUserDisabledRecord(profile)) {
+          await signOutFirebase().catch(() => {});
+          setFirebaseProfile(null);
+          showToast(
+            language === 'vi'
+              ? 'Tài khoản của bạn đã bị vô hiệu hóa bởi quản trị viên.'
+              : 'Your account has been disabled by an administrator.',
+            'error'
+          );
+          return;
+        }
         setFirebaseProfile(profile);
+        // Bridge verified Firebase account to a signed Academy Server session so /api/billing & /api/users work seamlessly
+        try {
+          const idToken = await user.getIdToken();
+          const exRes = await fetch('/api/auth/firebase-exchange', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idToken,
+              name: profile?.name || user.displayName || undefined,
+              role: profile?.role,
+              position: profile?.position,
+              property: profile?.property,
+            }),
+          });
+          if (exRes.ok) {
+            const exData = await exRes.json().catch(() => ({}));
+            if (exData.token) {
+              setServerAuthToken(exData.token);
+              try {
+                sessionStorage.setItem('fc_server_auth_token', exData.token);
+              } catch {
+                // ignore storage failure
+              }
+            }
+          }
+        } catch {
+          // non-blocking bridge
+        }
         await refreshFromFirestore();
       } else {
         setFirebaseProfile(null);
       }
     });
     return () => unsub();
-  }, [refreshFromFirestore]);
+  }, [language, refreshFromFirestore, showToast]);
 
   const prevDataSourceModeRef = useRef<'demo' | 'firestore'>(dataSourceMode);
 
@@ -3293,6 +3378,182 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   };
 
+  const disableUser = async (userId: string): Promise<boolean> => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) {
+      showToast(language === 'vi' ? 'Không tìm thấy tài khoản người dùng.' : 'User not found.', 'error');
+      return false;
+    }
+    if (userId === currentUser.id || userId === officialAuthUser?.id) {
+      showToast(
+        language === 'vi'
+          ? 'Không thể vô hiệu hóa tài khoản đang đăng nhập.'
+          : 'Cannot disable the currently signed-in account.',
+        'error'
+      );
+      return false;
+    }
+    if ((target.email || '').toLowerCase() === 'tranchanhtrung@gmail.com') {
+      showToast(
+        language === 'vi'
+          ? 'Không thể vô hiệu hóa tài khoản Chủ sở hữu hệ thống.'
+          : 'Cannot disable the system owner account.',
+        'error'
+      );
+      return false;
+    }
+
+    if (isLiveFirestoreMode()) {
+      try {
+        await disableOfficialUserInFirestore(target, currentUser.name);
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        setProductionCounts((prev) => ({
+          ...prev,
+          userProfiles: Math.max(0, (prev.userProfiles || 1) - 1),
+        }));
+        fetch(`/api/users/${encodeURIComponent(userId)}/disable`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: authHeaders(),
+        }).catch(() => {});
+        showToast(
+          language === 'vi'
+            ? `Đã chuyển tài khoản ${target.name} sang trạng thái vô hiệu hóa (Disabled) và ẩn khỏi danh sách.`
+            : `Disabled account ${target.name} and hidden from directory.`,
+          'success'
+        );
+        return true;
+      } catch (fsErr: any) {
+        showToast(
+          fsErr?.message ||
+            (language === 'vi'
+              ? 'Không thể vô hiệu hóa tài khoản trên Firestore.'
+              : 'Failed to disable user in Firestore.'),
+          'error'
+        );
+        return false;
+      }
+    }
+
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}/disable`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || 'Failed to disable user', 'error');
+        return false;
+      }
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      refreshAuditLogs();
+      showToast(
+        language === 'vi'
+          ? `Đã chuyển tài khoản ${target.name} sang trạng thái vô hiệu hóa (Disabled) và ẩn khỏi danh sách.`
+          : `Disabled account ${target.name} and hidden from directory.`,
+        'success'
+      );
+      return true;
+    } catch (e: any) {
+      showToast(e.message || 'Network error disabling user', 'error');
+      return false;
+    }
+  };
+
+  const refreshEntitlements = useCallback(async () => {
+    try {
+      const res = await fetch('/api/billing/entitlements', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.entitlements)) {
+        setUserEntitlements(data.entitlements);
+      }
+      setHasAllAccess(Boolean(data.hasAllAccess));
+    } catch {
+      // ignore offline
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    refreshEntitlements();
+  }, [refreshEntitlements, currentUser.id, serverAuthToken]);
+
+  const hasCourseAccess = useCallback(
+    (courseOrId: Course | string): boolean => {
+      const targetCourse =
+        typeof courseOrId === 'string'
+          ? courses.find((c) => c.id === courseOrId || c.code === courseOrId) ||
+            COURSES.find((c) => c.id === courseOrId || c.code === courseOrId)
+          : courseOrId;
+      const targetId = typeof courseOrId === 'string' ? courseOrId : courseOrId.id;
+      const targetCode = targetCourse?.code;
+
+      const enrolled = enrollments.some((e) => {
+        if (e.userId !== currentUser.id) return false;
+        if (e.courseId === targetId) return true;
+        if (targetCode && e.courseId === targetCode) return true;
+        const matched = findCourseMatch(courses, e.courseId, COURSES);
+        return Boolean(matched && (matched.id === targetId || (targetCode && matched.code === targetCode)));
+      });
+      if (enrolled) return true;
+      if (hasAllAccess) return true;
+
+      return userEntitlements.some((ent) => {
+        if (ent.status !== 'active') return false;
+        if (ent.validUntil && new Date(ent.validUntil).getTime() < Date.now()) return false;
+        if (ent.scope === 'all_access') return true;
+        if (ent.scope === 'course') {
+          if (ent.resourceId === '*' || ent.resourceId === targetId) return true;
+          if (targetCode && ent.resourceId === targetCode) return true;
+        }
+        return false;
+      });
+    },
+    [courses, currentUser.id, enrollments, hasAllAccess, userEntitlements]
+  );
+
+  const startCourseCheckout = useCallback(
+    (course: Course, lessonId: string | null = null) => {
+      if (!officialAuthUser && !systemConfig.demoModeEnabled) {
+        showToast(
+          language === 'vi'
+            ? 'Vui lòng đăng nhập tài khoản trước khi thanh toán ghi danh khóa học.'
+            : 'Please sign in before purchasing and enrolling in a course.',
+          'info'
+        );
+        openAuthModal('login');
+        return;
+      }
+      setPendingCheckoutCourse(course);
+      setPendingCheckoutLessonId(lessonId);
+      setActiveTab('pricing');
+    },
+    [language, officialAuthUser, openAuthModal, showToast, systemConfig.demoModeEnabled]
+  );
+
+  const clearCourseCheckout = useCallback(() => {
+    setPendingCheckoutCourse(null);
+    setPendingCheckoutLessonId(null);
+  }, []);
+
+  const completeCourseUnlock = useCallback(
+    async (course: Course, lessonId: string | null = null) => {
+      await enrollCourse(course.id);
+      await refreshEntitlements();
+      setPendingCheckoutCourse(null);
+      setPendingCheckoutLessonId(null);
+      setActiveTab('courses');
+      setSelectedLessonIdForPlayer(lessonId || null);
+      setSelectedCourseForPlayer(course);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enrollCourse, refreshEntitlements]
+  );
+
   const updateUserCareerPath = async (pathId: string) => {
     setCurrentUserState((prev) => ({ ...prev, careerPathId: pathId }));
     setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? { ...u, careerPathId: pathId } : u)));
@@ -4286,7 +4547,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         issueCertificate,
         addUser,
         updateUser,
+        disableUser,
         updateUserCareerPath,
+        pendingCheckoutCourse,
+        pendingCheckoutLessonId,
+        startCourseCheckout,
+        clearCourseCheckout,
+        userEntitlements,
+        hasAllAccess,
+        refreshEntitlements,
+        hasCourseAccess,
+        completeCourseUnlock,
         selectedCourseForPlayer,
         setSelectedCourseForPlayer,
         selectedLessonIdForPlayer,

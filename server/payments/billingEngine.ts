@@ -2,6 +2,8 @@ import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import type { User } from '../../src/types/index.ts';
+import { COURSES } from '../../src/data/initialData.ts';
+import { getCoursePriceVnd } from '../../src/lib/coursePricing.ts';
 import { readJsonSafe, writeJsonAtomic } from '../persistence.ts';
 import { loadPgSnapshot, queuePgSnapshotSave } from '../db/postgresStore.ts';
 import type {
@@ -16,6 +18,7 @@ import type {
 import {
   createProviderPaymentSession,
   getPaymentProvidersStatus,
+  isSandboxPaymentAllowed,
   verifyAndNormalizeWebhook,
 } from './providers.ts';
 
@@ -191,8 +194,10 @@ const DEFAULT_COUPONS: BillingCoupon[] = [
 
 export interface BillingEngineDeps {
   dataDir: string;
+  orderSigningSecret: string;
   getRequestActor: (req: express.Request) => User | undefined;
   isAdminActor: (req: express.Request) => boolean;
+  onCourseUnlocked?: (userId: string, courseId: string) => void;
   recordAudit: (action: string, actor: string, target: string, details: string) => void;
   persistMainDB: () => void;
 }
@@ -232,15 +237,86 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     }
   };
 
+  // Compact HMAC-SHA256 order token so stateless serverless instances (Vercel without PG) can safely recover an order
+  const signOrderToken = (order: BillingOrder): string => {
+    const minimal = {
+      id: order.id,
+      orderCode: order.orderCode,
+      userId: order.userId,
+      userName: order.userName,
+      userEmail: order.userEmail,
+      productId: order.productId,
+      courseId: order.courseId,
+      courseCode: order.courseCode,
+      productNameVi: order.productNameVi,
+      productNameEn: order.productNameEn,
+      quantity: order.quantity,
+      currency: order.currency,
+      subtotalAmount: order.subtotalAmount,
+      discountAmount: order.discountAmount,
+      vatAmount: order.vatAmount,
+      totalAmount: order.totalAmount,
+      provider: order.provider,
+      expiresAt: order.expiresAt,
+      createdAt: order.createdAt,
+    };
+    const payloadB64 = Buffer.from(JSON.stringify(minimal), 'utf8').toString('base64url');
+    const sig = crypto
+      .createHmac('sha256', deps.orderSigningSecret)
+      .update(payloadB64)
+      .digest('base64url');
+    return `${payloadB64}.${sig}`;
+  };
+
+  const recoverOrderFromToken = (token: string | undefined, expectedOrderId: string): BillingOrder | null => {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const [payloadB64, sig] = parts;
+    const expectedSig = crypto
+      .createHmac('sha256', deps.orderSigningSecret)
+      .update(payloadB64)
+      .digest('base64url');
+    try {
+      const a = Buffer.from(sig);
+      const b = Buffer.from(expectedSig);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+      const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+      if (!parsed || parsed.id !== expectedOrderId) return null;
+      const recovered: BillingOrder = {
+        ...parsed,
+        idempotencyKey: `recovered_${parsed.id}`,
+        status: 'pending',
+        updatedAt: parsed.createdAt || new Date().toISOString(),
+        orderToken: token,
+      };
+      store.orders.unshift(recovered);
+      return recovered;
+    } catch {
+      return null;
+    }
+  };
+
+  const resolveCourseMeta = (courseId?: string) => {
+    if (!courseId) return undefined;
+    const clean = String(courseId).trim();
+    return COURSES.find((c) => c.id === clean || c.code.toLowerCase() === clean.toLowerCase());
+  };
+
   // Server-side deterministic integer VND pricing calculation (ZERO float glitches!)
   const computeOrderTotals = (params: {
     product: BillingProduct;
     quantity: number;
+    unitPriceOverrideVnd?: number;
     couponCode?: string;
     includeVatInvoice?: boolean;
   }) => {
     const qty = Math.max(params.product.minSeats, Math.min(500, Math.floor(params.quantity || 1)));
-    const subtotalAmount = params.product.priceVnd * qty;
+    const unitPrice =
+      typeof params.unitPriceOverrideVnd === 'number' && params.unitPriceOverrideVnd >= 0
+        ? Math.round(params.unitPriceOverrideVnd)
+        : params.product.priceVnd;
+    const subtotalAmount = unitPrice * qty;
     let discountAmount = 0;
     let appliedCoupon: BillingCoupon | null = null;
     let couponError: string | undefined;
@@ -314,6 +390,14 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     order.updatedAt = nowIso;
 
     // Idempotency guard: never insert duplicate entitlement for same sourceOrderId
+    const resolvedCourseId =
+      order.courseId ||
+      (product?.scope === 'course' && order.productNameEn.includes('[')
+        ? order.productNameEn.match(/\[([^\]]+)\]/)?.[1]
+        : undefined) ||
+      product?.resourceId ||
+      '*';
+
     const existingEnt = store.entitlements.find(
       (e) => e.sourceOrderId === order.id && e.userId === order.userId
     );
@@ -326,10 +410,7 @@ export function createBillingEngine(deps: BillingEngineDeps) {
         id: `ent_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         userId: order.userId,
         scope: product.scope,
-        resourceId:
-          product.scope === 'course' && order.productNameEn.includes('[')
-            ? order.productNameEn.match(/\[([^\]]+)\]/)?.[1] || product.resourceId
-            : product.resourceId,
+        resourceId: product.scope === 'course' ? resolvedCourseId : product.resourceId,
         status: 'active',
         validFrom: nowIso,
         validUntil,
@@ -338,6 +419,10 @@ export function createBillingEngine(deps: BillingEngineDeps) {
         seatsTotal: order.quantity,
         createdAt: nowIso,
       });
+    }
+
+    if (product?.scope === 'course' && resolvedCourseId && resolvedCourseId !== '*') {
+      deps.onCourseUnlocked?.(order.userId, resolvedCourseId);
     }
 
     deps.recordAudit(
@@ -354,7 +439,7 @@ export function createBillingEngine(deps: BillingEngineDeps) {
 
   // Public catalog & provider availability
   router.get('/catalog', (_req, res) => {
-    const sandboxAllowed = process.env.NODE_ENV !== 'production' || process.env.PAYMENT_SANDBOX === 'true';
+    const sandboxAllowed = isSandboxPaymentAllowed();
     return res.json({
       products: store.products.filter((p) => p.isActive),
       providers: getPaymentProvidersStatus(),
@@ -364,14 +449,16 @@ export function createBillingEngine(deps: BillingEngineDeps) {
 
   // Coupon validation preview
   router.post('/validate-coupon', (req, res) => {
-    const { productId, quantity = 1, couponCode, includeVatInvoice = false } = req.body || {};
+    const { productId, courseId, quantity = 1, couponCode, includeVatInvoice = false } = req.body || {};
     const product = store.products.find((p) => p.id === productId && p.isActive);
     if (!product) {
       return res.status(404).json({ error: 'Không tìm thấy gói dịch vụ.' });
     }
+    const matchedCourse = product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
     const calc = computeOrderTotals({
       product,
       quantity: Number(quantity) || 1,
+      unitPriceOverrideVnd: matchedCourse ? getCoursePriceVnd(matchedCourse) : undefined,
       couponCode: String(couponCode || ''),
       includeVatInvoice: Boolean(includeVatInvoice),
     });
@@ -423,7 +510,12 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     const actor = deps.getRequestActor(req);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
 
-    const order = store.orders.find((o) => o.id === req.params.id);
+    const tokenParam =
+      String(req.headers['x-order-token'] || req.query.orderToken || '').trim() || undefined;
+    let order = store.orders.find((o) => o.id === req.params.id);
+    if (!order && tokenParam) {
+      order = recoverOrderFromToken(tokenParam, req.params.id) || undefined;
+    }
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng.' });
     if (order.userId !== actor.id && !deps.isAdminActor(req)) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -483,9 +575,12 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     const hasVatInvoice = Boolean(
       invoiceInfo && invoiceInfo.companyName && invoiceInfo.taxCode
     );
+    const matchedCourse = product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
+    const resolvedCourseId = matchedCourse?.id || (courseId ? String(courseId).trim() : undefined);
     const calc = computeOrderTotals({
       product,
       quantity: Number(quantity) || 1,
+      unitPriceOverrideVnd: matchedCourse ? getCoursePriceVnd(matchedCourse) : undefined,
       couponCode: couponCode ? String(couponCode) : undefined,
       includeVatInvoice: hasVatInvoice,
     });
@@ -525,8 +620,18 @@ export function createBillingEngine(deps: BillingEngineDeps) {
       userEmail: actor.email,
       orgName: actor.property,
       productId: product.id,
-      productNameVi: courseId ? `${product.nameVi} [${courseId}]` : product.nameVi,
-      productNameEn: courseId ? `${product.nameEn} [${courseId}]` : product.nameEn,
+      courseId: resolvedCourseId,
+      courseCode: matchedCourse?.code,
+      productNameVi: matchedCourse
+        ? `${matchedCourse.code} — ${matchedCourse.titleVi}`
+        : resolvedCourseId
+        ? `${product.nameVi} [${resolvedCourseId}]`
+        : product.nameVi,
+      productNameEn: matchedCourse
+        ? `${matchedCourse.code} — ${matchedCourse.titleEn} [${matchedCourse.id}]`
+        : resolvedCourseId
+        ? `${product.nameEn} [${resolvedCourseId}]`
+        : product.nameEn,
       quantity: calc.quantity,
       currency: 'VND',
       subtotalAmount: calc.subtotalAmount,
@@ -548,6 +653,8 @@ export function createBillingEngine(deps: BillingEngineDeps) {
       order.paymentUrl = paymentSession.paymentUrl;
       order.qrCodeUrl = paymentSession.qrCodeUrl;
       order.bankTransferNote = paymentSession.bankTransferNote;
+      order.bankInfo = paymentSession.bankInfo;
+      order.orderToken = signOrderToken(order);
     } catch (err: any) {
       // Roll back reserved coupon if payment gateway creation fails
       if (calc.appliedCoupon) {
@@ -685,25 +792,53 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     return res.status(200).json({ received: true, orderStatus: order.status });
   });
 
-  // Sandbox confirmation helper (ONLY active when NODE_ENV !== 'production' || PAYMENT_SANDBOX === 'true')
+  // Sandbox / QR Preview confirmation helper (active in dev or before live payment webhooks are configured)
   router.post('/orders/:id/sandbox-confirm', (req, res) => {
-    const sandboxAllowed = process.env.NODE_ENV !== 'production' || process.env.PAYMENT_SANDBOX === 'true';
+    const sandboxAllowed = isSandboxPaymentAllowed();
     if (!sandboxAllowed) {
       return res.status(403).json({ error: 'Sandbox payment confirmation is disabled in production.' });
     }
     const actor = deps.getRequestActor(req);
     if (!actor) return res.status(401).json({ error: 'Unauthorized' });
 
-    const order = store.orders.find((o) => o.id === req.params.id);
+    const tokenParam =
+      String(req.headers['x-order-token'] || req.body?.orderToken || '').trim() || undefined;
+    let order = store.orders.find((o) => o.id === req.params.id);
+    if (!order && tokenParam) {
+      order = recoverOrderFromToken(tokenParam, req.params.id) || undefined;
+    }
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.userId !== actor.id && !deps.isAdminActor(req)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     if (order.status !== 'pending') {
-      return res.json({ order, alreadyProcessed: true });
+      return res.json({
+        success: true,
+        order,
+        entitlements: store.entitlements.filter((e) => e.sourceOrderId === order.id),
+        alreadyProcessed: true,
+      });
     }
 
-    activateOrderAndGrantEntitlement(order, `SBX_${Date.now()}`);
+    activateOrderAndGrantEntitlement(order, `QR_${Date.now()}`);
+    return res.json({
+      success: true,
+      order,
+      entitlements: store.entitlements.filter((e) => e.sourceOrderId === order.id),
+    });
+  });
+
+  // Admin Manual Bank Transfer Confirmation (for manual VietQR reconciliation)
+  router.post('/orders/:id/confirm-manual', (req, res) => {
+    if (!deps.isAdminActor(req)) {
+      return res.status(403).json({ error: 'Admin permission required to manually confirm bank transfers.' });
+    }
+    const order = store.orders.find((o) => o.id === req.params.id);
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.status !== 'pending' && order.status !== 'paid_late_review') {
+      return res.status(400).json({ error: `Cannot confirm order in status "${order.status}".` });
+    }
+    activateOrderAndGrantEntitlement(order, `MANUAL_QR_${Date.now()}`);
     return res.json({
       success: true,
       order,

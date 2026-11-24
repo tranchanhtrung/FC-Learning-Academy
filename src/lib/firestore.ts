@@ -248,6 +248,16 @@ export async function listAdminRegistryEntries(): Promise<
   }
 }
 
+export const DISABLED_USER_MARKER = '__DISABLED__';
+
+export function isUserDisabledRecord(
+  record?: { status?: string; careerPathId?: string } | null
+): boolean {
+  return Boolean(
+    record && (record.status === 'disabled' || record.careerPathId === DISABLED_USER_MARKER)
+  );
+}
+
 export function buildFirestoreUserProfilePayload(user: {
   id: string;
   name: string;
@@ -263,6 +273,9 @@ export function buildFirestoreUserProfilePayload(user: {
   targetLevel?: number;
   careerPathId?: string;
   joinedDate?: string;
+  status?: 'active' | 'disabled';
+  disabledAt?: string;
+  disabledBy?: string;
 }): Record<string, any> {
   const now = new Date().toISOString();
   const payload: Record<string, any> = {
@@ -285,7 +298,57 @@ export function buildFirestoreUserProfilePayload(user: {
     payload.supervisorId = user.supervisorId;
   }
   if (user.careerPathId) payload.careerPathId = user.careerPathId.slice(0, 128);
+  if (user.status) payload.status = user.status;
+  if (user.disabledAt) payload.disabledAt = user.disabledAt.slice(0, 64);
+  if (user.disabledBy) payload.disabledBy = user.disabledBy.slice(0, 150);
   return sanitizeForFirestore(payload);
+}
+
+/**
+ * Soft-disables a user profile in Firestore without hard-deleting historical audit/learning data.
+ * Falls back cleanly to the strict legacy schema marker if live firestore.rules haven't been redeployed yet.
+ */
+export async function disableOfficialUserInFirestore(
+  user: Parameters<typeof buildFirestoreUserProfilePayload>[0],
+  actorName: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const fullPayload = buildFirestoreUserProfilePayload({
+    ...user,
+    status: 'disabled',
+    disabledAt: now,
+    disabledBy: actorName,
+  });
+
+  try {
+    await setDoc(doc(db, 'userProfiles', user.id), fullPayload);
+  } catch (err: any) {
+    const msg = String(err?.code || err?.message || '').toLowerCase();
+    if (msg.includes('permission-denied') || msg.includes('missing or insufficient permissions')) {
+      // Fallback compatible with legacy deployed firestore.rules hasOnly() before rules redeploy
+      const compatPayload = buildFirestoreUserProfilePayload({
+        ...user,
+        careerPathId: DISABLED_USER_MARKER,
+        status: undefined,
+        disabledAt: undefined,
+        disabledBy: undefined,
+      });
+      try {
+        await setDoc(doc(db, 'userProfiles', user.id), compatPayload);
+      } catch (compatErr) {
+        handleFirestoreError(compatErr, OperationType.WRITE, `userProfiles/${user.id}`);
+      }
+    } else {
+      handleFirestoreError(err, OperationType.WRITE, `userProfiles/${user.id}`);
+    }
+  }
+
+  // Best-effort revoke from /admins registry if this user held admin privileges
+  try {
+    await deleteDoc(doc(db, 'admins', user.id));
+  } catch {
+    // non-owner admins may not have delete permission on /admins
+  }
 }
 
 export async function syncOfficialUserToFirestore(

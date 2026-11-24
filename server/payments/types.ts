@@ -56,6 +56,13 @@ export interface InvoiceInfo {
   email: string;
 }
 
+export interface BankTransferInfo {
+  bankName: string;
+  bankBin: string;
+  accountNo: string;
+  accountName: string;
+}
+
 export interface BillingOrder {
   id: string;
   orderCode: string; // Short bank-transfer-safe code e.g. FC2611A9B2
@@ -65,6 +72,8 @@ export interface BillingOrder {
   userEmail: string;
   orgName?: string;
   productId: string;
+  courseId?: string;
+  courseCode?: string;
   productNameVi: string;
   productNameEn: string;
   quantity: number;
@@ -81,6 +90,8 @@ export interface BillingOrder {
   paymentUrl?: string;
   qrCodeUrl?: string;
   bankTransferNote?: string;
+  bankInfo?: BankTransferInfo;
+  orderToken?: string;
   invoiceInfo?: InvoiceInfo;
   expiresAt: string;
   paidAt?: string;

@@ -362,7 +362,7 @@ service cloud.firestore {
           'uid', 'employeeId', 'name', 'email', 'role', 'requestedRole',
           'position', 'department', 'property', 'avatar',
           'supervisorId', 'supervisorUid', 'currentLevel', 'targetLevel',
-          'careerPathId', 'joinedDate', 'updatedAt'
+          'careerPathId', 'joinedDate', 'status', 'disabledAt', 'disabledBy', 'updatedAt'
         ])
         && isValidId(data.uid)
         && isValidId(data.employeeId)
@@ -380,6 +380,9 @@ service cloud.firestore {
         && (!('targetLevel' in data) || (data.targetLevel is number && data.targetLevel >= 1 && data.targetLevel <= 4))
         && (!('careerPathId' in data) || (data.careerPathId is string && data.careerPathId.size() <= 128))
         && (!('joinedDate' in data) || (data.joinedDate is string && data.joinedDate.size() <= 64))
+        && (!('status' in data) || data.status in ['active', 'disabled'])
+        && (!('disabledAt' in data) || (data.disabledAt is string && data.disabledAt.size() <= 64))
+        && (!('disabledBy' in data) || (data.disabledBy is string && data.disabledBy.size() <= 150))
         && data.updatedAt is string && data.updatedAt.size() <= 64;
     }
 

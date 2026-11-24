@@ -18,6 +18,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { User, UserRole } from '../../types';
+import { isUserDisabledRecord } from '../../lib/firebase';
 import { FirebaseAuthModal } from './FirebaseAuthModal';
 
 interface NavbarProps {
@@ -108,21 +109,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
     general_manager: <Crown className="w-4 h-4 text-yellow-400 shrink-0" />,
   };
 
-  // Guarantee all 5 system roles appear cleanly at the top, followed by remaining declared staff
+  // Guarantee all 5 system roles appear cleanly at the top, followed by remaining active declared staff
   const orderedRoleUsers = useMemo(() => {
+    const activeUsers = users.filter((u) => !isUserDisabledRecord(u));
     const pickFirstByRole: User[] = [];
     const seenIds = new Set<string>();
     if (officialAuthUser) {
       seenIds.add(officialAuthUser.id);
     }
     for (const r of ROLE_ORDER) {
-      const match = users.find((u) => u.role === r && !seenIds.has(u.id));
+      const match = activeUsers.find((u) => u.role === r && !seenIds.has(u.id));
       if (match) {
         pickFirstByRole.push(match);
         seenIds.add(match.id);
       }
     }
-    const rest = users.filter((u) => !seenIds.has(u.id));
+    const rest = activeUsers.filter((u) => !seenIds.has(u.id));
     return [...pickFirstByRole, ...rest];
   }, [users, officialAuthUser]);
 

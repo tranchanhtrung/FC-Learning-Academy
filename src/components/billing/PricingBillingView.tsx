@@ -1,5 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getCoursePriceVnd, formatVnd } from '../../lib/coursePricing';
+import { getCourseSyllabus } from '../../data/courseSyllabi';
 import {
   CreditCard,
   ShieldCheck,
@@ -15,6 +17,13 @@ import {
   X,
   Lock,
   RotateCcw,
+  ArrowLeft,
+  Copy,
+  Check,
+  BookOpen,
+  PlayCircle,
+  Loader2,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface BillingProduct {
@@ -46,10 +55,19 @@ interface ProviderInfo {
   mode: 'live' | 'sandbox_preview';
 }
 
+interface BankTransferInfo {
+  bankName: string;
+  bankBin: string;
+  accountNo: string;
+  accountName: string;
+}
+
 interface BillingOrder {
   id: string;
   orderCode: string;
   productId: string;
+  courseId?: string;
+  courseCode?: string;
   productNameVi: string;
   productNameEn: string;
   quantity: number;
@@ -64,6 +82,8 @@ interface BillingOrder {
   paymentUrl?: string;
   qrCodeUrl?: string;
   bankTransferNote?: string;
+  bankInfo?: BankTransferInfo;
+  orderToken?: string;
   expiresAt: string;
   paidAt?: string;
   createdAt: string;
@@ -81,10 +101,30 @@ interface EntitlementDoc {
   seatsTotal?: number;
 }
 
-const formatVnd = (n: number) => `${Math.round(n).toLocaleString('vi-VN')}đ`;
+function formatCountdown(expiresAtIso: string, nowMs: number): string {
+  const diff = Math.max(0, Math.floor((new Date(expiresAtIso).getTime() - nowMs) / 1000));
+  const mins = Math.floor(diff / 60);
+  const secs = diff % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 export const PricingBillingView: React.FC = () => {
-  const { currentUser, courses, language, showToast, hasPermission, getAuthHeaders } = useApp();
+  const {
+    currentUser,
+    courses,
+    language,
+    showToast,
+    hasPermission,
+    getAuthHeaders,
+    pendingCheckoutCourse,
+    pendingCheckoutLessonId,
+    clearCourseCheckout,
+    completeCourseUnlock,
+    refreshEntitlements,
+    setActiveTab,
+    enrollCourse,
+    setSelectedCourseForPlayer,
+  } = useApp();
   const isVi = language === 'vi';
   const isAdmin = hasPermission('view_administration');
 
@@ -97,7 +137,30 @@ export const PricingBillingView: React.FC = () => {
   const [hasAllAccess, setHasAllAccess] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Checkout Modal State
+  // Direct Course Checkout State (triggered when clicking "Ghi danh khóa học")
+  const [courseProvider, setCourseProvider] = useState<ProviderInfo['id']>('payos_vietqr');
+  const [courseCouponInput, setCourseCouponInput] = useState('');
+  const [courseCouponPreview, setCourseCouponPreview] = useState<{
+    valid: boolean;
+    discountAmount: number;
+    vatAmount: number;
+    totalAmount: number;
+  } | null>(null);
+  const [courseCouponErr, setCourseCouponErr] = useState<string | null>(null);
+  const [courseNeedVat, setCourseNeedVat] = useState(false);
+  const [courseVatCompany, setCourseVatCompany] = useState(currentUser.property || '');
+  const [courseVatTaxCode, setCourseVatTaxCode] = useState('');
+  const [courseVatAddress, setCourseVatAddress] = useState('');
+  const [courseVatEmail, setCourseVatEmail] = useState(currentUser.email || '');
+  const [courseOrder, setCourseOrder] = useState<BillingOrder | null>(null);
+  const [courseIdempotencyKey, setCourseIdempotencyKey] = useState('');
+  const [courseSubmitting, setCourseSubmitting] = useState(false);
+  const [courseCheckingNow, setCourseCheckingNow] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [clockNowMs, setClockNowMs] = useState<number>(() => Date.now());
+  const unlockedOrderIdRef = useRef<string | null>(null);
+
+  // Plan Modal Checkout State
   const [selectedProduct, setSelectedProduct] = useState<BillingProduct | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string>(courses[0]?.id || 'course_01');
   const [seatQuantity, setSeatQuantity] = useState<number>(1);
@@ -116,12 +179,43 @@ export const PricingBillingView: React.FC = () => {
   const [vatAddress, setVatAddress] = useState('');
   const [vatEmail, setVatEmail] = useState(currentUser.email || '');
 
-  // Active Pending Order (Payment QR / Polling Screen)
+  // Active Pending Order (Plan Modal QR / Polling Screen)
   const [activeOrder, setActiveOrder] = useState<BillingOrder | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
 
   const authHeaders = useCallback(() => getAuthHeaders(), [getAuthHeaders]);
+
+  // Reset direct course checkout state whenever target course changes
+  useEffect(() => {
+    if (!pendingCheckoutCourse) {
+      setCourseOrder(null);
+      unlockedOrderIdRef.current = null;
+      return;
+    }
+    setCourseOrder(null);
+    setCourseCouponInput('');
+    setCourseCouponPreview(null);
+    setCourseCouponErr(null);
+    setCourseNeedVat(false);
+    setCourseProvider('payos_vietqr');
+    setCourseVatCompany(currentUser.property || '');
+    setCourseVatEmail(currentUser.email || '');
+    unlockedOrderIdRef.current = null;
+    setCourseIdempotencyKey(
+      `idem_${currentUser.id}_${pendingCheckoutCourse.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    );
+  }, [pendingCheckoutCourse, currentUser.id, currentUser.property, currentUser.email]);
+
+  // Live 1-second clock for QR expiration countdown
+  useEffect(() => {
+    const hasPendingQr =
+      (courseOrder && courseOrder.status === 'pending') ||
+      (activeOrder && activeOrder.status === 'pending');
+    if (!hasPendingQr) return;
+    const t = window.setInterval(() => setClockNowMs(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [courseOrder, activeOrder]);
 
   const loadBillingData = useCallback(async () => {
     setLoading(true);
@@ -155,14 +249,96 @@ export const PricingBillingView: React.FC = () => {
     loadBillingData();
   }, [loadBillingData]);
 
-  // Poll pending order status safely from server every 4s (never trust return URL query params!)
+  const handleCopyValue = async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(key);
+      window.setTimeout(() => setCopiedField((prev) => (prev === key ? null : prev)), 1800);
+    } catch {
+      showToast(isVi ? 'Không thể sao chép tự động.' : 'Could not copy to clipboard.', 'error');
+    }
+  };
+
+  // Trigger automatic unlock + open CoursePlayerModal once direct course QR order becomes 'paid'
+  const triggerAutoOpenUnlockedCourse = useCallback(
+    (paidOrder: BillingOrder) => {
+      if (!pendingCheckoutCourse) return;
+      if (unlockedOrderIdRef.current === paidOrder.id) return;
+      unlockedOrderIdRef.current = paidOrder.id;
+      showToast(
+        isVi
+          ? `Thanh toán ${paidOrder.orderCode} thành công! Đang tự động mở khóa học ${pendingCheckoutCourse.code}...`
+          : `Payment ${paidOrder.orderCode} confirmed! Unlocking ${pendingCheckoutCourse.code}...`,
+        'success'
+      );
+      window.setTimeout(() => {
+        void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId);
+      }, 1100);
+    },
+    [completeCourseUnlock, isVi, pendingCheckoutCourse, pendingCheckoutLessonId, showToast]
+  );
+
+  // Poll direct course QR order every 3s for automatic webhook confirmation
+  const pollCourseOrderStatus = useCallback(
+    async (manual = false) => {
+      if (!courseOrder || courseOrder.status !== 'pending') return;
+      if (manual) setCourseCheckingNow(true);
+      try {
+        const headers: Record<string, string> = { ...authHeaders() };
+        if (courseOrder.orderToken) {
+          headers['x-order-token'] = courseOrder.orderToken;
+        }
+        const res = await fetch(`/api/billing/orders/${encodeURIComponent(courseOrder.id)}`, {
+          credentials: 'same-origin',
+          headers,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.order) {
+          if (data.order.status !== courseOrder.status) {
+            setCourseOrder(data.order);
+            if (data.order.status === 'paid') {
+              await Promise.all([loadBillingData(), refreshEntitlements()]);
+              triggerAutoOpenUnlockedCourse(data.order);
+            }
+          } else if (manual) {
+            showToast(
+              isVi
+                ? 'Chưa ghi nhận giao dịch ngân hàng mới. Hệ thống vẫn đang tự động theo dõi.'
+                : 'No bank transfer received yet. Auto-checking continues.',
+              'info'
+            );
+          }
+        }
+      } catch {
+        // ignore transient poll error
+      } finally {
+        if (manual) setCourseCheckingNow(false);
+      }
+    },
+    [authHeaders, courseOrder, isVi, loadBillingData, refreshEntitlements, showToast, triggerAutoOpenUnlockedCourse]
+  );
+
+  useEffect(() => {
+    if (!courseOrder || courseOrder.status !== 'pending') return;
+    const timer = window.setInterval(() => {
+      void pollCourseOrderStatus(false);
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [courseOrder, pollCourseOrderStatus]);
+
+  // Poll standard plan modal order every 3.5s
   useEffect(() => {
     if (!activeOrder || activeOrder.status !== 'pending') return;
     const timer = window.setInterval(async () => {
       try {
+        const headers: Record<string, string> = { ...authHeaders() };
+        if (activeOrder.orderToken) {
+          headers['x-order-token'] = activeOrder.orderToken;
+        }
         const res = await fetch(`/api/billing/orders/${encodeURIComponent(activeOrder.id)}`, {
           credentials: 'same-origin',
-          headers: authHeaders(),
+          headers,
         });
         if (!res.ok) return;
         const data = await res.json();
@@ -175,16 +351,139 @@ export const PricingBillingView: React.FC = () => {
                 : `Order ${data.order.orderCode} paid! Access unlocked.`,
               'success'
             );
-            await loadBillingData();
+            if (data.order.courseId) {
+              await enrollCourse(data.order.courseId);
+            }
+            await Promise.all([loadBillingData(), refreshEntitlements()]);
           }
         }
       } catch {
         // ignore transient poll error
       }
-    }, 4000);
+    }, 3500);
     return () => window.clearInterval(timer);
-  }, [activeOrder, authHeaders, isVi, loadBillingData, showToast]);
+  }, [activeOrder, authHeaders, enrollCourse, isVi, loadBillingData, refreshEntitlements, showToast]);
 
+  // =========================================================================
+  // DIRECT COURSE CHECKOUT HANDLERS
+  // =========================================================================
+  const handleApplyCourseCoupon = async () => {
+    if (!pendingCheckoutCourse || !courseCouponInput.trim()) return;
+    setCourseCouponErr(null);
+    try {
+      const res = await fetch('/api/billing/validate-coupon', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          productId: 'prod_single_course',
+          courseId: pendingCheckoutCourse.id,
+          quantity: 1,
+          couponCode: courseCouponInput.trim(),
+          includeVatInvoice: courseNeedVat,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCourseCouponPreview(null);
+        setCourseCouponErr(data.error || 'Mã giảm giá không hợp lệ.');
+        return;
+      }
+      setCourseCouponPreview({
+        valid: true,
+        discountAmount: data.discountAmount,
+        vatAmount: data.vatAmount,
+        totalAmount: data.totalAmount,
+      });
+    } catch {
+      setCourseCouponErr('Không thể kiểm tra mã giảm giá.');
+    }
+  };
+
+  const handleCreateCourseQrOrder = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!pendingCheckoutCourse || courseSubmitting) return;
+    if (courseNeedVat && (!courseVatCompany.trim() || !courseVatTaxCode.trim())) {
+      showToast(
+        isVi
+          ? 'Vui lòng nhập Tên công ty và Mã số thuế để xuất hóa đơn VAT.'
+          : 'Enter Company Name & Tax Code for VAT invoice.',
+        'error'
+      );
+      return;
+    }
+
+    setCourseSubmitting(true);
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          ...authHeaders(),
+          'Idempotency-Key': courseIdempotencyKey,
+        },
+        body: JSON.stringify({
+          productId: 'prod_single_course',
+          courseId: pendingCheckoutCourse.id,
+          quantity: 1,
+          provider: courseProvider,
+          couponCode: courseCouponPreview?.valid ? courseCouponInput.trim() : undefined,
+          invoiceInfo: courseNeedVat
+            ? {
+                companyName: courseVatCompany.trim(),
+                taxCode: courseVatTaxCode.trim(),
+                address: courseVatAddress.trim(),
+                email: courseVatEmail.trim(),
+              }
+            : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Khởi tạo mã QR thanh toán thất bại.', 'error');
+        return;
+      }
+      setCourseOrder(data.order);
+      setClockNowMs(Date.now());
+      await loadBillingData();
+    } finally {
+      setCourseSubmitting(false);
+    }
+  };
+
+  const handleConfirmCourseQrPayment = async () => {
+    if (!courseOrder || !pendingCheckoutCourse || courseSubmitting) return;
+    setCourseSubmitting(true);
+    try {
+      const headers: Record<string, string> = { ...authHeaders() };
+      if (courseOrder.orderToken) {
+        headers['x-order-token'] = courseOrder.orderToken;
+      }
+      const res = await fetch(
+        `/api/billing/orders/${encodeURIComponent(courseOrder.id)}/sandbox-confirm`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers,
+          body: JSON.stringify({ orderToken: courseOrder.orderToken }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Xác nhận thanh toán thất bại.', 'error');
+        return;
+      }
+      setCourseOrder(data.order);
+      await Promise.all([loadBillingData(), refreshEntitlements()]);
+      triggerAutoOpenUnlockedCourse(data.order);
+    } finally {
+      setCourseSubmitting(false);
+    }
+  };
+
+  // =========================================================================
+  // STANDARD PLANS CHECKOUT HANDLERS
+  // =========================================================================
   const openCheckout = (prod: BillingProduct) => {
     setSelectedProduct(prod);
     setSeatQuantity(prod.minSeats || 1);
@@ -193,8 +492,9 @@ export const PricingBillingView: React.FC = () => {
     setCouponPreview(null);
     setCouponErr(null);
     setActiveOrder(null);
-    // Generate unique per-attempt idempotency key to prevent duplicate charges on double-click/retry
-    setIdempotencyKey(`idem_${currentUser.id}_${prod.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
+    setIdempotencyKey(
+      `idem_${currentUser.id}_${prod.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    );
   };
 
   const handleApplyCoupon = async () => {
@@ -203,9 +503,11 @@ export const PricingBillingView: React.FC = () => {
     try {
       const res = await fetch('/api/billing/validate-coupon', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: authHeaders(),
         body: JSON.stringify({
           productId: selectedProduct.id,
+          courseId: selectedProduct.productType === 'course' ? selectedCourseId : undefined,
           quantity: seatQuantity,
           couponCode: couponInput.trim(),
           includeVatInvoice: needVatInvoice,
@@ -233,7 +535,9 @@ export const PricingBillingView: React.FC = () => {
     if (!selectedProduct || submitting) return;
     if (needVatInvoice && (!vatCompany.trim() || !vatTaxCode.trim())) {
       showToast(
-        isVi ? 'Vui lòng nhập Tên công ty và Mã số thuế để xuất hóa đơn VAT.' : 'Enter Company Name & Tax Code for VAT invoice.',
+        isVi
+          ? 'Vui lòng nhập Tên công ty và Mã số thuế để xuất hóa đơn VAT.'
+          : 'Enter Company Name & Tax Code for VAT invoice.',
         'error'
       );
       return;
@@ -280,27 +584,59 @@ export const PricingBillingView: React.FC = () => {
     if (!activeOrder || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/billing/orders/${encodeURIComponent(activeOrder.id)}/sandbox-confirm`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: authHeaders(),
-      });
+      const headers: Record<string, string> = { ...authHeaders() };
+      if (activeOrder.orderToken) {
+        headers['x-order-token'] = activeOrder.orderToken;
+      }
+      const res = await fetch(
+        `/api/billing/orders/${encodeURIComponent(activeOrder.id)}/sandbox-confirm`,
+        {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers,
+          body: JSON.stringify({ orderToken: activeOrder.orderToken }),
+        }
+      );
       const data = await res.json();
       if (!res.ok) {
         showToast(data.error || 'Xác nhận sandbox thất bại.', 'error');
         return;
       }
       setActiveOrder(data.order);
+      if (data.order?.courseId) {
+        await enrollCourse(data.order.courseId);
+      }
       showToast(
         isVi
           ? `Đã kích hoạt quyền học cho đơn ${data.order.orderCode}!`
           : `Entitlements activated for order ${data.order.orderCode}!`,
         'success'
       );
-      await loadBillingData();
+      await Promise.all([loadBillingData(), refreshEntitlements()]);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleAdminManualConfirm = async (orderId: string) => {
+    const res = await fetch(
+      `/api/billing/orders/${encodeURIComponent(orderId)}/confirm-manual`,
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error || 'Xác nhận đơn hàng thất bại.', 'error');
+      return;
+    }
+    showToast(
+      isVi ? `Đã xác nhận chuyển khoản & mở khóa đơn ${data.order.orderCode}!` : `Order ${data.order.orderCode} manually confirmed!`,
+      'success'
+    );
+    await Promise.all([loadBillingData(), refreshEntitlements()]);
   };
 
   const handleRefundOrder = async (orderId: string) => {
@@ -318,11 +654,24 @@ export const PricingBillingView: React.FC = () => {
       isVi ? 'Đã hoàn tiền và tự động thu hồi quyền truy cập!' : 'Refunded and revoked entitlements!',
       'info'
     );
-    await loadBillingData();
+    await Promise.all([loadBillingData(), refreshEntitlements()]);
   };
 
-  // Preview calculation on UI (final authority always stays 100% server-side)
-  const previewSubtotal = selectedProduct ? selectedProduct.priceVnd * seatQuantity : 0;
+  // Preview calculation for Direct Course Checkout
+  const courseUnitPrice = pendingCheckoutCourse ? getCoursePriceVnd(pendingCheckoutCourse) : 990000;
+  const courseDiscount = courseCouponPreview?.valid ? courseCouponPreview.discountAmount : 0;
+  const courseNet = Math.max(0, courseUnitPrice - courseDiscount);
+  const courseVat = courseNeedVat ? Math.round(courseNet * 0.08) : 0;
+  const courseTotal = courseNet + courseVat;
+  const pendingSyllabus = pendingCheckoutCourse ? getCourseSyllabus(pendingCheckoutCourse) : undefined;
+
+  // Preview calculation for Plan Modal
+  const modalSelectedCourse = courses.find((c) => c.id === selectedCourseId);
+  const modalUnitPrice =
+    selectedProduct?.productType === 'course' && modalSelectedCourse
+      ? getCoursePriceVnd(modalSelectedCourse)
+      : selectedProduct?.priceVnd || 0;
+  const previewSubtotal = selectedProduct ? modalUnitPrice * seatQuantity : 0;
   const previewDiscount = couponPreview?.valid ? couponPreview.discountAmount : 0;
   const previewNet = Math.max(0, previewSubtotal - previewDiscount);
   const previewVat = needVatInvoice ? Math.round(previewNet * 0.08) : 0;
@@ -345,6 +694,568 @@ export const PricingBillingView: React.FC = () => {
     }
   };
 
+  // =========================================================================
+  // DEDICATED COURSE CHECKOUT & QR AUTO-UNLOCK WORKSPACE
+  // =========================================================================
+  if (pendingCheckoutCourse) {
+    return (
+      <div className="space-y-6">
+        {/* Top Navigation Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              clearCourseCheckout();
+              setActiveTab('courses');
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-xs cursor-pointer transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>{isVi ? 'Quay lại Kho Khóa Học' : 'Back to Course Catalog'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => clearCourseCheckout()}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-bold text-xs cursor-pointer transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            <span>
+              {isVi ? 'Xem Gói Pro All-Access (18 Khóa)' : 'View Pro All-Access Plans (18 Courses)'}
+            </span>
+          </button>
+        </div>
+
+        {/* Checkout Header Banner */}
+        <div className="bg-gradient-to-r from-[#0A192F] via-[#122645] to-[#1E3A8A] text-white p-5 sm:p-7 rounded-2xl border border-slate-700/60 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5 min-w-0">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
+              <QrCode className="w-3.5 h-3.5 shrink-0" />
+              <span>{isVi ? 'Thanh Toán Ghi Danh Khóa Học · Mở Khóa Tự Động' : 'Course Enrollment Checkout · Instant QR Unlock'}</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+              <span className="font-mono text-amber-400 mr-2">{pendingCheckoutCourse.code}</span>
+              {isVi ? pendingCheckoutCourse.titleVi : pendingCheckoutCourse.titleEn}
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300">
+              {isVi
+                ? 'Sau khi hoàn tất quét mã QR thanh toán, hệ thống tự động kích hoạt ghi danh và mở ngay toàn bộ nội dung bài giảng, file Excel USALI & bài kiểm tra.'
+                : 'Once QR payment is confirmed, the course is automatically enrolled and opened immediately with full lessons, USALI workbooks, and certification exam.'}
+            </p>
+          </div>
+          <div className="px-4 py-3 rounded-xl bg-slate-900/70 border border-slate-700 text-right shrink-0">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+              {isVi ? 'Học phí sở hữu trọn đời' : 'Lifetime Course Tuition'}
+            </span>
+            <span className="text-2xl font-black font-mono tabular-nums text-amber-400">
+              {formatVnd(courseUnitPrice)}
+            </span>
+          </div>
+        </div>
+
+        {/* 2-Column Checkout + QR Payment Workspace */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* LEFT COLUMN: Course Details & Checkout Options */}
+          <div className="lg:col-span-7 space-y-5">
+            {/* Course Summary Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-5 flex flex-col sm:flex-row gap-4 border-b border-slate-100">
+                <div className="w-full sm:w-36 h-24 rounded-xl overflow-hidden bg-[#0A192F] shrink-0 relative">
+                  {pendingCheckoutCourse.thumbnail ? (
+                    <img
+                      src={pendingCheckoutCourse.thumbnail}
+                      alt={pendingCheckoutCourse.titleVi}
+                      className="w-full h-full object-cover opacity-90"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center font-mono font-black text-amber-400 text-lg">
+                      {pendingCheckoutCourse.code}
+                    </div>
+                  )}
+                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#0A192F]/90 text-amber-300 text-[10px] font-mono font-bold">
+                    {pendingCheckoutCourse.code}
+                  </span>
+                </div>
+                <div className="space-y-1.5 min-w-0 flex-1 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-semibold">
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
+                      {pendingCheckoutCourse.difficulty}
+                    </span>
+                    <span>·</span>
+                    <span className="font-mono">{pendingCheckoutCourse.durationHours}h</span>
+                    <span>·</span>
+                    <span>
+                      {pendingSyllabus
+                        ? `${pendingSyllabus.sessions.length} ${isVi ? 'Học phần' : 'Sessions'}`
+                        : `${pendingCheckoutCourse.modules.length} Modules`}
+                    </span>
+                    <span>·</span>
+                    <span className="font-mono">Pass {pendingCheckoutCourse.passingScore}%</span>
+                  </div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
+                    {isVi ? pendingCheckoutCourse.titleVi : pendingCheckoutCourse.titleEn}
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">
+                      {pendingCheckoutCourse.instructorName} · {pendingCheckoutCourse.instructorTitle}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                {[
+                  isVi ? 'Sở hữu trọn đời khóa học đã chọn' : 'Lifetime access to this course',
+                  isVi ? 'Toàn bộ học liệu, file mẫu Excel USALI & Case Study' : 'All lessons, USALI Excel templates & Case Study',
+                  isVi ? 'Làm bài thi trắc nghiệm & cấp chứng nhận hoàn thành' : 'End-of-course exam & completion certificate',
+                  isVi ? 'Mở khóa truy cập tự động ngay sau khi thanh toán QR' : 'Automatic instant unlock right after QR payment',
+                ].map((item, idx) => (
+                  <div key={idx} className="flex items-start gap-2 text-slate-700">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Payment Method, Coupon & VAT (locked once QR order created unless user clicks "Tạo đơn mới") */}
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-extrabold text-sm text-slate-900">
+                  {isVi ? '1. Chọn Phương Thức Thanh Toán' : '1. Select Payment Method'}
+                </h3>
+                {courseOrder && courseOrder.status === 'pending' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCourseOrder(null);
+                      setCourseIdempotencyKey(
+                        `idem_${currentUser.id}_${pendingCheckoutCourse.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                      );
+                    }}
+                    className="text-[11px] font-bold text-blue-700 hover:underline cursor-pointer"
+                  >
+                    {isVi ? 'Thay đổi phương thức / mã giảm giá' : 'Change method / coupon'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {providers.map((pv) => (
+                  <button
+                    key={pv.id}
+                    type="button"
+                    disabled={Boolean(courseOrder)}
+                    onClick={() => setCourseProvider(pv.id)}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                      courseProvider === pv.id
+                        ? 'border-amber-500 bg-amber-50/70 ring-1 ring-amber-400'
+                        : 'border-slate-200 hover:border-slate-300 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-slate-900">{isVi ? pv.nameVi : pv.nameEn}</span>
+                      {pv.id === 'payos_vietqr' && (
+                        <QrCode className="w-4 h-4 text-amber-600 shrink-0" />
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">{isVi ? pv.badgeVi : pv.badgeEn}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Coupon */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <label className="block font-bold text-slate-700">
+                  {isVi ? '2. Mã giảm giá (Thử: LAUNCH2026):' : '2. Promo / Coupon Code:'}
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      disabled={Boolean(courseOrder)}
+                      value={courseCouponInput}
+                      onChange={(e) => {
+                        setCourseCouponInput(e.target.value.toUpperCase());
+                        setCourseCouponPreview(null);
+                        setCourseCouponErr(null);
+                      }}
+                      placeholder="LAUNCH2026"
+                      className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 font-mono uppercase disabled:bg-slate-100"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={Boolean(courseOrder) || !courseCouponInput.trim()}
+                    onClick={handleApplyCourseCoupon}
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer shrink-0 disabled:opacity-50"
+                  >
+                    {isVi ? 'Áp dụng' : 'Apply'}
+                  </button>
+                </div>
+                {courseCouponErr && <p className="text-[11px] text-rose-600 font-semibold">{courseCouponErr}</p>}
+                {courseCouponPreview?.valid && (
+                  <p className="text-[11px] text-emerald-700 font-semibold">
+                    {isVi
+                      ? `Đã áp dụng giảm ${formatVnd(courseCouponPreview.discountAmount)}!`
+                      : `Discount applied: ${formatVnd(courseCouponPreview.discountAmount)}!`}
+                  </p>
+                )}
+              </div>
+
+              {/* VAT Invoice */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <label className="flex items-center gap-2 font-bold text-slate-800 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    disabled={Boolean(courseOrder)}
+                    checked={courseNeedVat}
+                    onChange={(e) => setCourseNeedVat(e.target.checked)}
+                    className="accent-amber-500"
+                  />
+                  <span>
+                    {isVi
+                      ? 'Xuất hóa đơn đỏ VAT doanh nghiệp / khách sạn (+8%)'
+                      : 'Request Corporate VAT Invoice (+8%)'}
+                  </span>
+                </label>
+                {courseNeedVat && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <input
+                      type="text"
+                      disabled={Boolean(courseOrder)}
+                      value={courseVatCompany}
+                      onChange={(e) => setCourseVatCompany(e.target.value)}
+                      placeholder={isVi ? 'Tên công ty / Khách sạn *' : 'Company Name *'}
+                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                    <input
+                      type="text"
+                      disabled={Boolean(courseOrder)}
+                      value={courseVatTaxCode}
+                      onChange={(e) => setCourseVatTaxCode(e.target.value)}
+                      placeholder={isVi ? 'Mã số thuế (MST) *' : 'Tax Code *'}
+                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono"
+                    />
+                    <input
+                      type="text"
+                      disabled={Boolean(courseOrder)}
+                      value={courseVatAddress}
+                      onChange={(e) => setCourseVatAddress(e.target.value)}
+                      placeholder={isVi ? 'Địa chỉ xuất hóa đơn' : 'Billing Address'}
+                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                    <input
+                      type="email"
+                      disabled={Boolean(courseOrder)}
+                      value={courseVatEmail}
+                      onChange={(e) => setCourseVatEmail(e.target.value)}
+                      placeholder={isVi ? 'Email nhận hóa đơn điện tử' : 'Invoice Email'}
+                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: Order Summary & Live QR Payment Box */}
+          <div className="lg:col-span-5">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden sticky top-20">
+              <div className="bg-[#0A192F] text-white px-5 py-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-extrabold text-sm">
+                  <QrCode className="w-4 h-4 text-amber-400" />
+                  <span>
+                    {courseOrder
+                      ? isVi
+                        ? `Mã QR Thanh Toán · ${courseOrder.orderCode}`
+                        : `QR Payment · ${courseOrder.orderCode}`
+                      : isVi
+                      ? 'Tóm Tắt Đơn Hàng'
+                      : 'Order Summary'}
+                  </span>
+                </div>
+                {courseOrder && courseOrder.status === 'pending' && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-mono font-bold text-[11px] tabular-nums">
+                    {formatCountdown(courseOrder.expiresAt, clockNowMs)}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-5 space-y-4 text-xs">
+                {/* STATE 1: BEFORE ORDER CREATION */}
+                {!courseOrder && (
+                  <form onSubmit={handleCreateCourseQrOrder} className="space-y-4">
+                    <div className="space-y-2 pb-3 border-b border-slate-100">
+                      <div className="flex justify-between text-slate-600">
+                        <span>{isVi ? 'Học phí khóa học:' : 'Course tuition:'}</span>
+                        <span className="font-mono font-bold text-slate-900 tabular-nums">
+                          {formatVnd(courseUnitPrice)}
+                        </span>
+                      </div>
+                      {courseDiscount > 0 && (
+                        <div className="flex justify-between text-emerald-700 font-semibold">
+                          <span>{isVi ? 'Giảm giá ưu đãi:' : 'Promo discount:'}</span>
+                          <span className="font-mono tabular-nums">-{formatVnd(courseDiscount)}</span>
+                        </div>
+                      )}
+                      {courseVat > 0 && (
+                        <div className="flex justify-between text-slate-600">
+                          <span>VAT (8%):</span>
+                          <span className="font-mono tabular-nums">+{formatVnd(courseVat)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-baseline justify-between">
+                      <span className="font-extrabold text-sm text-slate-900">
+                        {isVi ? 'Tổng thanh toán:' : 'Total Due:'}
+                      </span>
+                      <span className="text-2xl font-black font-mono tabular-nums text-[#0A192F]">
+                        {formatVnd(courseTotal)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={courseSubmitting}
+                      className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:opacity-60 transition-all"
+                    >
+                      {courseSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>{isVi ? 'Đang khởi tạo mã QR...' : 'Generating QR code...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <QrCode className="w-4 h-4" />
+                          <span>
+                            {isVi ? 'Tạo Mã QR Thanh Toán Ngay' : 'Generate QR Payment Code'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>
+                        {isVi
+                          ? 'Mở khóa tự động 24/7 ngay sau khi thanh toán QR thành công'
+                          : '24/7 automatic unlock right after QR payment confirmation'}
+                      </span>
+                    </div>
+                  </form>
+                )}
+
+                {/* STATE 2: PENDING QR SCANNING & AUTO-POLLING */}
+                {courseOrder && courseOrder.status === 'pending' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 shrink-0" />
+                      <span>
+                        {isVi
+                          ? 'Mở App Ngân hàng / MoMo quét mã QR · Tự động kiểm tra mỗi 3 giây...'
+                          : 'Scan QR with Banking App / MoMo · Auto-checking every 3s...'}
+                      </span>
+                    </div>
+
+                    {/* Scannable VietQR Frame */}
+                    <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                      {courseOrder.qrCodeUrl ? (
+                        <img
+                          src={courseOrder.qrCodeUrl}
+                          alt={`VietQR ${courseOrder.orderCode}`}
+                          className="w-60 h-60 object-contain rounded-xl bg-white p-2 border border-slate-200 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-52 h-52 flex flex-col items-center justify-center bg-white rounded-xl border border-slate-200 text-slate-400">
+                          <QrCode className="w-20 h-20" />
+                        </div>
+                      )}
+                      {courseOrder.paymentUrl && (
+                        <a
+                          href={courseOrder.paymentUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs"
+                        >
+                          {isVi ? 'Mở Ứng Dụng Thanh Toán →' : 'Open Payment App →'}
+                        </a>
+                      )}
+                      <div className="text-xl font-black font-mono tabular-nums text-slate-900">
+                        {formatVnd(courseOrder.totalAmount)}
+                      </div>
+                    </div>
+
+                    {/* Bank Transfer Details with Copy Buttons */}
+                    <div className="rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white text-[11px]">
+                      {courseOrder.bankInfo && (
+                        <>
+                          <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-500">{isVi ? 'Ngân hàng' : 'Bank'}</span>
+                            <span className="font-bold text-slate-900">{courseOrder.bankInfo.bankName}</span>
+                          </div>
+                          <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-500">{isVi ? 'Số tài khoản' : 'Account No.'}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-slate-900">
+                                {courseOrder.bankInfo.accountNo}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyValue('acc', courseOrder.bankInfo!.accountNo)}
+                                className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
+                                title={isVi ? 'Sao chép' : 'Copy'}
+                              >
+                                {copiedField === 'acc' ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-500">{isVi ? 'Chủ tài khoản' : 'Account Name'}</span>
+                            <span className="font-bold text-slate-900">{courseOrder.bankInfo.accountName}</span>
+                          </div>
+                        </>
+                      )}
+                      <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                        <span className="text-slate-500">{isVi ? 'Số tiền chính xác' : 'Exact Amount'}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-extrabold text-slate-900">
+                            {formatVnd(courseOrder.totalAmount)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyValue('amt', String(courseOrder.totalAmount))}
+                            className="p-1 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
+                            title={isVi ? 'Sao chép' : 'Copy'}
+                          >
+                            {copiedField === 'amt' ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="px-3.5 py-2.5 flex items-center justify-between gap-2 bg-amber-50/70">
+                        <span className="text-amber-900 font-semibold">
+                          {isVi ? 'Nội dung CK' : 'Transfer Ref'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <code className="px-2 py-0.5 rounded bg-amber-100 text-amber-950 font-mono font-extrabold">
+                            {courseOrder.bankTransferNote}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyValue('note', courseOrder.bankTransferNote || '')}
+                            className="p-1 rounded hover:bg-amber-100 text-amber-700 cursor-pointer"
+                            title={isVi ? 'Sao chép' : 'Copy'}
+                          >
+                            {copiedField === 'note' ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Manual Check Button */}
+                    <button
+                      type="button"
+                      disabled={courseCheckingNow}
+                      onClick={() => void pollCourseOrderStatus(true)}
+                      className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${courseCheckingNow ? 'animate-spin' : ''}`} />
+                      <span>
+                        {courseCheckingNow
+                          ? isVi
+                            ? 'Đang kiểm tra giao dịch...'
+                            : 'Checking payment status...'
+                          : isVi
+                          ? 'Kiểm Tra Trạng Thái Giao Dịch Ngay'
+                          : 'Check Payment Status Now'}
+                      </span>
+                    </button>
+
+                    {/* Sandbox / QR Preview Confirmation (Active until Live Bank Webhook keys are configured) */}
+                    {sandboxAllowed && (
+                      <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 space-y-2.5">
+                        <div className="flex items-start gap-2 text-emerald-900 text-[11px] leading-relaxed">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          <span>
+                            {isVi
+                              ? 'Chế độ xác thực QR kiểm thử đang bật (chưa cấu hình Webhook ngân hàng tự động). Nhấn nút bên dưới sau khi quét mã QR để kích hoạt mở khóa học ngay.'
+                              : 'QR Preview/Sandbox mode is active (live bank webhook not yet connected). Click below after scanning the QR to simulate instant webhook confirmation & auto-unlock.'}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={courseSubmitting}
+                          onClick={() => void handleConfirmCourseQrPayment()}
+                          className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-60"
+                        >
+                          {courseSubmitting ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4" />
+                          )}
+                          <span>
+                            {isVi
+                              ? 'Xác Nhận Đã Thanh Toán Mã QR (Tự Động Mở Khóa Học)'
+                              : 'Confirm QR Payment (Auto-Unlock Course)'}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* STATE 3: PAID — AUTO UNLOCKING COURSE CONTENT */}
+                {courseOrder && courseOrder.status === 'paid' && (
+                  <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-3">
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                      <CheckCircle2 className="w-9 h-9" />
+                    </div>
+                    <h4 className="text-base font-extrabold text-emerald-950">
+                      {isVi ? 'Thanh Toán QR Thành Công!' : 'QR Payment Confirmed!'}
+                    </h4>
+                    <p className="text-xs text-emerald-800 leading-relaxed">
+                      {isVi
+                        ? `Đơn hàng ${courseOrder.orderCode} đã được xác thực. Hệ thống đang tự động mở quyền truy cập nội dung khóa học ${pendingCheckoutCourse.code}...`
+                        : `Order ${courseOrder.orderCode} verified. Automatically opening course ${pendingCheckoutCourse.code}...`}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId)
+                      }
+                      className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                      <span>{isVi ? 'Mở Nội Dung Khóa Học Ngay' : 'Open Course Content Now'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // STANDARD PRICING PLANS & ORDERS VIEW
+  // =========================================================================
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -562,37 +1473,62 @@ export const PricingBillingView: React.FC = () => {
             {entitlements.length === 0 ? (
               <p className="text-xs text-slate-500 py-4">
                 {isVi
-                  ? 'Bạn đang dùng gói Miễn phí (Học thử). Chọn một gói ở tab Bảng Giá để mở khóa toàn bộ khóa học & GM Simulator.'
+                  ? 'Bạn đang dùng gói Miễn phí (Học thử). Chọn một gói ở tab Bảng Giá hoặc ghi danh khóa học bất kỳ để mở khóa.'
                   : 'You are currently on the Free preview tier.'}
               </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {entitlements.map((ent) => (
-                  <div
-                    key={ent.id}
-                    className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <span className="font-bold text-emerald-900 uppercase font-mono">
-                        {ent.scope === 'all_access' ? 'ALL-ACCESS PRO' : `${ent.scope}: ${ent.resourceId}`}
-                      </span>
-                      <p className="text-[11px] text-slate-600">
-                        {isVi ? 'Hiệu lực đến:' : 'Valid until:'}{' '}
-                        <strong>
-                          {ent.validUntil
-                            ? new Date(ent.validUntil).toLocaleDateString('vi-VN')
-                            : isVi
-                            ? 'Trọn đời'
-                            : 'Lifetime'}
-                        </strong>
-                        {ent.seatsTotal && ent.seatsTotal > 1 ? ` · ${ent.seatsTotal} seats` : ''}
-                      </p>
+                {entitlements.map((ent) => {
+                  const matchedCourse =
+                    ent.scope === 'course'
+                      ? courses.find((c) => c.id === ent.resourceId || c.code === ent.resourceId)
+                      : undefined;
+                  return (
+                    <div
+                      key={ent.id}
+                      className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <span className="font-bold text-emerald-900 uppercase font-mono block truncate">
+                          {ent.scope === 'all_access'
+                            ? 'ALL-ACCESS PRO'
+                            : matchedCourse
+                            ? `${matchedCourse.code} — ${isVi ? matchedCourse.titleVi : matchedCourse.titleEn}`
+                            : `${ent.scope}: ${ent.resourceId}`}
+                        </span>
+                        <p className="text-[11px] text-slate-600">
+                          {isVi ? 'Hiệu lực đến:' : 'Valid until:'}{' '}
+                          <strong>
+                            {ent.validUntil
+                              ? new Date(ent.validUntil).toLocaleDateString('vi-VN')
+                              : isVi
+                              ? 'Trọn đời'
+                              : 'Lifetime'}
+                          </strong>
+                          {ent.seatsTotal && ent.seatsTotal > 1 ? ` · ${ent.seatsTotal} seats` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {matchedCourse && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await enrollCourse(matchedCourse.id);
+                              setSelectedCourseForPlayer(matchedCourse);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold text-[11px] cursor-pointer"
+                          >
+                            <BookOpen className="w-3 h-3" />
+                            <span>{isVi ? 'Vào học' : 'Open'}</span>
+                          </button>
+                        )}
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white font-bold text-[10px]">
+                          ACTIVE
+                        </span>
+                      </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white font-bold text-[10px] shrink-0">
-                      ACTIVE
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -622,7 +1558,7 @@ export const PricingBillingView: React.FC = () => {
                   <thead className="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
                     <tr>
                       <th className="py-2.5 px-3">{isVi ? 'Mã đơn' : 'Order Code'}</th>
-                      <th className="py-2.5 px-3">{isVi ? 'Gói dịch vụ' : 'Product'}</th>
+                      <th className="py-2.5 px-3">{isVi ? 'Gói dịch vụ / Khóa học' : 'Product / Course'}</th>
                       <th className="py-2.5 px-3">{isVi ? 'Cổng TT' : 'Gateway'}</th>
                       <th className="py-2.5 px-3 text-right">{isVi ? 'Tổng tiền' : 'Total'}</th>
                       <th className="py-2.5 px-3 text-center">{isVi ? 'Trạng thái' : 'Status'}</th>
@@ -659,27 +1595,38 @@ export const PricingBillingView: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right whitespace-nowrap">
-                          {ord.status === 'pending' && (
-                            <button
-                              onClick={() => {
-                                const prod = products.find((p) => p.id === ord.productId) || null;
-                                setSelectedProduct(prod);
-                                setActiveOrder(ord);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer"
-                            >
-                              {isVi ? 'Mở QR / TT' : 'Pay Now'}
-                            </button>
-                          )}
-                          {isAdmin && ord.status === 'paid' && (
-                            <button
-                              onClick={() => handleRefundOrder(ord.id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              <span>{isVi ? 'Hoàn tiền' : 'Refund'}</span>
-                            </button>
-                          )}
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            {ord.status === 'pending' && (
+                              <button
+                                onClick={() => {
+                                  const prod = products.find((p) => p.id === ord.productId) || null;
+                                  setSelectedProduct(prod);
+                                  setActiveOrder(ord);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-[11px] cursor-pointer"
+                              >
+                                {isVi ? 'Mở QR / TT' : 'Pay Now'}
+                              </button>
+                            )}
+                            {isAdmin && ord.status === 'pending' && (
+                              <button
+                                onClick={() => handleAdminManualConfirm(ord.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-[11px] cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{isVi ? 'Duyệt CK' : 'Confirm'}</span>
+                              </button>
+                            )}
+                            {isAdmin && ord.status === 'paid' && (
+                              <button
+                                onClick={() => handleRefundOrder(ord.id)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>{isVi ? 'Hoàn tiền' : 'Refund'}</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -691,7 +1638,7 @@ export const PricingBillingView: React.FC = () => {
         </div>
       )}
 
-      {/* CHECKOUT & QR PAYMENT MODAL */}
+      {/* STANDARD PLAN CHECKOUT & QR PAYMENT MODAL */}
       {(selectedProduct || activeOrder) && (
         <div
           className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto"
@@ -742,12 +1689,15 @@ export const PricingBillingView: React.FC = () => {
                       </label>
                       <select
                         value={selectedCourseId}
-                        onChange={(e) => setSelectedCourseId(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedCourseId(e.target.value);
+                          setCouponPreview(null);
+                        }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"
                       >
                         {courses.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.code} — {isVi ? c.titleVi : c.titleEn}
+                            {c.code} — {isVi ? c.titleVi : c.titleEn} ({formatVnd(getCoursePriceVnd(c))})
                           </option>
                         ))}
                       </select>
@@ -917,8 +1867,8 @@ export const PricingBillingView: React.FC = () => {
                           ? 'Đang tạo đơn bảo mật...'
                           : 'Creating secure order...'
                         : isVi
-                        ? 'Tạo Mã Thanh Toán An Toàn'
-                        : 'Create Secure Payment Order'}
+                        ? 'Tạo Mã QR Thanh Toán An Toàn'
+                        : 'Create Secure QR Payment Order'}
                     </span>
                   </button>
                 </form>
@@ -935,16 +1885,36 @@ export const PricingBillingView: React.FC = () => {
                           ? `Đơn hàng ${activeOrder.orderCode} đã được xác thực. Quyền truy cập khóa học & tính năng đã kích hoạt tự động.`
                           : `Order ${activeOrder.orderCode} verified. Entitlements are now active.`}
                       </p>
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(null);
-                          setActiveOrder(null);
-                          setActiveSubTab('orders');
-                        }}
-                        className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
-                      >
-                        {isVi ? 'Xem Gói Đã Mở Khóa' : 'View Active Entitlements'}
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        {activeOrder.courseId && (
+                          <button
+                            onClick={async () => {
+                              const target = courses.find((c) => c.id === activeOrder.courseId);
+                              setSelectedProduct(null);
+                              setActiveOrder(null);
+                              if (target) {
+                                await enrollCourse(target.id);
+                                setActiveTab('courses');
+                                setSelectedCourseForPlayer(target);
+                              }
+                            }}
+                            className="px-5 py-2 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <PlayCircle className="w-4 h-4" />
+                            <span>{isVi ? 'Vào Học Khóa Này Ngay' : 'Open Course Now'}</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSelectedProduct(null);
+                            setActiveOrder(null);
+                            setActiveSubTab('orders');
+                          }}
+                          className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+                        >
+                          {isVi ? 'Xem Gói Đã Mở Khóa' : 'View Active Entitlements'}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -952,7 +1922,9 @@ export const PricingBillingView: React.FC = () => {
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-[11px]">
                           <Clock className="w-3.5 h-3.5" />
                           <span>
-                            {isVi ? 'Đang chờ xác thực thanh toán từ cổng...' : 'Awaiting signed gateway confirmation...'}
+                            {isVi
+                              ? `Đang chờ thanh toán QR (${formatCountdown(activeOrder.expiresAt, clockNowMs)})...`
+                              : `Awaiting QR payment (${formatCountdown(activeOrder.expiresAt, clockNowMs)})...`}
                           </span>
                         </div>
 
@@ -998,17 +1970,17 @@ export const PricingBillingView: React.FC = () => {
                             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                             <span>
                               {isVi
-                                ? 'Chế độ Sandbox kiểm thử: Bạn có thể mô phỏng Webhook thành công để kiểm tra luồng mở khóa tự động ngay lập tức.'
-                                : 'Sandbox Mode: Simulate a verified payment webhook to test automatic entitlement activation.'}
+                                ? 'Chế độ kiểm thử QR: Nhấn bên dưới để xác nhận thanh toán và mở khóa quyền học ngay lập tức.'
+                                : 'QR Test Mode: Confirm payment below to trigger instant entitlement activation.'}
                             </span>
                           </div>
                           <button
                             type="button"
                             disabled={submitting}
                             onClick={handleSandboxConfirm}
-                            className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold cursor-pointer disabled:opacity-60"
+                            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold cursor-pointer disabled:opacity-60"
                           >
-                            {isVi ? 'Mô Phỏng Thanh Toán Thành Công (Sandbox)' : 'Simulate Successful Payment (Sandbox)'}
+                            {isVi ? 'Xác Nhận Đã Thanh Toán QR (Tự Động Mở Khóa)' : 'Confirm QR Payment (Auto-Unlock)'}
                           </button>
                         </div>
                       )}
