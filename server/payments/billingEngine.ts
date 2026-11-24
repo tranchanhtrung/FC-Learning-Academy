@@ -38,9 +38,9 @@ const DEFAULT_PRODUCTS: BillingProduct[] = [
     nameVi: 'Gói Hội Viên Pro Financial Controller (12 Tháng)',
     nameEn: 'Pro Financial Controller Membership (12 Months)',
     descriptionVi:
-      'Mở khóa toàn bộ 18 khóa học chuẩn USALI 11th/12th, 7 dự án thực chiến OJT, AI Coach không giới hạn cơ bản và Phòng Họp Mô Phỏng cùng GM.',
+      'Mở khóa toàn bộ 18 khóa học chuẩn USALI 12th, 7 dự án thực chiến OJT, AI Coach không giới hạn cơ bản và Phòng Họp Mô Phỏng cùng GM.',
     descriptionEn:
-      'Unlock all 18 USALI 11th/12th courses, 7 hotel OJT capstones, AI Coach, and GM Business Partner Simulator.',
+      'Unlock all 18 USALI 12th courses, 7 hotel OJT capstones, AI Coach, and GM Business Partner Simulator.',
     priceVnd: 4990000,
     priceUsdCents: 19900,
     billingCycle: 'yearly',
@@ -52,14 +52,14 @@ const DEFAULT_PRODUCTS: BillingProduct[] = [
     minSeats: 1,
     featured: true,
     featuresVi: [
-      'Trọn bộ 18 khóa học & 75 học phần USALI 11th/12th',
+      'Trọn bộ 18 khóa học & 75 học phần USALI 12th',
       'Tải toàn bộ mẫu Excel tài chính khách sạn 5 sao (R2 tốc độ cao)',
       'Chấm bài thực hành OJT & cấp Chứng chỉ Chuyên môn 5 Cấp',
       'Không giới hạn luyện tập GM Business Partner Simulator',
       '300 lượt hỏi đáp chuyên sâu với Trợ lý AI Gemini mỗi tháng',
     ],
     featuresEn: [
-      'All 18 courses & 75 USALI 11th/12th modules',
+      'All 18 courses & 75 USALI 12th modules',
       'Full 5-star hotel Excel templates & workbooks',
       'OJT project grading & 5-Level Verified Certificates',
       'Full GM Business Partner Simulator access',

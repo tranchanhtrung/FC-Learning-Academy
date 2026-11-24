@@ -204,7 +204,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({ certificate,
                     {isVi ? 'MÃ XÁC THỰC' : 'VERIFICATION CODE'}: {certificate.verificationCode}
                   </span>
                   <span>{isVi ? 'TRẠNG THÁI: ĐANG HIỆU LỰC' : 'STATUS: CERTIFIED & ACTIVE'}</span>
-                  <span>USALI 11TH/12TH</span>
+                  <span>USALI 12TH</span>
                 </div>
               </div>
             </div>

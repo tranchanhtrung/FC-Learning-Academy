@@ -303,8 +303,8 @@ export const COMPETENCIES: Competency[] = [
     domainId: 'dom_1',
     nameVi: 'Chuẩn Mực Kế Toán Khách Sạn & USALI',
     nameEn: 'USALI Principles & Hospitality Chart of Accounts',
-    definitionVi: 'Hiểu và vận dụng thành thạo cấu trúc USALI 11th & 12th Edition, phân bổ doanh thu và chi phí hợp lý giữa Operated Departments và Undistributed Departments.',
-    definitionEn: 'Mastery of USALI 11th/12th Edition principles, departmental revenue recognition, and cost allocation between operated and undistributed departments.',
+    definitionVi: 'Hiểu và vận dụng thành thạo cấu trúc USALI 12th Edition, phân bổ doanh thu và chi phí hợp lý giữa Operated Departments và Undistributed Departments.',
+    definitionEn: 'Mastery of USALI 12th Edition principles, departmental revenue recognition, and cost allocation between operated and undistributed departments.',
     expectedLevelByPosition: {
       'Junior Staff Accountant': 1,
       'Senior Accountant': 2,
@@ -1144,8 +1144,8 @@ export const QUIZ_QUESTIONS: QuizQuestion[] = [
     courseId: 'course_01',
     domainId: 'dom_1',
     competencyCode: 'FAR-01',
-    questionVi: 'Theo chuẩn mực USALI 11th Edition, chi phí tiền lương và phúc lợi của nhân viên Giám sát Bếp (Sous Chef) được phân loại vào dòng mục nào trên Báo cáo Kết quả Kinh doanh?',
-    questionEn: 'Under USALI 11th Edition, the salary and benefits of a Sous Chef are classified under which line item on the Operating Statement?',
+    questionVi: 'Theo chuẩn mực USALI 12th Edition, chi phí tiền lương và phúc lợi của nhân viên Giám sát Bếp (Sous Chef) được phân loại vào dòng mục nào trên Báo cáo Kết quả Kinh doanh?',
+    questionEn: 'Under USALI 12th Edition, the salary and benefits of a Sous Chef are classified under which line item on the Operating Statement?',
     type: 'single_choice',
     optionsVi: [
       'Operated Department – Food & Beverage: Labor Costs and Related Expenses',

@@ -56,7 +56,7 @@ export const CertificationsView: React.FC = () => {
       level: 1 as const,
       titleVi: 'Cấp độ 1 – Nền Tảng Kế Toán Khách Sạn (Hospitality Finance Foundation)',
       titleEn: 'Level 1 – Hospitality Finance Foundation',
-      descVi: 'Nắm vững các nguyên lý hạch toán kế toán khách sạn theo USALI 11th Edition, đối chiếu số dư tiền mặt và khóa sổ doanh thu hàng ngày.',
+      descVi: 'Nắm vững các nguyên lý hạch toán kế toán khách sạn theo USALI 12th Edition, đối chiếu số dư tiền mặt và khóa sổ doanh thu hàng ngày.',
       descEn: 'Fundamental hospitality accounting, daily revenue recognition, and cashier float auditing.',
       requiredCourses: ['HFC-101'],
       requiredOjt: ['OJT-FAR-01'],

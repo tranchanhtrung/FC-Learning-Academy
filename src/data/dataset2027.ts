@@ -36,7 +36,7 @@ export function build2027DatasetRows() {
   ];
 
   const competencyDomains = [
-    { id: 'DOM-FAR', code: 'FAR', name_en: 'Financial Accounting & Reporting', name_vi: 'Kế Toán Tài Chính & Báo Cáo USALI', description_en: 'USALI 11th/12th revenue recognition, month-end Day 3 closing, balance sheet reconciliations.', description_vi: 'Chuẩn mực USALI, khóa sổ tháng Day 3 và đối chiếu bảng cân đối.', weight_percent: 20, sort_order: 1 },
+    { id: 'DOM-FAR', code: 'FAR', name_en: 'Financial Accounting & Reporting', name_vi: 'Kế Toán Tài Chính & Báo Cáo USALI', description_en: 'USALI 12th revenue recognition, month-end Day 3 closing, balance sheet reconciliations.', description_vi: 'Chuẩn mực USALI, khóa sổ tháng Day 3 và đối chiếu bảng cân đối.', weight_percent: 20, sort_order: 1 },
     { id: 'DOM-FCA', code: 'FCA', name_en: 'Financial Control, Audit & Compliance', name_vi: 'Kiểm Soát Nội Bộ, Kiểm Toán & Tuân Thủ', description_en: 'Internal controls, cashier float audits, F&B cost control, SOP governance.', description_vi: 'Kiểm soát nội bộ, kiểm kê quỹ, kiểm soát giá vốn F&B và tuân thủ.', weight_percent: 20, sort_order: 2 },
     { id: 'DOM-FPM', code: 'FPM', name_en: 'Financial Planning & Management', name_vi: 'Hoạch Định Ngân Sách & Dòng Tiền', description_en: 'Zero-based budgeting, 13-week cash flow forecasting, CAPEX DCF modeling.', description_vi: 'Lập ngân sách, dự báo dòng tiền 13 tuần và thẩm định CAPEX.', weight_percent: 20, sort_order: 3 },
     { id: 'DOM-BPA', code: 'BPA', name_en: 'Business Performance & Analytics', name_vi: 'Phân Tích Hiệu Suất & Flow-Through', description_en: 'GOP Flow-Through, RevPAR index, ADR vs Occupancy optimization, departmental flexing.', description_vi: 'Phân tích GOP Flow-Through, RevPAR và hiệu suất vận hành.', weight_percent: 15, sort_order: 4 },
@@ -53,7 +53,7 @@ export function build2027DatasetRows() {
 
   // 30 competencies (5 per domain)
   const compSeeds: Array<[string, string, string, string, string, number]> = [
-    ['COMP-01', 'FAR-01', 'DOM-FAR', 'USALI 11th/12th Chart of Accounts & P&L Structure', 'Hệ Thống Tài Khoản & Báo Cáo P&L Chuẩn USALI', 4],
+    ['COMP-01', 'FAR-01', 'DOM-FAR', 'USALI 12th Chart of Accounts & P&L Structure', 'Hệ Thống Tài Khoản & Báo Cáo P&L Chuẩn USALI', 4],
     ['COMP-02', 'FAR-02', 'DOM-FAR', 'Day 3 Accelerated Month-End Closing', 'Khóa Sổ Nhanh Cuối Tháng Day 3', 4],
     ['COMP-03', 'FAR-03', 'DOM-FAR', 'Audit-Ready Balance Sheet Reconciliations', 'Đối Chiếu Bảng Cân Đối Kế Toán Chuẩn Kiểm Toán', 3],
     ['COMP-04', 'FAR-04', 'DOM-FAR', 'Accrual, Deferral & Prepayment Accounting', 'Kế Toán Trích Trước, Doanh Thu Hoãn Lại & Trả Trước', 3],
@@ -127,7 +127,7 @@ export function build2027DatasetRows() {
 
   // 18 courses accurately aligned across all 6 competency domains (3 courses per domain)
   const courseSeeds: Array<[string, string, string, string, string, string, number, number, number]> = [
-    ['CRS-01', 'HFC-101', 'DOM-FAR', 'COMP-01', 'Mastering USALI 11th & 12th Editions for Hotel Controllers', 'Làm Chủ Chuẩn Mực USALI 11th & 12th Edition', 1, 16, 80],
+    ['CRS-01', 'HFC-101', 'DOM-FAR', 'COMP-01', 'Mastering USALI 12th Edition for Hotel Controllers', 'Làm Chủ Chuẩn Mực USALI 12th Edition', 1, 16, 80],
     ['CRS-02', 'HFC-102', 'DOM-FAR', 'COMP-02', 'Fast Month-End Closing & Balance Sheet Reconciliations', 'Kỹ Thuật Khóa Sổ Nhanh & Đối Chiếu Bảng Cân Đối Kế Toán', 2, 14, 80],
     ['CRS-03', 'HFC-103', 'DOM-FAR', 'COMP-04', 'Advanced Hospitality Revenue Recognition, Loyalty Programs & Tax Compliance', 'Ghi Nhận Doanh Thu Phức Tạp, Điểm Thưởng Khách Hàng & Thuế Khách Sạn', 3, 18, 85],
     ['CRS-04', 'HFC-201', 'DOM-FCA', 'COMP-06', 'Hotel Internal Controls, Audit & Anti-Fraud Strategies', 'Kiểm Soát Nội Bộ & Phòng Ngừa Gian Lận Khách Sạn 5 Sao', 2, 18, 85],

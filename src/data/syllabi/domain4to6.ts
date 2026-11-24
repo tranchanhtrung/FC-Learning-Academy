@@ -1300,12 +1300,12 @@ export const DOMAIN_4_TO_6_SYLLABI: Record<string, CourseSyllabus> = {
           'Pass HFC-602 Assessment (>=85%)',
         ],
         topicsVi: [
-          'Phân tích Case Study Quỹ đầu tư BĐS: Đối chiếu từng điều khoản định nghĩa Gross Operating Profit trong HMA với chuẩn USALI 11th',
+          'Phân tích Case Study Quỹ đầu tư BĐS: Đối chiếu từng điều khoản định nghĩa Gross Operating Profit trong HMA với chuẩn USALI 12th',
           'Kỹ năng tổ chức Technical Audit Workshop đạt đồng thuận phê duyệt thanh toán $180,000',
           'Thi cuối khóa HFC-602',
         ],
         topicsEn: [
-          'PE Fund Hotel Case: Reconciling HMA AGOP definitions against USALI 11th Non-Operating lines',
+          'PE Fund Hotel Case: Reconciling HMA AGOP definitions against USALI 12th Non-Operating lines',
           'Facilitating a Technical Audit Workshop to secure amicable $180k invoice settlement',
           'HFC-602 Final Assessment',
         ],

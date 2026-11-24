@@ -419,7 +419,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, isMobileDrawer = f
       <div className="p-3 m-3 rounded-xl bg-gradient-to-br from-slate-800/80 to-slate-900 border border-slate-700/60 text-center shrink-0">
         <div className="flex items-center justify-center gap-1.5 text-amber-400 text-xs font-bold mb-1">
           <Sparkles className="w-3.5 h-3.5 shrink-0" />
-          <span>USALI 11th &amp; 12th</span>
+          <span>USALI 12th</span>
         </div>
         <p className="text-[11px] text-slate-400 leading-snug">
           Marriott &bull; IHG &bull; Accor &bull; Hilton

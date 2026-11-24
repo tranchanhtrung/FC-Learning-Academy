@@ -267,8 +267,8 @@ export const AIAssistantView: React.FC = () => {
       role: 'assistant',
       content:
         language === 'vi'
-          ? 'Xin chào! Tôi là Trợ Lý AI Học Viện FC (kết nối trực tiếp học liệu USALI 11th & 12th và 18 khóa học chính thức của Học viện). Hãy chọn một khóa học hoặc đặt câu hỏi về P&L, Flow-Through, Kiểm toán nội bộ, Dự báo dòng tiền hay CAPEX.'
-          : 'Hello! I am your FC Academy AI Assistant, grounded in all 18 approved courses and USALI 11th & 12th standards. Select a course reference or ask any hospitality finance question.',
+          ? 'Xin chào! Tôi là Trợ Lý AI Học Viện FC (kết nối trực tiếp học liệu USALI 12th và 18 khóa học chính thức của Học viện). Hãy chọn một khóa học hoặc đặt câu hỏi về P&L, Flow-Through, Kiểm toán nội bộ, Dự báo dòng tiền hay CAPEX.'
+          : 'Hello! I am your FC Academy AI Assistant, grounded in all 18 approved courses and USALI 12th standards. Select a course reference or ask any hospitality finance question.',
     },
   ]);
   const [advisorLoading, setAdvisorLoading] = useState<boolean>(false);
@@ -1455,13 +1455,13 @@ export const AIAssistantView: React.FC = () => {
               </span>
               {(language === 'vi'
                 ? [
-                    'Giải thích cấu trúc phân bổ chi phí USALI 11th Edition',
+                    'Giải thích cấu trúc phân bổ chi phí USALI 12th Edition',
                     'Công thức tính Flow-Through và Flex khi doanh thu biến động',
                     'Checklist quy trình Fast-Close Day 3',
                     'Phân biệt FF&E Reserve và Chi phí bảo trì POM',
                   ]
                 : [
-                    'Explain USALI 11th Edition Undistributed Cost Allocation',
+                    'Explain USALI 12th Edition Undistributed Cost Allocation',
                     'How to calculate GOP Flow-Through & Flex Variance',
                     'Day-3 Fast-Close Month-End Checklist',
                     'FF&E Reserve vs. Property Operations & Maintenance (POM)',

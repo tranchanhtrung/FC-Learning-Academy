@@ -146,7 +146,7 @@ export function generateMasterSyllabusMarkdown(
     `- **${isVi ? 'Tổng thời lượng đào tạo' : 'Total Training Hours'}**: ${totalHours} ${
       isVi ? 'giờ' : 'hours'
     }`,
-    `- **${isVi ? 'Tiêu chuẩn tham chiếu' : 'Standards'}**: USALI 11th & 12th Editions · IFRS 15 / IFRS 9 / IAS 16 · STR Benchmarking`,
+    `- **${isVi ? 'Tiêu chuẩn tham chiếu' : 'Standards'}**: USALI 12th Edition · IFRS 15 / IFRS 9 / IAS 16 · STR Benchmarking`,
     '',
     '---',
     '',

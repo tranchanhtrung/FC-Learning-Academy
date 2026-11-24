@@ -606,8 +606,8 @@ export const OnboardingBotWidget: React.FC = () => {
       if (/(khóa học|course|usali|học liệu|bài giảng|quiz|trắc nghiệm)/.test(q)) {
         return {
           text: isVi
-            ? 'Thư viện gồm 18 khóa học Tài chính Khách sạn chuẩn USALI 11th & 12th chia theo 6 miền năng lực, hỗ trợ xem trực tiếp tài liệu Word/Excel/PDF và làm Quiz.'
-            : 'The catalog includes 18 Hospitality Finance courses aligned to USALI 11th & 12th across 6 domains with inline Word/Excel/PDF previews and quizzes.',
+            ? 'Thư viện gồm 18 khóa học Tài chính Khách sạn chuẩn USALI 12th chia theo 6 miền năng lực, hỗ trợ xem trực tiếp tài liệu Word/Excel/PDF và làm Quiz.'
+            : 'The catalog includes 18 Hospitality Finance courses aligned to USALI 12th across 6 domains with inline Word/Excel/PDF previews and quizzes.',
           actions: canAccessRoute('courses')
             ? [
                 {

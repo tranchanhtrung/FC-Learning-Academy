@@ -895,8 +895,8 @@ export const DEFAULT_SIMULATOR_SCENARIOS: SimulationScenarioDoc[] = [
       'Tách bạch tăng trưởng công suất khỏi pha loãng hoa hồng OTA và trượt giá vốn bếp.',
       'Trình bày kế hoạch phục hồi biên GOP 30 ngày thuyết phục trước Tổng Giám đốc.',
     ],
-    requiredKnowledgeEn: ['USALI 11th/12th P&L Structure', 'Occupancy / ADR / RevPAR Decomposition', 'Food Cost % vs Revenue Mix'],
-    requiredKnowledgeVi: ['Cấu trúc P&L chuẩn USALI 11th/12th', 'Phân rã Occupancy / ADR / RevPAR', 'Giá vốn đồ ăn & cơ cấu doanh thu'],
+    requiredKnowledgeEn: ['USALI 12th P&L Structure', 'Occupancy / ADR / RevPAR Decomposition', 'Food Cost % vs Revenue Mix'],
+    requiredKnowledgeVi: ['Cấu trúc P&L chuẩn USALI 12th', 'Phân rã Occupancy / ADR / RevPAR', 'Giá vốn đồ ăn & cơ cấu doanh thu'],
     expectedOutputsEn: ['Quantified Variance Root-Cause Memo', 'Priority Action Plan', 'GM Executive Briefing'],
     expectedOutputsVi: ['Báo cáo Phân tích Nguyên nhân Gốc định lượng', 'Kế hoạch Hành động ưu tiên', 'Thuyết trình điều hành cho GM'],
     usaliReferenceLabel: 'USALI 12th Ed. Operating Statement & Schedules 1–4',
@@ -1347,7 +1347,7 @@ export function generateDatasetSnapshotForScenario(
         marketSegment: hotel.brandTier,
         currency: hotel.currency || 'USD',
         reportingPeriod: scenario.periodLabel,
-        reportingBasis: 'USALI 11th & 12th Edition Accrual Basis',
+        reportingBasis: 'USALI 12th Edition Accrual Basis',
         usaliLicenseReference: scenario.usaliReferenceLabel || 'USALI 12th Edition Compliance',
         budgetAssumptions: 'Hydrated directly from imported Scenario Financial_Dataset & Operational_Dataset.',
         operationalAssumptions: 'All Rooms Sold exclude Complimentary & House Use per USALI Schedule 1.',
@@ -1873,7 +1873,7 @@ export function generateDatasetSnapshotForScenario(
         : 'Upper Upscale / Luxury MICE & Corporate',
     currency: hotel.currency || 'USD',
     reportingPeriod: scenario.periodLabel,
-    reportingBasis: 'USALI 11th & 12th Edition Accrual Basis',
+    reportingBasis: 'USALI 12th Edition Accrual Basis',
     usaliLicenseReference: scenario.usaliReferenceLabel || 'USALI 12th Edition Compliance',
     budgetAssumptions:
       hotel.id === 'hotel_upscale_250'

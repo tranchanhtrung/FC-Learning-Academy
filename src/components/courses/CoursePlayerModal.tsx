@@ -153,7 +153,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
 
     // Sheet 1: Course Overview & USALI Key Formulas from Real Syllabus
     const overviewRows: (string | number)[][] = [
-      ['FC LEARNING ACADEMY — OFFICIAL WORKING MODEL (USALI 11th & 12th EDITION)'],
+      ['FC LEARNING ACADEMY — OFFICIAL WORKING MODEL (USALI 12th EDITION)'],
       ['Course Code', course.code, 'Difficulty', course.difficulty],
       ['Course Title', isVi ? course.titleVi : course.titleEn, 'Duration (hrs)', course.durationHours],
       ['Template / Document', matTitle || `${course.code} Financial Model`, 'Prepared For', `${currentUser.name} (${currentUser.position})`],
@@ -1013,8 +1013,8 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">
                     {isVi
-                      ? 'Toàn bộ các biểu mẫu chuẩn USALI 11th & 12th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn.'
-                      : 'USALI 11th & 12th Edition templates, month-end closing checklists, Flow-Through models, and CAPEX underwriting workbooks ready for immediate hotel deployment.'}
+                      ? 'Toàn bộ các biểu mẫu chuẩn USALI 12th Edition, checklist khóa sổ, công thức tính toán Flow-Through và thẩm định CAPEX được thiết kế sẵn.'
+                      : 'USALI 12th Edition templates, month-end closing checklists, Flow-Through models, and CAPEX underwriting workbooks ready for immediate hotel deployment.'}
                   </p>
                 </div>
 

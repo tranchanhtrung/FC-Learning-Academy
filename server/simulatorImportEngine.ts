@@ -1765,7 +1765,7 @@ export function createSimulatorStarterTemplateBuffer(): Buffer {
       },
       {
         Section: 'Operational_KPIs',
-        Value: 'USALI 11th & 12th',
+        Value: 'USALI 12th',
         Instructions: 'Occupancy_% = Rooms_Sold / Rooms_Available * 100; ADR = Rooms_Revenue / Rooms_Sold; RevPAR = Rooms_Revenue / Rooms_Available.',
       },
     ]),

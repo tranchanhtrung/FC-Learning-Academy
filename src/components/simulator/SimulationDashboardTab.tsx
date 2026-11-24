@@ -144,7 +144,7 @@ export const SimulationDashboardTab: React.FC = () => {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <p className="text-xs font-mono uppercase tracking-widest text-amber-400">
-              FC BUSINESS PARTNER SIMULATOR · USALI 11TH & 12TH ED.
+              FC BUSINESS PARTNER SIMULATOR · USALI 12TH ED.
             </p>
             <h1 className="text-2xl font-bold tracking-tight mt-1">
               {language === 'vi'

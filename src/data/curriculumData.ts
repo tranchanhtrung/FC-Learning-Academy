@@ -8,8 +8,8 @@ const RAW_COMPREHENSIVE_COURSES: Course[] = [
   {
     id: 'course_01',
     code: 'HFC-101',
-    titleVi: 'Làm Chủ Chuẩn Mực USALI 11th & 12th Edition',
-    titleEn: 'Mastering USALI 11th & 12th Editions for Hotel Controllers',
+    titleVi: 'Làm Chủ Chuẩn Mực USALI 12th Edition',
+    titleEn: 'Mastering USALI 12th Edition for Hotel Controllers',
     category: 'Financial Accounting & Reporting',
     domainId: 'dom_1',
     difficulty: 'Foundation',
@@ -66,8 +66,8 @@ const RAW_COMPREHENSIVE_COURSES: Course[] = [
     materials: [
       {
         id: 'mat_101_1',
-        title: 'Bảng Hệ Thống Tài Khoản Kế Toán Khách Sạn Chuẩn USALI 11th & 12th Edition',
-        titleEn: 'USALI 11th & 12th Edition Hospitality Chart of Accounts Workbook',
+        title: 'Bảng Hệ Thống Tài Khoản Kế Toán Khách Sạn Chuẩn USALI 12th Edition',
+        titleEn: 'USALI 12th Edition Hospitality Chart of Accounts Workbook',
         type: 'excel',
         fileSize: '3.4 MB',
         descriptionVi: 'File Excel mẫu toàn bộ hệ thống tài khoản chi tiết 4 cấp độ theo chuẩn USALI dành cho khách sạn 4-5 sao.',
@@ -566,8 +566,8 @@ const RAW_COMPREHENSIVE_COURSES: Course[] = [
     materials: [
       {
         id: 'mat_301_1',
-        title: 'Master Workbook Ngân Sách Khách Sạn 12 Tháng Chuẩn USALI 11th Edition',
-        titleEn: 'USALI 11th Edition 12-Month Hotel Master Operating Budget Workbook',
+        title: 'Master Workbook Ngân Sách Khách Sạn 12 Tháng Chuẩn USALI 12th Edition',
+        titleEn: 'USALI 12th Edition 12-Month Hotel Master Operating Budget Workbook',
         type: 'excel',
         fileSize: '8.5 MB',
         descriptionVi: 'Mô hình lập ngân sách toàn diện gồm bảng tính công suất buồng, F&B, nhân sự, chi phí năng lượng và chỉ tiêu GOP.',
@@ -1497,8 +1497,8 @@ export const PROGRESSIVE_LEARNING_PATHS: LearningPath[] = [
         requiredCompetencyCodes: ['FAR-01', 'FCA-02'],
         requiredCourses: ['course_01', 'course_202'],
         requiredOjtAssignments: ['ojt_01'],
-        readinessCriteriaVi: 'Thành thạo đối chiếu D-Card kiểm toán đêm, xử lý thanh toán thẻ/City Ledger và hạch toán doanh thu buồng – F&B đúng chuẩn USALI 11th & 12th Edition.',
-        readinessCriteriaEn: 'Daily Night Audit D-Card balancing, City Ledger reconciliations, and accurate USALI 11th/12th revenue coding.',
+        readinessCriteriaVi: 'Thành thạo đối chiếu D-Card kiểm toán đêm, xử lý thanh toán thẻ/City Ledger và hạch toán doanh thu buồng – F&B đúng chuẩn USALI 12th Edition.',
+        readinessCriteriaEn: 'Daily Night Audit D-Card balancing, City Ledger reconciliations, and accurate USALI 12th revenue coding.',
       },
       {
         stageNumber: 2,
@@ -1673,7 +1673,7 @@ export const PROGRESSIVE_LEARNING_PATHS: LearningPath[] = [
         requiredCompetencyCodes: ['FAR-01', 'FAR-02', 'FAR-03', 'FAR-04', 'FAR-05'],
         requiredCourses: ['course_01', 'course_02', 'course_103'],
         requiredOjtAssignments: ['ojt_01'],
-        readinessCriteriaVi: 'Hoàn thành 100% bộ chuyên đề HFC-101..103 (48h): chuẩn USALI 11th/12th, khóa sổ Day 3, đối chiếu bảng cân đối và kế toán doanh thu IFRS 15 / thuế FCT.',
+        readinessCriteriaVi: 'Hoàn thành 100% bộ chuyên đề HFC-101..103 (48h): chuẩn USALI 12th, khóa sổ Day 3, đối chiếu bảng cân đối và kế toán doanh thu IFRS 15 / thuế FCT.',
         readinessCriteriaEn: 'Complete HFC-101..103 (48h): USALI chart of accounts, Day-3 fast close, balance sheet reconciliations, and IFRS 15 / FCT tax governance.',
       },
       {

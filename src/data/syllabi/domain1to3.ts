@@ -7,9 +7,9 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
   'HFC-101': {
     courseCode: 'HFC-101',
     overviewVi:
-      'Khóa học nền tảng bắt buộc cung cấp hệ thống chuẩn mực báo cáo tài chính chuyên ngành khách sạn USALI ấn bản 11 & 12 (2024/2025). Học viên nắm trọn cấu trúc Summary Operating Statement, phân tách bộ phận trực tiếp (Operated) và chi phí không phân bổ (Undistributed), cũng như quy tắc hạch toán doanh thu trọn gói và phí dịch vụ.',
+      'Khóa học nền tảng bắt buộc cung cấp hệ thống chuẩn mực báo cáo tài chính chuyên ngành khách sạn USALI ấn bản 12 (2024/2025). Học viên nắm trọn cấu trúc Summary Operating Statement, phân tách bộ phận trực tiếp (Operated) và chi phí không phân bổ (Undistributed), cũng như quy tắc hạch toán doanh thu trọn gói và phí dịch vụ.',
     overviewEn:
-      'Mandatory foundational course establishing mastery of USALI 11th & 12th Editions. Learners master the Summary Operating Statement, Operated vs. Undistributed departmental mapping, IFRS 15 package allocation, and Service Charge compliance.',
+      'Mandatory foundational course establishing mastery of USALI 12th Edition. Learners master the Summary Operating Statement, Operated vs. Undistributed departmental mapping, IFRS 15 package allocation, and Service Charge compliance.',
     targetAudienceVi: 'Kế toán viên khách sạn, Kế toán tổng hợp, Night Auditor, Kế toán trưởng chuẩn bị lên AFC',
     targetAudienceEn: 'Staff Accountants, General Ledger Accountants, Night Auditors, Chief Accountants advancing to AFC',
     careerTrackStageVi: 'Giai đoạn 1: Kế Toán Viên -> Kế Toán Trưởng -> Trợ Lý FC',
@@ -25,10 +25,10 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
       practicalOjtWeight: 40,
       passingScore: 80,
     },
-    preWorkVi: 'Đọc trước tóm tắt cấu trúc USALI 11th Edition Part I và thu thập Hệ thống tài khoản hiện hành tại khách sạn đang công tác.',
-    preWorkEn: 'Review USALI 11th Edition Part I structure and gather your current property Chart of Accounts (COA) mapping.',
+    preWorkVi: 'Đọc trước tóm tắt cấu trúc USALI 12th Edition Part I và thu thập Hệ thống tài khoản hiện hành tại khách sạn đang công tác.',
+    preWorkEn: 'Review USALI 12th Edition Part I structure and gather your current property Chart of Accounts (COA) mapping.',
     referencesAndStandards: [
-      'USALI 11th & 12th Revised Editions (AHLA / HFTP)',
+      'USALI 12th Revised Edition (AHLA / HFTP)',
       'IFRS 15 — Revenue from Contracts with Customers (Hospitality Packages)',
       'Marriott / IHG Global Uniform Chart of Accounts Benchmark',
     ],
@@ -37,8 +37,8 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
     sessions: [
       {
         sessionNumber: 1,
-        titleVi: 'Học phần 1: Kiến trúc USALI 11th & 12th Edition và Summary Operating Statement',
-        titleEn: 'Session 1: USALI 11th & 12th Edition Architecture & Summary Operating Statement',
+        titleVi: 'Học phần 1: Kiến trúc USALI 12th Edition và Summary Operating Statement',
+        titleEn: 'Session 1: USALI 12th Edition Architecture & Summary Operating Statement',
         durationHours: 4,
         format: 'Video Masterclass',
         learningOutcomesVi: [
@@ -354,7 +354,7 @@ export const DOMAIN_1_TO_3_SYLLABI: Record<string, CourseSyllabus> = {
     referencesAndStandards: [
       'IFRS 15 — Five-Step Revenue Recognition Model for Hospitality',
       'Circular 103/2014/TT-BTC — Foreign Contractor Tax (FCT) Guidelines',
-      'USALI 11th/12th Loyalty Program & Attrition/Cancellation Fee Schedules',
+      'USALI 12th Loyalty Program & Attrition/Cancellation Fee Schedules',
     ],
     capstoneDeliverableVi: 'Mô hình Excel Tính thuế FCT Gross-up/Net cho OTA + Sổ theo dõi Doanh thu Hoãn lại MICE & Loyalty Points.',
     capstoneDeliverableEn: 'OTA FCT Withholding Calculator (Gross-up vs Net) + MICE Deferred Revenue & Loyalty Accrual Ledger.',
