@@ -1,9 +1,9 @@
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
-import type { User } from '../../src/types/index.ts';
+import type { SiteAdminConfigDoc, User } from '../../src/types/index.ts';
 import { COURSES } from '../../src/data/initialData.ts';
-import { getCoursePriceVnd } from '../../src/lib/coursePricing.ts';
+import { resolveEffectiveCoursePricing } from '../../src/lib/siteAdminConfig.ts';
 import { readJsonSafe, writeJsonAtomic } from '../persistence.ts';
 import { loadPgSnapshot, queuePgSnapshotSave } from '../db/postgresStore.ts';
 import type {
@@ -195,6 +195,7 @@ const DEFAULT_COUPONS: BillingCoupon[] = [
 export interface BillingEngineDeps {
   dataDir: string;
   orderSigningSecret: string;
+  getSiteAdminConfig: () => SiteAdminConfigDoc;
   getRequestActor: (req: express.Request) => User | undefined;
   isAdminActor: (req: express.Request) => boolean;
   onCourseUnlocked?: (userId: string, courseId: string) => void;
@@ -248,6 +249,8 @@ export function createBillingEngine(deps: BillingEngineDeps) {
       productId: order.productId,
       courseId: order.courseId,
       courseCode: order.courseCode,
+      comboId: order.comboId,
+      comboCourseIds: order.comboCourseIds,
       productNameVi: order.productNameVi,
       productNameEn: order.productNameEn,
       quantity: order.quantity,
@@ -390,39 +393,68 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     order.updatedAt = nowIso;
 
     // Idempotency guard: never insert duplicate entitlement for same sourceOrderId
-    const resolvedCourseId =
-      order.courseId ||
-      (product?.scope === 'course' && order.productNameEn.includes('[')
-        ? order.productNameEn.match(/\[([^\]]+)\]/)?.[1]
-        : undefined) ||
-      product?.resourceId ||
-      '*';
-
     const existingEnt = store.entitlements.find(
       (e) => e.sourceOrderId === order.id && e.userId === order.userId
     );
-    if (!existingEnt && product) {
-      const validUntil = product.durationDays
-        ? new Date(now.getTime() + product.durationDays * 86400000).toISOString()
+
+    if (Array.isArray(order.comboCourseIds) && order.comboCourseIds.length > 0) {
+      const siteCfg = deps.getSiteAdminConfig();
+      const matchedCombo = siteCfg.combos.find((cb) => cb.id === order.comboId);
+      const validUntil = matchedCombo?.durationDays
+        ? new Date(now.getTime() + matchedCombo.durationDays * 86400000).toISOString()
         : null;
-
-      store.entitlements.unshift({
-        id: `ent_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-        userId: order.userId,
-        scope: product.scope,
-        resourceId: product.scope === 'course' ? resolvedCourseId : product.resourceId,
-        status: 'active',
-        validFrom: nowIso,
-        validUntil,
-        sourceOrderId: order.id,
-        productId: product.id,
-        seatsTotal: order.quantity,
-        createdAt: nowIso,
+      if (!existingEnt) {
+        order.comboCourseIds.forEach((cid, idx) => {
+          store.entitlements.unshift({
+            id: `ent_${Date.now()}_${idx}_${crypto.randomBytes(2).toString('hex')}`,
+            userId: order.userId,
+            scope: 'course',
+            resourceId: cid,
+            status: 'active',
+            validFrom: nowIso,
+            validUntil,
+            sourceOrderId: order.id,
+            productId: order.productId,
+            seatsTotal: order.quantity,
+            createdAt: nowIso,
+          });
+        });
+      }
+      order.comboCourseIds.forEach((cid) => {
+        deps.onCourseUnlocked?.(order.userId, cid);
       });
-    }
+    } else {
+      const resolvedCourseId =
+        order.courseId ||
+        (product?.scope === 'course' && order.productNameEn.includes('[')
+          ? order.productNameEn.match(/\[([^\]]+)\]/)?.[1]
+          : undefined) ||
+        product?.resourceId ||
+        '*';
 
-    if (product?.scope === 'course' && resolvedCourseId && resolvedCourseId !== '*') {
-      deps.onCourseUnlocked?.(order.userId, resolvedCourseId);
+      if (!existingEnt && product) {
+        const validUntil = product.durationDays
+          ? new Date(now.getTime() + product.durationDays * 86400000).toISOString()
+          : null;
+
+        store.entitlements.unshift({
+          id: `ent_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          userId: order.userId,
+          scope: product.scope,
+          resourceId: product.scope === 'course' ? resolvedCourseId : product.resourceId,
+          status: 'active',
+          validFrom: nowIso,
+          validUntil,
+          sourceOrderId: order.id,
+          productId: product.id,
+          seatsTotal: order.quantity,
+          createdAt: nowIso,
+        });
+      }
+
+      if (product?.scope === 'course' && resolvedCourseId && resolvedCourseId !== '*') {
+        deps.onCourseUnlocked?.(order.userId, resolvedCourseId);
+      }
     }
 
     deps.recordAudit(
@@ -447,18 +479,35 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     });
   });
 
-  // Coupon validation preview
+  // Coupon validation preview (supports plans, single courses with Admin price overrides, and multi-course combos)
   router.post('/validate-coupon', (req, res) => {
-    const { productId, courseId, quantity = 1, couponCode, includeVatInvoice = false } = req.body || {};
-    const product = store.products.find((p) => p.id === productId && p.isActive);
-    if (!product) {
-      return res.status(404).json({ error: 'Không tìm thấy gói dịch vụ.' });
+    const { productId, courseId, comboId, quantity = 1, couponCode, includeVatInvoice = false } = req.body || {};
+    const siteCfg = deps.getSiteAdminConfig();
+
+    let unitPriceOverrideVnd: number | undefined;
+    let product = store.products.find((p) => p.id === productId && p.isActive);
+
+    if (comboId || productId === 'prod_course_combo') {
+      const combo = siteCfg.combos.find((cb) => cb.id === comboId && cb.isActive);
+      if (!combo) {
+        return res.status(404).json({ error: 'Không tìm thấy gói Combo khóa học.' });
+      }
+      unitPriceOverrideVnd = combo.priceVnd;
+      product = product || store.products.find((p) => p.id === 'prod_single_course') || store.products[0];
+    } else {
+      if (!product) {
+        return res.status(404).json({ error: 'Không tìm thấy gói dịch vụ.' });
+      }
+      const matchedCourse = product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
+      if (matchedCourse) {
+        unitPriceOverrideVnd = resolveEffectiveCoursePricing(matchedCourse, siteCfg.coursePrices).priceVnd;
+      }
     }
-    const matchedCourse = product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
+
     const calc = computeOrderTotals({
       product,
       quantity: Number(quantity) || 1,
-      unitPriceOverrideVnd: matchedCourse ? getCoursePriceVnd(matchedCourse) : undefined,
+      unitPriceOverrideVnd,
       couponCode: String(couponCode || ''),
       includeVatInvoice: Boolean(includeVatInvoice),
     });
@@ -544,6 +593,7 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     const {
       productId,
       courseId,
+      comboId,
       quantity = 1,
       provider = 'payos_vietqr',
       couponCode,
@@ -557,7 +607,7 @@ export function createBillingEngine(deps: BillingEngineDeps) {
 
     const idempotencyKey =
       String(req.headers['idempotency-key'] || req.body?.idempotencyKey || '').trim() ||
-      `idem_${actor.id}_${productId}_${Date.now()}`;
+      `idem_${actor.id}_${comboId || productId}_${Date.now()}`;
 
     // Glitch Guard #1: Idempotency — return existing order if same checkout is submitted twice
     const existingOrder = store.orders.find(
@@ -567,7 +617,19 @@ export function createBillingEngine(deps: BillingEngineDeps) {
       return res.json({ order: existingOrder, idempotentReplay: true });
     }
 
-    const product = store.products.find((p) => p.id === productId && p.isActive);
+    const siteCfg = deps.getSiteAdminConfig();
+    const isComboCheckout = Boolean(comboId || productId === 'prod_course_combo');
+    const matchedCombo = isComboCheckout
+      ? siteCfg.combos.find((cb) => cb.id === comboId && cb.isActive)
+      : undefined;
+
+    if (isComboCheckout && !matchedCombo) {
+      return res.status(404).json({ error: 'Gói Combo khóa học không tồn tại hoặc đã ngừng bán.' });
+    }
+
+    const product = isComboCheckout
+      ? store.products.find((p) => p.id === 'prod_single_course') || store.products[0]
+      : store.products.find((p) => p.id === productId && p.isActive);
     if (!product) {
       return res.status(404).json({ error: 'Gói học hoặc khóa học không tồn tại.' });
     }
@@ -575,12 +637,19 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     const hasVatInvoice = Boolean(
       invoiceInfo && invoiceInfo.companyName && invoiceInfo.taxCode
     );
-    const matchedCourse = product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
-    const resolvedCourseId = matchedCourse?.id || (courseId ? String(courseId).trim() : undefined);
+    const matchedCourse =
+      !isComboCheckout && product.productType === 'course' ? resolveCourseMeta(courseId) : undefined;
+    const resolvedCourseId = matchedCourse?.id || (!isComboCheckout && courseId ? String(courseId).trim() : undefined);
+    const unitPriceOverrideVnd = matchedCombo
+      ? matchedCombo.priceVnd
+      : matchedCourse
+      ? resolveEffectiveCoursePricing(matchedCourse, siteCfg.coursePrices).priceVnd
+      : undefined;
+
     const calc = computeOrderTotals({
       product,
-      quantity: Number(quantity) || 1,
-      unitPriceOverrideVnd: matchedCourse ? getCoursePriceVnd(matchedCourse) : undefined,
+      quantity: isComboCheckout ? 1 : Number(quantity) || 1,
+      unitPriceOverrideVnd,
       couponCode: couponCode ? String(couponCode) : undefined,
       includeVatInvoice: hasVatInvoice,
     });
@@ -619,15 +688,21 @@ export function createBillingEngine(deps: BillingEngineDeps) {
       userName: actor.name,
       userEmail: actor.email,
       orgName: actor.property,
-      productId: product.id,
+      productId: matchedCombo ? 'prod_course_combo' : product.id,
       courseId: resolvedCourseId,
       courseCode: matchedCourse?.code,
-      productNameVi: matchedCourse
+      comboId: matchedCombo?.id,
+      comboCourseIds: matchedCombo ? [...matchedCombo.courseIds] : undefined,
+      productNameVi: matchedCombo
+        ? `${matchedCombo.code} — ${matchedCombo.nameVi}`
+        : matchedCourse
         ? `${matchedCourse.code} — ${matchedCourse.titleVi}`
         : resolvedCourseId
         ? `${product.nameVi} [${resolvedCourseId}]`
         : product.nameVi,
-      productNameEn: matchedCourse
+      productNameEn: matchedCombo
+        ? `${matchedCombo.code} — ${matchedCombo.nameEn}`
+        : matchedCourse
         ? `${matchedCourse.code} — ${matchedCourse.titleEn} [${matchedCourse.id}]`
         : resolvedCourseId
         ? `${product.nameEn} [${resolvedCourseId}]`
@@ -648,7 +723,11 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     };
 
     try {
-      const paymentSession = await createProviderPaymentSession(order);
+      const paymentSession = await createProviderPaymentSession(order, {
+        bankBin: siteCfg.general.vietQrBankBin,
+        accountNo: siteCfg.general.vietQrAccountNo,
+        accountName: siteCfg.general.vietQrAccountName,
+      });
       order.providerRequestId = paymentSession.providerRequestId;
       order.paymentUrl = paymentSession.paymentUrl;
       order.qrCodeUrl = paymentSession.qrCodeUrl;
@@ -871,6 +950,74 @@ export function createBillingEngine(deps: BillingEngineDeps) {
     deps.persistMainDB();
     persistStore();
     return res.json({ success: true, order });
+  });
+
+  // =========================================================================
+  // ADMIN COUPON MANAGEMENT (/api/billing/admin/coupons)
+  // =========================================================================
+  router.get('/admin/coupons', (req, res) => {
+    if (!deps.isAdminActor(req)) {
+      return res.status(403).json({ error: 'Admin permission required.' });
+    }
+    return res.json({ coupons: store.coupons });
+  });
+
+  router.post('/admin/coupons', (req, res) => {
+    if (!deps.isAdminActor(req)) {
+      return res.status(403).json({ error: 'Admin permission required.' });
+    }
+    const rawCode = String(req.body?.code || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (rawCode.length < 3) {
+      return res.status(400).json({ error: 'Mã giảm giá phải có tối thiểu 3 ký tự (A-Z, 0-9).' });
+    }
+    const discountType = req.body?.discountType === 'fixed_vnd' ? 'fixed_vnd' : 'percent';
+    const discountValue = Math.max(1, Math.round(Number(req.body?.discountValue) || 10));
+    const maxDiscountVnd = req.body?.maxDiscountVnd ? Math.max(0, Math.round(Number(req.body.maxDiscountVnd))) : undefined;
+    const minOrderVnd = Math.max(0, Math.round(Number(req.body?.minOrderVnd) || 0));
+    const maxUses =
+      req.body?.maxUses === null || req.body?.maxUses === '' || req.body?.maxUses === undefined
+        ? null
+        : Math.max(1, Math.round(Number(req.body.maxUses)));
+    const expiresAt = req.body?.expiresAt ? String(req.body.expiresAt) : undefined;
+    const isActive = req.body?.isActive !== false;
+
+    const existingIdx = store.coupons.findIndex((c) => c.code === rawCode);
+    const coupon: BillingCoupon = {
+      code: rawCode,
+      discountType,
+      discountValue: discountType === 'percent' ? Math.min(95, discountValue) : discountValue,
+      maxDiscountVnd,
+      minOrderVnd,
+      maxUses,
+      usedCount: existingIdx >= 0 ? store.coupons[existingIdx].usedCount : 0,
+      expiresAt,
+      isActive,
+    };
+
+    if (existingIdx >= 0) {
+      store.coupons[existingIdx] = coupon;
+    } else {
+      store.coupons.unshift(coupon);
+    }
+
+    const actor = deps.getRequestActor(req);
+    deps.recordAudit('BILLING_COUPON_SAVE', actor?.name || 'Admin', rawCode, `Saved coupon ${rawCode} (${discountType}: ${discountValue})`);
+    deps.persistMainDB();
+    persistStore();
+    return res.json({ success: true, coupon, coupons: store.coupons });
+  });
+
+  router.delete('/admin/coupons/:code', (req, res) => {
+    if (!deps.isAdminActor(req)) {
+      return res.status(403).json({ error: 'Admin permission required.' });
+    }
+    const code = String(req.params.code || '').trim().toUpperCase();
+    store.coupons = store.coupons.filter((c) => c.code !== code);
+    const actor = deps.getRequestActor(req);
+    deps.recordAudit('BILLING_COUPON_DELETE', actor?.name || 'Admin', code, `Deleted coupon ${code}`);
+    deps.persistMainDB();
+    persistStore();
+    return res.json({ success: true, coupons: store.coupons });
   });
 
   return {

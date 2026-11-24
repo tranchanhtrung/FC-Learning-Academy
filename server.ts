@@ -40,7 +40,12 @@ import type {
   RolePermissionsMap,
   UserRole,
   LessonMaterialDoc,
+  SiteAdminConfigDoc,
 } from './src/types/index.ts';
+import {
+  DEFAULT_SITE_ADMIN_CONFIG,
+  normalizeSiteAdminConfig,
+} from './src/lib/siteAdminConfig.ts';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   SYSTEM_ROLES,
@@ -383,6 +388,7 @@ interface AcademyDB {
   talentNotifications: LmsNotificationItem[];
   rolePermissions: RolePermissionsMap;
   lessonMaterials: LessonMaterialDoc[];
+  siteAdminConfig: SiteAdminConfigDoc;
 }
 
 const IS_VERCEL = Boolean(process.env.VERCEL);
@@ -418,6 +424,7 @@ function getSeedDB(): AcademyDB {
       talentNotifications: [],
       rolePermissions: normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS),
       lessonMaterials: [],
+      siteAdminConfig: normalizeSiteAdminConfig(DEFAULT_SITE_ADMIN_CONFIG),
     };
   }
   const users = JSON.parse(JSON.stringify(INITIAL_USERS));
@@ -435,6 +442,7 @@ function getSeedDB(): AcademyDB {
     ...talentSeed,
     rolePermissions: normalizeRolePermissionsMap(DEFAULT_ROLE_PERMISSIONS),
     lessonMaterials: [],
+    siteAdminConfig: normalizeSiteAdminConfig(DEFAULT_SITE_ADMIN_CONFIG),
   };
 }
 
@@ -539,6 +547,7 @@ function loadDB(): AcademyDB {
               : talentSeed?.talentNotifications || [],
           rolePermissions: normalizeRolePermissionsMap(parsed.rolePermissions),
           lessonMaterials: Array.isArray(parsed.lessonMaterials) ? parsed.lessonMaterials : [],
+          siteAdminConfig: normalizeSiteAdminConfig(parsed.siteAdminConfig),
         };
         if (!Array.isArray(parsed.lessonMaterials)) {
           if (!loaded.rolePermissions.lnd_manager.includes('manage_lesson_materials')) {
@@ -613,6 +622,7 @@ function ensurePostgresHydrated(): Promise<void> {
           ...remoteDb,
           rolePermissions: normalizeRolePermissionsMap(remoteDb.rolePermissions),
           lessonMaterials: Array.isArray(remoteDb.lessonMaterials) ? remoteDb.lessonMaterials : [],
+          siteAdminConfig: normalizeSiteAdminConfig(remoteDb.siteAdminConfig),
         };
         writeJsonAtomic(DB_FILE, db);
       } else {
@@ -743,6 +753,7 @@ app.use('/api/storage', storageRouter);
 const billingEngine = createBillingEngine({
   dataDir: DATA_DIR,
   orderSigningSecret: authEngine.getSigningSecret(),
+  getSiteAdminConfig: () => db.siteAdminConfig,
   getRequestActor,
   isAdminActor: (req) => hasActorPermission(req, 'view_administration'),
   onCourseUnlocked: (userId, courseId) => {
@@ -1417,7 +1428,41 @@ app.get('/api/bootstrap', (req, res) => {
     auditLogs: db.auditLogs,
     rolePermissions: db.rolePermissions,
     lessonMaterials: db.lessonMaterials,
+    siteAdminConfig: db.siteAdminConfig,
   });
+});
+
+// Public Site Admin Config (pricing overrides, active combos, active announcements/ads, material approvals, branding)
+app.get('/api/site-config', (_req, res) => {
+  return res.json({ siteAdminConfig: db.siteAdminConfig });
+});
+
+// Admin-only full Site Config update (per-course pricing, combos, announcements, ads, material approvals, VietQR bank settings)
+app.put('/api/admin/site-config', (req, res) => {
+  const actor = getRequestActor(req);
+  if (!hasActorPermission(req, 'view_administration')) {
+    return res.status(403).json({ error: 'Chỉ Quản Trị Viên mới có quyền cập nhật cấu hình trang web.' });
+  }
+  const incoming = req.body?.siteAdminConfig || req.body || {};
+  const next = normalizeSiteAdminConfig({
+    ...db.siteAdminConfig,
+    ...incoming,
+    general: {
+      ...db.siteAdminConfig.general,
+      ...(incoming.general && typeof incoming.general === 'object' ? incoming.general : {}),
+    },
+    updatedBy: actor?.name || 'Administrator',
+    updatedAt: new Date().toISOString(),
+  });
+  db.siteAdminConfig = next;
+  recordAudit(
+    'UPDATE_SITE_CONFIG',
+    actor ? `${actor.name} (${actor.role})` : 'System Admin',
+    'Site Admin Configuration',
+    `Updated site settings (priced courses: ${Object.keys(next.coursePrices).length}, combos: ${next.combos.length}, announcements: ${next.announcements.length}, ads: ${next.ads.length})`
+  );
+  persistDB(db);
+  return res.json({ success: true, siteAdminConfig: db.siteAdminConfig });
 });
 
 // Audit logs endpoint

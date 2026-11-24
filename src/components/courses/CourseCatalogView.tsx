@@ -7,8 +7,9 @@ import {
   generateMasterSyllabusMarkdown,
 } from '../../data/courseSyllabi';
 import { LessonMaterialsManager } from './LessonMaterialsManager';
+import { PromoAdSlot } from '../common/SiteBroadcastWidgets';
 import { doesMaterialMatchCourse, findCourseMatch } from '../../lib/lessonMaterials';
-import { getCoursePriceVnd, formatVnd } from '../../lib/coursePricing';
+import { formatVnd } from '../../lib/coursePricing';
 import { COURSES } from '../../data/initialData';
 import {
   Search,
@@ -34,6 +35,9 @@ import {
   Paperclip,
   CreditCard,
   Sparkles,
+  Package,
+  Gift,
+  QrCode,
 } from 'lucide-react';
 
 type CatalogViewMode = 'cards' | 'syllabus_matrix' | 'lesson_materials';
@@ -60,6 +64,10 @@ export const CourseCatalogView: React.FC = () => {
     hasCourseAccess,
     hasAllAccess,
     startCourseCheckout,
+    startComboCheckout,
+    siteAdminConfig,
+    getEffectiveCoursePricing,
+    getMaterialApprovalStatus,
     setSelectedCourseForPlayer,
     setSelectedLessonIdForPlayer,
     currentUser,
@@ -103,6 +111,7 @@ export const CourseCatalogView: React.FC = () => {
   const filteredCourses = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return courses.filter((c) => {
+      if (!canManageLessonMaterials && !getEffectiveCoursePricing(c).published) return false;
       if (showEnrolledOnly && !myEnrolledCourseIds.has(c.id)) return false;
       const matchesDomain = selectedDomain === 'all' || c.domainId === selectedDomain;
       const matchesDifficulty = selectedDifficulty === 'all' || c.difficulty === selectedDifficulty;
@@ -176,7 +185,8 @@ export const CourseCatalogView: React.FC = () => {
   };
 
   const handleEnrollOrOpenCourse = async (course: Course, lessonId: string | null = null) => {
-    if (hasCourseAccess(course)) {
+    const pricing = getEffectiveCoursePricing(course);
+    if (hasCourseAccess(course) || pricing.isFree) {
       await enrollCourse(course.id);
       setSelectedLessonIdForPlayer(lessonId);
       setSelectedCourseForPlayer(course);
@@ -184,6 +194,11 @@ export const CourseCatalogView: React.FC = () => {
       startCourseCheckout(course, lessonId);
     }
   };
+
+  const activeCombos = useMemo(
+    () => (siteAdminConfig.combos || []).filter((cb) => cb.isActive && cb.courseIds.length >= 2),
+    [siteAdminConfig.combos]
+  );
 
   const handleOpenCourseAtSession = (course: Course, sessionNumber: number) => {
     const mod = course.modules[Math.max(0, sessionNumber - 1)] || course.modules[0];
@@ -256,6 +271,130 @@ export const CourseCatalogView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Admin Promotional Ad Banner for Courses Catalog */}
+      <PromoAdSlot placement="courses_banner" />
+
+      {/* Multi-Course Combo Packages Showcase */}
+      {viewMode === 'cards' && !showEnrolledOnly && activeCombos.length > 0 && (
+        <div className="bg-gradient-to-br from-[#0A192F] via-[#112442] to-[#172E54] rounded-2xl p-5 sm:p-6 border border-slate-700/70 shadow-md space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-300 text-[10px] font-extrabold uppercase tracking-wider mb-1">
+                <Package className="w-3 h-3" />
+                <span>{isVi ? 'Gói Combo Nhiều Khóa Học · Tiết Kiệm Tối Đa' : 'Multi-Course Combo Bundles · Save More'}</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-extrabold text-white tracking-tight">
+                {isVi
+                  ? 'Đăng Ký Theo Combo — Mở Khóa Tự Động Toàn Bộ Khóa Học Qua QR'
+                  : 'Enroll in Curated Combos — Instant QR Multi-Course Unlock'}
+              </h3>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {activeCombos.map((combo) => {
+              const comboCourses = combo.courseIds
+                .map((cid) => courses.find((c) => c.id === cid || c.code === cid))
+                .filter(Boolean) as Course[];
+              const retailSum = comboCourses.reduce(
+                (sum, c) => sum + getEffectiveCoursePricing(c).priceVnd,
+                0
+              );
+              const comparePrice = retailSum;
+              const savings = Math.max(0, comparePrice - combo.priceVnd);
+              const savePct = comparePrice > 0 ? Math.round((savings / comparePrice) * 100) : 0;
+              const allOwned =
+                comboCourses.length > 0 && comboCourses.every((c) => hasCourseAccess(c));
+              const comboBadge = isVi ? combo.badgeVi : combo.badgeEn || combo.badgeVi;
+
+              return (
+                <div
+                  key={combo.id}
+                  className={`rounded-2xl p-5 flex flex-col justify-between gap-4 border transition-all ${
+                    combo.featured
+                      ? 'bg-slate-900/90 border-amber-400/70 ring-1 ring-amber-400/40'
+                      : 'bg-slate-900/65 border-slate-700/80 hover:border-amber-400/50'
+                  }`}
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono font-bold text-[10px] border border-amber-400/30">
+                        {combo.code}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {comboBadge && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-extrabold text-[10px]">
+                            {comboBadge}
+                          </span>
+                        )}
+                        {savePct > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-mono font-bold text-[10px]">
+                            -{savePct}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <h4 className="font-extrabold text-sm sm:text-base text-white leading-snug">
+                      {isVi ? combo.nameVi : combo.nameEn || combo.nameVi}
+                    </h4>
+                    <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
+                      {isVi ? combo.descriptionVi : combo.descriptionEn || combo.descriptionVi}
+                    </p>
+
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {comboCourses.map((cc) => (
+                        <span
+                          key={cc.id}
+                          className="px-2 py-0.5 rounded bg-white/10 text-slate-200 font-mono text-[10px] font-semibold"
+                          title={isVi ? cc.titleVi : cc.titleEn}
+                        >
+                          {cc.code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-700/80 flex items-end justify-between gap-3">
+                    <div>
+                      {comparePrice > combo.priceVnd && (
+                        <div className="text-[11px] text-slate-400 line-through font-mono tabular-nums">
+                          {formatVnd(comparePrice)}
+                        </div>
+                      )}
+                      <div className="text-lg font-black text-amber-400 font-mono tabular-nums">
+                        {formatVnd(combo.priceVnd)}
+                      </div>
+                      {savings > 0 && (
+                        <div className="text-[10px] text-emerald-400 font-semibold">
+                          {isVi ? `Tiết kiệm ${formatVnd(savings)}` : `Save ${formatVnd(savings)}`}
+                        </div>
+                      )}
+                    </div>
+
+                    {allOwned ? (
+                      <span className="px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-bold text-xs inline-flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Đã sở hữu đủ' : 'All Owned'}</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startComboCheckout(combo)}
+                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs inline-flex items-center gap-1.5 shadow-sm cursor-pointer shrink-0 transition-colors"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>{isVi ? 'Mua Combo (QR)' : 'Buy Combo (QR)'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* View Mode & Filters */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
@@ -410,8 +549,14 @@ export const CourseCatalogView: React.FC = () => {
             });
             const isEnrolled = !!enrollment;
             const isCompleted = enrollment?.status === 'completed';
-            const isUnlocked = hasCourseAccess(course);
-            const coursePriceVnd = getCoursePriceVnd(course);
+            const pricing = getEffectiveCoursePricing(course);
+            const isUnlocked = hasCourseAccess(course) || pricing.isFree;
+            const coursePriceVnd = pricing.priceVnd;
+            const listPriceVnd = pricing.originalPriceVnd || 0;
+            const discountPercent =
+              listPriceVnd > coursePriceVnd && listPriceVnd > 0
+                ? Math.round(((listPriceVnd - coursePriceVnd) / listPriceVnd) * 100)
+                : 0;
             const syllabus = getCourseSyllabus(course);
             const domainObj = domains.find((d) => d.id === course.domainId);
             const imgFailed = !!failedThumbnails[course.id];
@@ -456,18 +601,37 @@ export const CourseCatalogView: React.FC = () => {
                       )}
                     </div>
 
-                    <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-slate-900/90 border border-slate-700/80 text-amber-300 font-mono tabular-nums">
-                      {isEnrolled
-                        ? isVi
-                          ? 'Đã Ghi Danh'
-                          : 'Enrolled'
-                        : isUnlocked
-                        ? hasAllAccess
-                          ? 'Pro All-Access'
-                          : isVi
-                          ? 'Đã Mở Khóa'
-                          : 'Unlocked'
-                        : formatVnd(coursePriceVnd)}
+                    <span className="absolute bottom-3 left-3 px-2.5 py-0.5 rounded-md text-[11px] font-extrabold bg-slate-900/90 border border-slate-700/80 text-amber-300 font-mono tabular-nums inline-flex items-center gap-1.5">
+                      {isEnrolled ? (
+                        isVi ? 'Đã Ghi Danh' : 'Enrolled'
+                      ) : pricing.isFree ? (
+                        <span className="text-emerald-300 inline-flex items-center gap-1">
+                          <Gift className="w-3 h-3" />
+                          {isVi ? 'Miễn Phí' : 'Free'}
+                        </span>
+                      ) : isUnlocked ? (
+                        hasAllAccess ? (
+                          'Pro All-Access'
+                        ) : isVi ? (
+                          'Đã Mở Khóa'
+                        ) : (
+                          'Unlocked'
+                        )
+                      ) : (
+                        <>
+                          {listPriceVnd > coursePriceVnd && (
+                            <span className="text-[10px] text-slate-400 line-through font-normal">
+                              {formatVnd(listPriceVnd)}
+                            </span>
+                          )}
+                          <span>{formatVnd(coursePriceVnd)}</span>
+                          {discountPercent > 0 && (
+                            <span className="px-1 py-0.2 rounded bg-rose-600 text-white text-[9px] font-black">
+                              -{discountPercent}%
+                            </span>
+                          )}
+                        </>
+                      )}
                     </span>
 
                     <span className="absolute bottom-3 right-3 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-900/85 text-slate-100 font-mono tabular-nums">
@@ -511,8 +675,10 @@ export const CourseCatalogView: React.FC = () => {
                         <span className="text-emerald-700 font-medium">Excel Lab</span>
                       )}
                       {(() => {
-                        const uploadedCnt = lessonMaterials.filter((m) =>
-                          doesMaterialMatchCourse(m, course)
+                        const uploadedCnt = lessonMaterials.filter(
+                          (m) =>
+                            doesMaterialMatchCourse(m, course) &&
+                            (canManageLessonMaterials || getMaterialApprovalStatus(m) === 'approved')
                         ).length;
                         return uploadedCnt > 0 ? (
                           <span className="inline-flex items-center gap-1 text-blue-700 font-semibold font-mono tabular-nums">
@@ -737,7 +903,7 @@ export const CourseCatalogView: React.FC = () => {
                               onClick={() => void handleEnrollOrOpenCourse(course)}
                               className="px-3.5 py-1.5 rounded-lg bg-[#0A192F] hover:bg-[#1E293B] text-amber-400 text-xs font-bold cursor-pointer whitespace-nowrap flex items-center gap-1.5"
                             >
-                              {hasCourseAccess(course) ? (
+                              {hasCourseAccess(course) || getEffectiveCoursePricing(course).isFree ? (
                                 <>
                                   <PlayCircle className="w-3.5 h-3.5" />
                                   <span>{isVi ? 'Vào Học' : 'Launch'}</span>
@@ -746,7 +912,8 @@ export const CourseCatalogView: React.FC = () => {
                                 <>
                                   <CreditCard className="w-3.5 h-3.5" />
                                   <span>
-                                    {isVi ? 'Ghi Danh' : 'Enroll'} · {formatVnd(getCoursePriceVnd(course))}
+                                    {isVi ? 'Ghi Danh' : 'Enroll'} ·{' '}
+                                    {formatVnd(getEffectiveCoursePricing(course).priceVnd)}
                                   </span>
                                 </>
                               )}
@@ -1233,7 +1400,8 @@ export const CourseCatalogView: React.FC = () => {
                   }}
                   className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  {hasCourseAccess(selectedCourseForDetail) ? (
+                  {hasCourseAccess(selectedCourseForDetail) ||
+                  getEffectiveCoursePricing(selectedCourseForDetail).isFree ? (
                     <>
                       <PlayCircle className="w-4 h-4" />
                       <span>{isVi ? 'Bắt Đầu Khóa Học Ngay' : 'Start Course Now'}</span>
@@ -1243,8 +1411,12 @@ export const CourseCatalogView: React.FC = () => {
                       <CreditCard className="w-4 h-4" />
                       <span>
                         {isVi
-                          ? `Ghi Danh & Thanh Toán (${formatVnd(getCoursePriceVnd(selectedCourseForDetail))})`
-                          : `Enroll & Pay (${formatVnd(getCoursePriceVnd(selectedCourseForDetail))})`}
+                          ? `Ghi Danh & Thanh Toán (${formatVnd(
+                              getEffectiveCoursePricing(selectedCourseForDetail).priceVnd
+                            )})`
+                          : `Enroll & Pay (${formatVnd(
+                              getEffectiveCoursePricing(selectedCourseForDetail).priceVnd
+                            )})`}
                       </span>
                     </>
                   )}

@@ -23,9 +23,18 @@ import {
   fetchLessonMaterialsFromFirestore,
   saveLessonMaterialToFirestore,
   deleteLessonMaterialFromFirestore,
+  fetchSiteAdminConfigFromFirestore,
+  saveSiteAdminConfigToFirestore,
   uploadAuthorizedTrainingFile,
   validateStorageFile,
 } from '../lib/firebase';
+import {
+  DEFAULT_SITE_ADMIN_CONFIG,
+  SITE_ADMIN_CONFIG_DOC_ID,
+  normalizeSiteAdminConfig,
+  resolveEffectiveCoursePricing,
+  resolveMaterialApprovalStatus,
+} from '../lib/siteAdminConfig';
 import {
   findCourseMatch,
   findLearningPathMatch,
@@ -103,6 +112,9 @@ import {
   LessonMaterialDoc,
   LessonMaterialType,
   LessonMaterialStorageMode,
+  CourseComboPackage,
+  MaterialApprovalStatus,
+  SiteAdminConfigDoc,
 } from '../types';
 import { DEFAULT_TALENT_CONFIG } from '../lib/talentEngine';
 import {
@@ -218,16 +230,37 @@ interface AppContextType {
   updateUser: (userId: string, updates: Partial<User>) => Promise<User | null>;
   disableUser: (userId: string) => Promise<boolean>;
   updateUserCareerPath: (pathId: string) => Promise<void>;
-  // Billing, Entitlements & Direct Course Checkout Flow
+  // Billing, Entitlements & Direct Course / Combo Checkout Flow
   pendingCheckoutCourse: Course | null;
   pendingCheckoutLessonId: string | null;
+  pendingCheckoutCombo: CourseComboPackage | null;
   startCourseCheckout: (course: Course, lessonId?: string | null) => void;
+  startComboCheckout: (combo: CourseComboPackage) => void;
   clearCourseCheckout: () => void;
   userEntitlements: UserEntitlementSummary[];
   hasAllAccess: boolean;
   refreshEntitlements: () => Promise<void>;
   hasCourseAccess: (courseOrId: Course | string) => boolean;
   completeCourseUnlock: (course: Course, lessonId?: string | null) => Promise<void>;
+  completeComboUnlock: (combo: CourseComboPackage) => Promise<void>;
+  // Admin Website Control Center (Pricing, Combos, Announcements, Ads, Material Approvals, General Settings)
+  siteAdminConfig: SiteAdminConfigDoc;
+  saveSiteAdminConfig: (
+    next: SiteAdminConfigDoc | ((prev: SiteAdminConfigDoc) => SiteAdminConfigDoc),
+    successToast?: string
+  ) => Promise<boolean>;
+  getEffectiveCoursePricing: (course: Course) => {
+    priceVnd: number;
+    originalPriceVnd?: number;
+    isFree: boolean;
+    published: boolean;
+  };
+  getMaterialApprovalStatus: (material: LessonMaterialDoc) => MaterialApprovalStatus;
+  reviewLessonMaterial: (
+    materialId: string,
+    status: MaterialApprovalStatus,
+    reviewNotes?: string
+  ) => Promise<boolean>;
   selectedCourseForPlayer: Course | null;
   setSelectedCourseForPlayer: (c: Course | null) => void;
   selectedLessonIdForPlayer: string | null;
@@ -436,6 +469,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedLessonIdForPlayer, setSelectedLessonIdForPlayer] = useState<string | null>(null);
   const [pendingCheckoutCourse, setPendingCheckoutCourse] = useState<Course | null>(null);
   const [pendingCheckoutLessonId, setPendingCheckoutLessonId] = useState<string | null>(null);
+  const [pendingCheckoutCombo, setPendingCheckoutCombo] = useState<CourseComboPackage | null>(null);
+  const [siteAdminConfig, setSiteAdminConfig] = useState<SiteAdminConfigDoc>(() =>
+    normalizeSiteAdminConfig(DEFAULT_SITE_ADMIN_CONFIG)
+  );
   const [userEntitlements, setUserEntitlements] = useState<UserEntitlementSummary[]>([]);
   const [hasAllAccess, setHasAllAccess] = useState<boolean>(false);
   const [selectedCertificateForView, setSelectedCertificateForView] = useState<Certificate | null>(null);
@@ -984,6 +1021,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (Array.isArray(data.lessonMaterials)) {
           setLessonMaterials(sortLessonMaterialsAsc(data.lessonMaterials));
+        }
+        if (data.siteAdminConfig) {
+          setSiteAdminConfig(normalizeSiteAdminConfig(data.siteAdminConfig));
         }
       })
       .catch((err) => console.warn('Bootstrap fallback to local initial data:', err));
@@ -1580,6 +1620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           // Hydrate versioned USALI dataset snapshots from Firestore + compute on-the-fly for newly imported scenarios
           const datasetsMap: Record<string, HotelSimulationDatasetSnapshot> = {};
           txData.simulationDatasets.forEach((ds: any) => {
+            if (ds.id === SITE_ADMIN_CONFIG_DOC_ID) return;
             const key = ds.scenarioId || ds.id;
             if (key) datasetsMap[key] = ds as HotelSimulationDatasetSnapshot;
           });
@@ -1614,6 +1655,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCompetencyReassessments(txData.competencyReassessments as CompetencyReassessmentDoc[]);
           setCareerReadinessReviews(txData.careerReadinessReviews as CareerReadinessReviewDoc[]);
           setLessonMaterials(sortLessonMaterialsAsc(txData.lessonMaterials || []));
+
+          // Hydrate Admin Site Config from Firestore (and mirror into Express server for dynamic server-side checkout pricing)
+          try {
+            const fsSiteCfg = await fetchSiteAdminConfigFromFirestore();
+            if (fsSiteCfg) {
+              setSiteAdminConfig(fsSiteCfg);
+              fetch('/api/admin/site-config', {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: authHeaders(),
+                body: JSON.stringify({ siteAdminConfig: fsSiteCfg }),
+              }).catch(() => {});
+            }
+          } catch {
+            // keep default/server site config
+          }
         } else if (hasProdSim) {
           setProductionCounts((prev) => ({ ...prev }));
         }
@@ -1868,6 +1925,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return;
         }
         setFirebaseProfile(profile);
+        if (!systemConfigRef.current.demoModeEnabled && dataSourceMode !== 'firestore') {
+          setDataSourceMode('firestore');
+        }
         // Bridge verified Firebase account to a signed Academy Server session so /api/billing & /api/users work seamlessly
         try {
           const idToken = await user.getIdToken();
@@ -3528,8 +3588,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         openAuthModal('login');
         return;
       }
+      setPendingCheckoutCombo(null);
       setPendingCheckoutCourse(course);
       setPendingCheckoutLessonId(lessonId);
+      setActiveTab('pricing');
+    },
+    [language, officialAuthUser, openAuthModal, showToast, systemConfig.demoModeEnabled]
+  );
+
+  const startComboCheckout = useCallback(
+    (combo: CourseComboPackage) => {
+      if (!officialAuthUser && !systemConfig.demoModeEnabled) {
+        showToast(
+          language === 'vi'
+            ? 'Vui lòng đăng nhập tài khoản trước khi mua gói Combo khóa học.'
+            : 'Please sign in before purchasing a course bundle.',
+          'info'
+        );
+        openAuthModal('login');
+        return;
+      }
+      setPendingCheckoutCourse(null);
+      setPendingCheckoutLessonId(null);
+      setPendingCheckoutCombo(combo);
       setActiveTab('pricing');
     },
     [language, officialAuthUser, openAuthModal, showToast, systemConfig.demoModeEnabled]
@@ -3538,6 +3619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearCourseCheckout = useCallback(() => {
     setPendingCheckoutCourse(null);
     setPendingCheckoutLessonId(null);
+    setPendingCheckoutCombo(null);
   }, []);
 
   const completeCourseUnlock = useCallback(
@@ -3546,12 +3628,139 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await refreshEntitlements();
       setPendingCheckoutCourse(null);
       setPendingCheckoutLessonId(null);
+      setPendingCheckoutCombo(null);
       setActiveTab('courses');
       setSelectedLessonIdForPlayer(lessonId || null);
       setSelectedCourseForPlayer(course);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [enrollCourse, refreshEntitlements]
+  );
+
+  const completeComboUnlock = useCallback(
+    async (combo: CourseComboPackage) => {
+      for (const cid of combo.courseIds) {
+        await enrollCourse(cid);
+      }
+      await refreshEntitlements();
+      setPendingCheckoutCourse(null);
+      setPendingCheckoutLessonId(null);
+      setPendingCheckoutCombo(null);
+      setActiveTab('courses');
+      const firstCourse = courses.find((c) => c.id === combo.courseIds[0] || c.code === combo.courseIds[0]);
+      if (firstCourse) {
+        setSelectedLessonIdForPlayer(null);
+        setSelectedCourseForPlayer(firstCourse);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [courses, enrollCourse, refreshEntitlements]
+  );
+
+  const saveSiteAdminConfig = useCallback(
+    async (
+      nextOrUpdater: SiteAdminConfigDoc | ((prev: SiteAdminConfigDoc) => SiteAdminConfigDoc),
+      successToast?: string
+    ): Promise<boolean> => {
+      const computed = normalizeSiteAdminConfig({
+        ...(typeof nextOrUpdater === 'function' ? nextOrUpdater(siteAdminConfig) : nextOrUpdater),
+        updatedBy: currentUser.name,
+        updatedAt: new Date().toISOString(),
+      });
+      setSiteAdminConfig(computed);
+
+      let persisted = false;
+      if (isLiveFirestoreMode() && auth.currentUser?.emailVerified) {
+        try {
+          await saveSiteAdminConfigToFirestore(computed);
+          persisted = true;
+        } catch (err: any) {
+          showToast(
+            err?.message ||
+              (language === 'vi'
+                ? 'Không thể lưu cấu hình lên Firestore (kiểm tra quyền Admin).'
+                : 'Failed to save configuration to Firestore.'),
+            'error'
+          );
+          return false;
+        }
+      }
+
+      try {
+        const res = await fetch('/api/admin/site-config', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: authHeaders(),
+          body: JSON.stringify({ siteAdminConfig: computed }),
+        });
+        if (res.ok) {
+          persisted = true;
+          refreshAuditLogs();
+        } else if (!persisted) {
+          const d = await res.json().catch(() => ({}));
+          showToast(d.error || 'Failed to save site configuration.', 'error');
+          return false;
+        }
+      } catch (err: any) {
+        if (!persisted) {
+          showToast(err?.message || 'Network error saving site configuration.', 'error');
+          return false;
+        }
+      }
+
+      if (successToast) {
+        showToast(successToast, 'success');
+      }
+      return true;
+    },
+    [authHeaders, currentUser.name, isLiveFirestoreMode, language, refreshAuditLogs, showToast, siteAdminConfig]
+  );
+
+  const getEffectiveCoursePricing = useCallback(
+    (course: Course) => resolveEffectiveCoursePricing(course, siteAdminConfig.coursePrices),
+    [siteAdminConfig.coursePrices]
+  );
+
+  const getMaterialApprovalStatus = useCallback(
+    (material: LessonMaterialDoc): MaterialApprovalStatus =>
+      resolveMaterialApprovalStatus(material, siteAdminConfig.materialApprovals),
+    [siteAdminConfig.materialApprovals]
+  );
+
+  const reviewLessonMaterial = useCallback(
+    async (
+      materialId: string,
+      status: MaterialApprovalStatus,
+      reviewNotes?: string
+    ): Promise<boolean> => {
+      return saveSiteAdminConfig(
+        (prev) => ({
+          ...prev,
+          materialApprovals: {
+            ...prev.materialApprovals,
+            [materialId]: {
+              materialId,
+              status,
+              reviewedBy: currentUser.name,
+              reviewedAt: new Date().toISOString(),
+              reviewNotes: reviewNotes?.trim() || undefined,
+            },
+          },
+        }),
+        language === 'vi'
+          ? status === 'approved'
+            ? 'Đã phê duyệt & công khai tài liệu cho học viên!'
+            : status === 'rejected'
+            ? 'Đã từ chối tài liệu và lưu lý do.'
+            : 'Đã chuyển tài liệu về trạng thái chờ duyệt.'
+          : status === 'approved'
+          ? 'Material approved and published to learners!'
+          : status === 'rejected'
+          ? 'Material rejected.'
+          : 'Material moved back to pending review.'
+      );
+    },
+    [currentUser.name, language, saveSiteAdminConfig]
   );
 
   const updateUserCareerPath = async (pathId: string) => {
@@ -4334,8 +4543,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedAt: now,
         };
 
+        const initialApprovalStatus: MaterialApprovalStatus =
+          siteAdminConfig.general.requireMaterialApproval && currentUser.role !== 'super_admin'
+            ? 'pending'
+            : 'approved';
+
+        const markInitialApproval = async (savedMat: LessonMaterialDoc) => {
+          if (initialApprovalStatus === 'pending') {
+            await saveSiteAdminConfig((prev) => ({
+              ...prev,
+              materialApprovals: {
+                ...prev.materialApprovals,
+                [savedMat.id]: {
+                  materialId: savedMat.id,
+                  status: 'pending',
+                },
+              },
+            }));
+          }
+        };
+
         if (useFirestore) {
           const saved = await saveLessonMaterialToFirestore(record);
+          await markInitialApproval(saved);
           setLessonMaterials((prev) =>
             sortLessonMaterialsAsc([saved, ...prev.filter((m) => m.id !== saved.id)])
           );
@@ -4345,7 +4575,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
           showToast(
             language === 'vi'
-              ? `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}) lên Firestore!`
+              ? initialApprovalStatus === 'pending'
+                ? `Đã tải học liệu "${saved.titleVi}" lên hàng đợi Chờ Admin Duyệt!`
+                : `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}) lên Firestore!`
               : `Saved "${saved.titleEn}" to Lesson ${saved.lessonOrder} (${saved.courseCode}) in Firestore!`,
             'success'
           );
@@ -4362,13 +4594,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return null;
           }
           const saved: LessonMaterialDoc = data.material;
+          await markInitialApproval(saved);
           setLessonMaterials((prev) =>
             sortLessonMaterialsAsc([saved, ...prev.filter((m) => m.id !== saved.id)])
           );
           refreshAuditLogs();
           showToast(
             language === 'vi'
-              ? `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}).`
+              ? initialApprovalStatus === 'pending'
+                ? `Đã tải học liệu "${saved.titleVi}" lên hàng đợi Chờ Admin Duyệt!`
+                : `Đã lưu học liệu "${saved.titleVi}" cho Bài ${saved.lessonOrder} (${saved.courseCode}).`
               : `Saved "${saved.titleEn}" to Lesson ${saved.lessonOrder} (${saved.courseCode}).`,
             'success'
           );
@@ -4390,7 +4625,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       language,
       officialAuthUser?.name,
       refreshAuditLogs,
+      saveSiteAdminConfig,
       showToast,
+      siteAdminConfig.general.requireMaterialApproval,
     ]
   );
 
@@ -4451,8 +4688,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const t = translations[language];
 
-  const mergedNotifications = useMemo(
-    () => [
+  const mergedNotifications = useMemo(() => {
+    const nowMs = Date.now();
+    const activeBroadcasts = (siteAdminConfig.announcements || [])
+      .filter((a) => {
+        if (!a.isActive || !a.showInBell) return false;
+        if (a.startsAt && new Date(a.startsAt).getTime() > nowMs) return false;
+        if (a.expiresAt && new Date(a.expiresAt).getTime() < nowMs) return false;
+        if (a.targetRoles.includes('all')) return true;
+        return a.targetRoles.includes(currentUser.role);
+      })
+      .map((a) => ({
+        id: `ann_${a.id}`,
+        title: `${language === 'vi' ? a.titleVi : a.titleEn || a.titleVi}: ${
+          language === 'vi' ? a.messageVi : a.messageEn || a.messageVi
+        }`,
+        time: new Date(a.updatedAt || a.createdAt).toLocaleDateString('vi-VN'),
+        read: false,
+      }));
+
+    return [
+      ...activeBroadcasts,
       ...talentNotifications.map((n) => ({
         id: n.id,
         title: `${n.title}: ${n.message}`,
@@ -4465,9 +4721,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         time: language === 'vi' ? n.time : n.timeEn || n.time,
         read: n.read,
       })),
-    ],
-    [talentNotifications, notifications, language]
-  );
+    ];
+  }, [siteAdminConfig.announcements, currentUser.role, talentNotifications, notifications, language]);
 
   const effectiveSuccessionCandidates = useMemo<SuccessionCandidate[]>(() => {
     if (systemConfig.demoModeEnabled && dataSourceMode === 'demo') {
@@ -4551,13 +4806,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserCareerPath,
         pendingCheckoutCourse,
         pendingCheckoutLessonId,
+        pendingCheckoutCombo,
         startCourseCheckout,
+        startComboCheckout,
         clearCourseCheckout,
         userEntitlements,
         hasAllAccess,
         refreshEntitlements,
         hasCourseAccess,
         completeCourseUnlock,
+        completeComboUnlock,
+        siteAdminConfig,
+        saveSiteAdminConfig,
+        getEffectiveCoursePricing,
+        getMaterialApprovalStatus,
+        reviewLessonMaterial,
         selectedCourseForPlayer,
         setSelectedCourseForPlayer,
         selectedLessonIdForPlayer,

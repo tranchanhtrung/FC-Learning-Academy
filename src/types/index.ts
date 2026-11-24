@@ -1588,3 +1588,113 @@ export interface RolePermissionPolicyDoc {
   updatedByName?: string;
   updatedAt: string;
 }
+
+// ============================================================================
+// ADMIN WEBSITE CONTROL CENTER (PRICING, COMBOS, ANNOUNCEMENTS, ADS, APPROVALS)
+// ============================================================================
+
+export interface CoursePriceOverride {
+  courseId: string;
+  priceVnd: number;
+  originalPriceVnd?: number;
+  isFree?: boolean;
+  published?: boolean;
+  updatedAt: string;
+}
+
+export interface CourseComboPackage {
+  id: string;
+  code: string;
+  nameVi: string;
+  nameEn: string;
+  descriptionVi: string;
+  descriptionEn: string;
+  badgeVi?: string;
+  badgeEn?: string;
+  courseIds: string[];
+  priceVnd: number;
+  durationDays: number | null; // null = lifetime
+  isActive: boolean;
+  featured?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteAnnouncement {
+  id: string;
+  titleVi: string;
+  titleEn: string;
+  messageVi: string;
+  messageEn: string;
+  severity: 'info' | 'success' | 'warning' | 'urgent';
+  targetRoles: ('all' | UserRole)[];
+  showTopBar: boolean;
+  showInBell: boolean;
+  ctaLabelVi?: string;
+  ctaLabelEn?: string;
+  ctaTargetTab?: string;
+  ctaUrl?: string;
+  isActive: boolean;
+  startsAt?: string;
+  expiresAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SiteAdBanner {
+  id: string;
+  titleVi: string;
+  titleEn: string;
+  subtitleVi: string;
+  subtitleEn: string;
+  badgeText?: string;
+  imageUrl?: string;
+  theme: 'navy_gold' | 'emerald' | 'royal_blue' | 'crimson';
+  placement: 'dashboard_banner' | 'courses_banner' | 'popup_modal';
+  ctaLabelVi: string;
+  ctaLabelEn: string;
+  ctaActionType: 'tab' | 'combo' | 'course' | 'external_url';
+  ctaTarget: string;
+  isActive: boolean;
+  priority: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MaterialApprovalStatus = 'approved' | 'pending' | 'rejected';
+
+export interface MaterialApprovalRecord {
+  materialId: string;
+  status: MaterialApprovalStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+}
+
+export interface SiteGeneralSettings {
+  siteName: string;
+  taglineVi: string;
+  taglineEn: string;
+  supportEmail: string;
+  supportHotline: string;
+  maintenanceMode: boolean;
+  maintenanceMessageVi: string;
+  requireMaterialApproval: boolean;
+  allowSelfRegistration: boolean;
+  vietQrBankBin: string;
+  vietQrAccountNo: string;
+  vietQrAccountName: string;
+}
+
+export interface SiteAdminConfigDoc {
+  id: string;
+  coursePrices: Record<string, CoursePriceOverride>;
+  combos: CourseComboPackage[];
+  announcements: SiteAnnouncement[];
+  ads: SiteAdBanner[];
+  materialApprovals: Record<string, MaterialApprovalRecord>;
+  general: SiteGeneralSettings;
+  updatedBy?: string;
+  updatedAt: string;
+}

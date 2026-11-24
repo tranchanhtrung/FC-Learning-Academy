@@ -1120,6 +1120,13 @@ service cloud.firestore {
         && incoming().createdAt == resource.data.createdAt;
       allow delete: if isValidId(materialId) && isAdmin();
     }
+
+    // 40. siteSettings (Admin Website Control Center: course prices, combos, announcements, ads, material approvals, QR bank config)
+    match /siteSettings/{settingId} {
+      allow get, list: if isVerifiedUser();
+      allow create, update: if isValidId(settingId) && isAdmin();
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
   }
 }
 

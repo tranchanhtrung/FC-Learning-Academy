@@ -113,7 +113,10 @@ export function getPaymentProvidersStatus(): ProviderStatusInfo[] {
  * Generates provider checkout payload (VietQR URL, MoMo signed request, VNPay URL, or Sandbox instruction).
  * Live external API calls execute automatically when provider credentials are set in `.env`.
  */
-export async function createProviderPaymentSession(order: BillingOrder): Promise<{
+export async function createProviderPaymentSession(
+  order: BillingOrder,
+  bankOverride?: { bankBin?: string; accountNo?: string; accountName?: string }
+): Promise<{
   providerRequestId: string;
   paymentUrl?: string;
   qrCodeUrl?: string;
@@ -123,9 +126,9 @@ export async function createProviderPaymentSession(order: BillingOrder): Promise
   const bankTransferNote = `${order.orderCode} FC ACADEMY`;
   const providerRequestId = `${order.provider.toUpperCase()}_${order.orderCode}_${Date.now()}`;
 
-  const bankBin = (process.env.VIETQR_BANK_BIN || '970436').trim(); // Default Vietcombank BIN
-  const accountNo = (process.env.VIETQR_ACCOUNT_NO || '0071001288688').trim();
-  const accountNameRaw = (process.env.VIETQR_ACCOUNT_NAME || 'FC LEARNING ACADEMY').trim();
+  const bankBin = (bankOverride?.bankBin || process.env.VIETQR_BANK_BIN || '970436').trim(); // Default Vietcombank BIN
+  const accountNo = (bankOverride?.accountNo || process.env.VIETQR_ACCOUNT_NO || '0071001288688').trim();
+  const accountNameRaw = (bankOverride?.accountName || process.env.VIETQR_ACCOUNT_NAME || 'FC LEARNING ACADEMY').trim();
   const bankInfo: BankTransferInfo = {
     bankName: BANK_NAME_BY_BIN[bankBin] || `Bank BIN ${bankBin}`,
     bankBin,

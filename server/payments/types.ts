@@ -74,6 +74,8 @@ export interface BillingOrder {
   productId: string;
   courseId?: string;
   courseCode?: string;
+  comboId?: string;
+  comboCourseIds?: string[];
   productNameVi: string;
   productNameEn: string;
   quantity: number;

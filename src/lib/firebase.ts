@@ -2,6 +2,7 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getAnalytics, isSupported as isAnalyticsSupported, type Analytics } from 'firebase/analytics';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
@@ -10,6 +11,19 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export let analytics: Analytics | null = null;
+if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
+  isAnalyticsSupported()
+    .then((supported) => {
+      if (supported) {
+        analytics = getAnalytics(app);
+      }
+    })
+    .catch(() => {
+      // Ignore analytics initialization errors in restricted/adblock browsers
+    });
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -134,6 +148,8 @@ export {
   fetchLessonMaterialsFromFirestore,
   saveLessonMaterialToFirestore,
   deleteLessonMaterialFromFirestore,
+  fetchSiteAdminConfigFromFirestore,
+  saveSiteAdminConfigToFirestore,
   testFirestoreReadWrite,
 } from './firestore';
 export type { ChunkWriteOutcome, DuplicateStrategy, ProductionTransactionalData } from './firestore';

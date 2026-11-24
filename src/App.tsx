@@ -9,6 +9,7 @@ import { Navbar } from './components/common/Navbar';
 import { Sidebar } from './components/common/Sidebar';
 import { DashboardContainer } from './components/dashboard/DashboardContainer';
 import { OnboardingBotWidget } from './components/common/OnboardingBotWidget';
+import { GlobalAnnouncementBanner, PromoPopupModal } from './components/common/SiteBroadcastWidgets';
 import { Course } from './types';
 import { CheckCircle2, AlertCircle, Info, X, Loader2 } from 'lucide-react';
 
@@ -190,6 +191,7 @@ const MainAppContent: React.FC = () => {
         {/* Dynamic Workspace Container — min-w-0 prevents horizontal overflow; inner max-w keeps wide screens balanced */}
         <main className="flex-1 min-w-0 p-3.5 sm:p-6 lg:p-8">
           <div data-tour="main-workspace" className="max-w-[1440px] mx-auto w-full">
+          <GlobalAnnouncementBanner />
           <Suspense fallback={<ViewLoadingFallback />}>
             {activeTab === 'dashboard' && canAccessRoute('dashboard') && <DashboardContainer />}
             {activeTab === 'myLearning' && canAccessRoute('myLearning') && <CourseCatalogView />}
@@ -260,6 +262,7 @@ const MainAppContent: React.FC = () => {
 
       {/* Cute Floating Onboarding Assistant & Spotlight Guided Tour */}
       <OnboardingBotWidget />
+      <PromoPopupModal />
 
       {/* Lazy-Loaded Modals */}
       <Suspense fallback={null}>

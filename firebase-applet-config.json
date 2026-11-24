@@ -1,12 +1,12 @@
 {
   "projectId": "fc-learning-academy",
-  "appId": "1:956479366109:web:d7fe86b043b9ba29c08c34",
+  "appId": "1:956479366109:web:58cb98652402df3bc08c34",
   "apiKey": "AIzaSyA8Hv9VZW4LjnpqKJ2xTiZON5-bcgPsqAA",
   "authDomain": "fc-learning-academy.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-fclearningacadem-774a1449-f0df-4a0b-93ca-e9354f4f5bdb",
   "storageBucket": "fc-learning-academy.firebasestorage.app",
   "messagingSenderId": "956479366109",
-  "measurementId": "",
+  "measurementId": "G-3V30G36XD9",
   "oAuthClientId": "956479366109-f6009cn8c60h17kmr5pb78ip8q6r4mqc.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

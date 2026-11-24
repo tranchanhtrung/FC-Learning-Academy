@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getCoursePriceVnd, formatVnd } from '../../lib/coursePricing';
+import { formatVnd } from '../../lib/coursePricing';
 import { getCourseSyllabus } from '../../data/courseSyllabi';
+import type { Course } from '../../types';
 import {
   CreditCard,
   ShieldCheck,
@@ -24,6 +25,7 @@ import {
   PlayCircle,
   Loader2,
   User as UserIcon,
+  Package,
 } from 'lucide-react';
 
 interface BillingProduct {
@@ -118,8 +120,14 @@ export const PricingBillingView: React.FC = () => {
     getAuthHeaders,
     pendingCheckoutCourse,
     pendingCheckoutLessonId,
+    pendingCheckoutCombo,
+    startComboCheckout,
     clearCourseCheckout,
     completeCourseUnlock,
+    completeComboUnlock,
+    hasCourseAccess,
+    siteAdminConfig,
+    getEffectiveCoursePricing,
     refreshEntitlements,
     setActiveTab,
     enrollCourse,
@@ -186,9 +194,14 @@ export const PricingBillingView: React.FC = () => {
 
   const authHeaders = useCallback(() => getAuthHeaders(), [getAuthHeaders]);
 
-  // Reset direct course checkout state whenever target course changes
+  // Reset direct course / combo checkout state whenever target changes
   useEffect(() => {
-    if (!pendingCheckoutCourse) {
+    const targetKey = pendingCheckoutCombo
+      ? `combo_${pendingCheckoutCombo.id}`
+      : pendingCheckoutCourse
+      ? pendingCheckoutCourse.id
+      : null;
+    if (!targetKey) {
       setCourseOrder(null);
       unlockedOrderIdRef.current = null;
       return;
@@ -203,9 +216,9 @@ export const PricingBillingView: React.FC = () => {
     setCourseVatEmail(currentUser.email || '');
     unlockedOrderIdRef.current = null;
     setCourseIdempotencyKey(
-      `idem_${currentUser.id}_${pendingCheckoutCourse.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      `idem_${currentUser.id}_${targetKey}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     );
-  }, [pendingCheckoutCourse, currentUser.id, currentUser.property, currentUser.email]);
+  }, [pendingCheckoutCourse, pendingCheckoutCombo, currentUser.id, currentUser.property, currentUser.email]);
 
   // Live 1-second clock for QR expiration countdown
   useEffect(() => {
@@ -259,23 +272,45 @@ export const PricingBillingView: React.FC = () => {
     }
   };
 
-  // Trigger automatic unlock + open CoursePlayerModal once direct course QR order becomes 'paid'
+  // Trigger automatic unlock + open CoursePlayerModal once direct course OR combo QR order becomes 'paid'
   const triggerAutoOpenUnlockedCourse = useCallback(
     (paidOrder: BillingOrder) => {
-      if (!pendingCheckoutCourse) return;
+      if (!pendingCheckoutCourse && !pendingCheckoutCombo) return;
       if (unlockedOrderIdRef.current === paidOrder.id) return;
       unlockedOrderIdRef.current = paidOrder.id;
-      showToast(
-        isVi
-          ? `Thanh toán ${paidOrder.orderCode} thành công! Đang tự động mở khóa học ${pendingCheckoutCourse.code}...`
-          : `Payment ${paidOrder.orderCode} confirmed! Unlocking ${pendingCheckoutCourse.code}...`,
-        'success'
-      );
-      window.setTimeout(() => {
-        void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId);
-      }, 1100);
+      if (pendingCheckoutCombo) {
+        showToast(
+          isVi
+            ? `Thanh toán Combo ${paidOrder.orderCode} thành công! Đang tự động mở khóa toàn bộ ${pendingCheckoutCombo.courseIds.length} khóa học...`
+            : `Combo payment ${paidOrder.orderCode} confirmed! Unlocking all ${pendingCheckoutCombo.courseIds.length} courses...`,
+          'success'
+        );
+        window.setTimeout(() => {
+          void completeComboUnlock(pendingCheckoutCombo);
+        }, 1100);
+        return;
+      }
+      if (pendingCheckoutCourse) {
+        showToast(
+          isVi
+            ? `Thanh toán ${paidOrder.orderCode} thành công! Đang tự động mở khóa học ${pendingCheckoutCourse.code}...`
+            : `Payment ${paidOrder.orderCode} confirmed! Unlocking ${pendingCheckoutCourse.code}...`,
+          'success'
+        );
+        window.setTimeout(() => {
+          void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId);
+        }, 1100);
+      }
     },
-    [completeCourseUnlock, isVi, pendingCheckoutCourse, pendingCheckoutLessonId, showToast]
+    [
+      completeComboUnlock,
+      completeCourseUnlock,
+      isVi,
+      pendingCheckoutCombo,
+      pendingCheckoutCourse,
+      pendingCheckoutLessonId,
+      showToast,
+    ]
   );
 
   // Poll direct course QR order every 3s for automatic webhook confirmation
@@ -365,23 +400,33 @@ export const PricingBillingView: React.FC = () => {
   }, [activeOrder, authHeaders, enrollCourse, isVi, loadBillingData, refreshEntitlements, showToast]);
 
   // =========================================================================
-  // DIRECT COURSE CHECKOUT HANDLERS
+  // DIRECT COURSE OR COMBO CHECKOUT HANDLERS
   // =========================================================================
   const handleApplyCourseCoupon = async () => {
-    if (!pendingCheckoutCourse || !courseCouponInput.trim()) return;
+    if ((!pendingCheckoutCourse && !pendingCheckoutCombo) || !courseCouponInput.trim()) return;
     setCourseCouponErr(null);
     try {
       const res = await fetch('/api/billing/validate-coupon', {
         method: 'POST',
         credentials: 'same-origin',
         headers: authHeaders(),
-        body: JSON.stringify({
-          productId: 'prod_single_course',
-          courseId: pendingCheckoutCourse.id,
-          quantity: 1,
-          couponCode: courseCouponInput.trim(),
-          includeVatInvoice: courseNeedVat,
-        }),
+        body: JSON.stringify(
+          pendingCheckoutCombo
+            ? {
+                productId: 'prod_course_combo',
+                comboId: pendingCheckoutCombo.id,
+                quantity: 1,
+                couponCode: courseCouponInput.trim(),
+                includeVatInvoice: courseNeedVat,
+              }
+            : {
+                productId: 'prod_single_course',
+                courseId: pendingCheckoutCourse!.id,
+                quantity: 1,
+                couponCode: courseCouponInput.trim(),
+                includeVatInvoice: courseNeedVat,
+              }
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -402,7 +447,7 @@ export const PricingBillingView: React.FC = () => {
 
   const handleCreateCourseQrOrder = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!pendingCheckoutCourse || courseSubmitting) return;
+    if ((!pendingCheckoutCourse && !pendingCheckoutCombo) || courseSubmitting) return;
     if (courseNeedVat && (!courseVatCompany.trim() || !courseVatTaxCode.trim())) {
       showToast(
         isVi
@@ -423,8 +468,15 @@ export const PricingBillingView: React.FC = () => {
           'Idempotency-Key': courseIdempotencyKey,
         },
         body: JSON.stringify({
-          productId: 'prod_single_course',
-          courseId: pendingCheckoutCourse.id,
+          ...(pendingCheckoutCombo
+            ? {
+                productId: 'prod_course_combo',
+                comboId: pendingCheckoutCombo.id,
+              }
+            : {
+                productId: 'prod_single_course',
+                courseId: pendingCheckoutCourse!.id,
+              }),
           quantity: 1,
           provider: courseProvider,
           couponCode: courseCouponPreview?.valid ? courseCouponInput.trim() : undefined,
@@ -452,7 +504,7 @@ export const PricingBillingView: React.FC = () => {
   };
 
   const handleConfirmCourseQrPayment = async () => {
-    if (!courseOrder || !pendingCheckoutCourse || courseSubmitting) return;
+    if (!courseOrder || (!pendingCheckoutCourse && !pendingCheckoutCombo) || courseSubmitting) return;
     setCourseSubmitting(true);
     try {
       const headers: Record<string, string> = { ...authHeaders() };
@@ -657,8 +709,31 @@ export const PricingBillingView: React.FC = () => {
     await Promise.all([loadBillingData(), refreshEntitlements()]);
   };
 
-  // Preview calculation for Direct Course Checkout
-  const courseUnitPrice = pendingCheckoutCourse ? getCoursePriceVnd(pendingCheckoutCourse) : 990000;
+  // Active Combos configured by Admin
+  const activeCombos = useMemo(
+    () => (siteAdminConfig.combos || []).filter((cb) => cb.isActive && cb.courseIds.length >= 2),
+    [siteAdminConfig.combos]
+  );
+
+  // Preview calculation for Direct Course OR Combo Checkout
+  const pendingComboCourses = useMemo<Course[]>(() => {
+    if (!pendingCheckoutCombo) return [];
+    return pendingCheckoutCombo.courseIds
+      .map((cid) => courses.find((c) => c.id === cid || c.code === cid))
+      .filter(Boolean) as Course[];
+  }, [courses, pendingCheckoutCombo]);
+
+  const pendingComboRetailSum = useMemo(
+    () =>
+      pendingComboCourses.reduce((sum, c) => sum + getEffectiveCoursePricing(c).priceVnd, 0),
+    [pendingComboCourses, getEffectiveCoursePricing]
+  );
+
+  const courseUnitPrice = pendingCheckoutCombo
+    ? pendingCheckoutCombo.priceVnd
+    : pendingCheckoutCourse
+    ? getEffectiveCoursePricing(pendingCheckoutCourse).priceVnd
+    : 990000;
   const courseDiscount = courseCouponPreview?.valid ? courseCouponPreview.discountAmount : 0;
   const courseNet = Math.max(0, courseUnitPrice - courseDiscount);
   const courseVat = courseNeedVat ? Math.round(courseNet * 0.08) : 0;
@@ -669,7 +744,7 @@ export const PricingBillingView: React.FC = () => {
   const modalSelectedCourse = courses.find((c) => c.id === selectedCourseId);
   const modalUnitPrice =
     selectedProduct?.productType === 'course' && modalSelectedCourse
-      ? getCoursePriceVnd(modalSelectedCourse)
+      ? getEffectiveCoursePricing(modalSelectedCourse).priceVnd
       : selectedProduct?.priceVnd || 0;
   const previewSubtotal = selectedProduct ? modalUnitPrice * seatQuantity : 0;
   const previewDiscount = couponPreview?.valid ? couponPreview.discountAmount : 0;
@@ -695,9 +770,21 @@ export const PricingBillingView: React.FC = () => {
   };
 
   // =========================================================================
-  // DEDICATED COURSE CHECKOUT & QR AUTO-UNLOCK WORKSPACE
+  // DEDICATED COURSE OR MULTI-COURSE COMBO CHECKOUT & QR AUTO-UNLOCK WORKSPACE
   // =========================================================================
-  if (pendingCheckoutCourse) {
+  if (pendingCheckoutCourse || pendingCheckoutCombo) {
+    const isComboCheckout = Boolean(pendingCheckoutCombo);
+    const compareComboPrice = pendingCheckoutCombo ? pendingComboRetailSum : 0;
+    const comboSavings = Math.max(0, compareComboPrice - courseUnitPrice);
+    const pendingComboBadge = pendingCheckoutCombo
+      ? isVi
+        ? pendingCheckoutCombo.badgeVi
+        : pendingCheckoutCombo.badgeEn || pendingCheckoutCombo.badgeVi
+      : undefined;
+    const checkoutTargetId = pendingCheckoutCombo
+      ? `combo_${pendingCheckoutCombo.id}`
+      : pendingCheckoutCourse!.id;
+
     return (
       <div className="space-y-6">
         {/* Top Navigation Strip */}
@@ -730,94 +817,183 @@ export const PricingBillingView: React.FC = () => {
         <div className="bg-gradient-to-r from-[#0A192F] via-[#122645] to-[#1E3A8A] text-white p-5 sm:p-7 rounded-2xl border border-slate-700/60 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5 min-w-0">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
-              <QrCode className="w-3.5 h-3.5 shrink-0" />
-              <span>{isVi ? 'Thanh Toán Ghi Danh Khóa Học · Mở Khóa Tự Động' : 'Course Enrollment Checkout · Instant QR Unlock'}</span>
+              {isComboCheckout ? (
+                <Package className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <QrCode className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>
+                {isComboCheckout
+                  ? isVi
+                    ? `Thanh Toán Combo ${pendingComboCourses.length} Khóa Học · Mở Khóa Tự Động Toàn Bộ`
+                    : `${pendingComboCourses.length}-Course Combo Checkout · Instant Full Unlock`
+                  : isVi
+                  ? 'Thanh Toán Ghi Danh Khóa Học · Mở Khóa Tự Động'
+                  : 'Course Enrollment Checkout · Instant QR Unlock'}
+              </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-              <span className="font-mono text-amber-400 mr-2">{pendingCheckoutCourse.code}</span>
-              {isVi ? pendingCheckoutCourse.titleVi : pendingCheckoutCourse.titleEn}
+              <span className="font-mono text-amber-400 mr-2">
+                {pendingCheckoutCombo ? pendingCheckoutCombo.code : pendingCheckoutCourse!.code}
+              </span>
+              {pendingCheckoutCombo
+                ? isVi
+                  ? pendingCheckoutCombo.nameVi
+                  : pendingCheckoutCombo.nameEn || pendingCheckoutCombo.nameVi
+                : isVi
+                ? pendingCheckoutCourse!.titleVi
+                : pendingCheckoutCourse!.titleEn}
             </h2>
             <p className="text-xs sm:text-sm text-slate-300">
-              {isVi
+              {isComboCheckout
+                ? isVi
+                  ? `Quét mã QR một lần duy nhất để tự động ghi danh và mở khóa trọn đời toàn bộ ${pendingComboCourses.length} khóa học trong Combo kèm học liệu Excel USALI.`
+                  : `Scan QR once to automatically enroll and unlock lifetime access to all ${pendingComboCourses.length} courses in this bundle.`
+                : isVi
                 ? 'Sau khi hoàn tất quét mã QR thanh toán, hệ thống tự động kích hoạt ghi danh và mở ngay toàn bộ nội dung bài giảng, file Excel USALI & bài kiểm tra.'
                 : 'Once QR payment is confirmed, the course is automatically enrolled and opened immediately with full lessons, USALI workbooks, and certification exam.'}
             </p>
           </div>
           <div className="px-4 py-3 rounded-xl bg-slate-900/70 border border-slate-700 text-right shrink-0">
             <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
-              {isVi ? 'Học phí sở hữu trọn đời' : 'Lifetime Course Tuition'}
+              {isComboCheckout
+                ? isVi
+                  ? 'Giá ưu đãi trọn bộ Combo'
+                  : 'Bundle Offer Price'
+                : isVi
+                ? 'Học phí sở hữu trọn đời'
+                : 'Lifetime Course Tuition'}
             </span>
+            {isComboCheckout && compareComboPrice > courseUnitPrice && (
+              <span className="text-xs text-slate-400 line-through font-mono block">
+                {formatVnd(compareComboPrice)}
+              </span>
+            )}
             <span className="text-2xl font-black font-mono tabular-nums text-amber-400">
               {formatVnd(courseUnitPrice)}
             </span>
+            {isComboCheckout && comboSavings > 0 && (
+              <span className="block text-[11px] font-bold text-emerald-400">
+                {isVi ? `Tiết kiệm ${formatVnd(comboSavings)}` : `Save ${formatVnd(comboSavings)}`}
+              </span>
+            )}
           </div>
         </div>
 
         {/* 2-Column Checkout + QR Payment Workspace */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT COLUMN: Course Details & Checkout Options */}
+          {/* LEFT COLUMN: Course or Combo Details & Checkout Options */}
           <div className="lg:col-span-7 space-y-5">
-            {/* Course Summary Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-5 flex flex-col sm:flex-row gap-4 border-b border-slate-100">
-                <div className="w-full sm:w-36 h-24 rounded-xl overflow-hidden bg-[#0A192F] shrink-0 relative">
-                  {pendingCheckoutCourse.thumbnail ? (
-                    <img
-                      src={pendingCheckoutCourse.thumbnail}
-                      alt={pendingCheckoutCourse.titleVi}
-                      className="w-full h-full object-cover opacity-90"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center font-mono font-black text-amber-400 text-lg">
-                      {pendingCheckoutCourse.code}
-                    </div>
-                  )}
-                  <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#0A192F]/90 text-amber-300 text-[10px] font-mono font-bold">
-                    {pendingCheckoutCourse.code}
-                  </span>
-                </div>
-                <div className="space-y-1.5 min-w-0 flex-1 text-xs">
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-semibold">
-                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
-                      {pendingCheckoutCourse.difficulty}
-                    </span>
-                    <span>·</span>
-                    <span className="font-mono">{pendingCheckoutCourse.durationHours}h</span>
-                    <span>·</span>
-                    <span>
-                      {pendingSyllabus
-                        ? `${pendingSyllabus.sessions.length} ${isVi ? 'Học phần' : 'Sessions'}`
-                        : `${pendingCheckoutCourse.modules.length} Modules`}
-                    </span>
-                    <span>·</span>
-                    <span className="font-mono">Pass {pendingCheckoutCourse.passingScore}%</span>
+            {/* Summary Card */}
+            {pendingCheckoutCombo ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-5 border-b border-slate-100 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                      <Package className="w-4 h-4 text-amber-600" />
+                      <span>
+                        {isVi
+                          ? `Danh sách ${pendingComboCourses.length} khóa học được mở khóa tự động`
+                          : `All ${pendingComboCourses.length} Included Courses (Auto-Unlocked)`}
+                      </span>
+                    </h3>
+                    {pendingComboBadge && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                        {pendingComboBadge}
+                      </span>
+                    )}
                   </div>
-                  <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
-                    {isVi ? pendingCheckoutCourse.titleVi : pendingCheckoutCourse.titleEn}
-                  </h3>
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">
-                      {pendingCheckoutCourse.instructorName} · {pendingCheckoutCourse.instructorTitle}
-                    </span>
-                  </div>
+                  <p className="text-xs text-slate-500">
+                    {isVi
+                      ? pendingCheckoutCombo.descriptionVi
+                      : pendingCheckoutCombo.descriptionEn || pendingCheckoutCombo.descriptionVi}
+                  </p>
                 </div>
-              </div>
 
-              <div className="p-5 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                {[
-                  isVi ? 'Sở hữu trọn đời khóa học đã chọn' : 'Lifetime access to this course',
-                  isVi ? 'Toàn bộ học liệu, file mẫu Excel USALI & Case Study' : 'All lessons, USALI Excel templates & Case Study',
-                  isVi ? 'Làm bài thi trắc nghiệm & cấp chứng nhận hoàn thành' : 'End-of-course exam & completion certificate',
-                  isVi ? 'Mở khóa truy cập tự động ngay sau khi thanh toán QR' : 'Automatic instant unlock right after QR payment',
-                ].map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-2 text-slate-700">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span>{item}</span>
-                  </div>
-                ))}
+                <div className="divide-y divide-slate-100">
+                  {pendingComboCourses.map((c) => (
+                    <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 leading-snug">
+                            <span className="font-mono text-blue-700 mr-1.5">{c.code}</span>
+                            {isVi ? c.titleVi : c.titleEn}
+                          </div>
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            {c.difficulty} · {c.durationHours}h · {c.instructorName}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="font-mono text-[11px] text-slate-400 line-through shrink-0">
+                        {formatVnd(getEffectiveCoursePricing(c).priceVnd)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : pendingCheckoutCourse ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="p-5 flex flex-col sm:flex-row gap-4 border-b border-slate-100">
+                  <div className="w-full sm:w-36 h-24 rounded-xl overflow-hidden bg-[#0A192F] shrink-0 relative">
+                    {pendingCheckoutCourse.thumbnail ? (
+                      <img
+                        src={pendingCheckoutCourse.thumbnail}
+                        alt={pendingCheckoutCourse.titleVi}
+                        className="w-full h-full object-cover opacity-90"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center font-mono font-black text-amber-400 text-lg">
+                        {pendingCheckoutCourse.code}
+                      </div>
+                    )}
+                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#0A192F]/90 text-amber-300 text-[10px] font-mono font-bold">
+                      {pendingCheckoutCourse.code}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 min-w-0 flex-1 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-semibold">
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">
+                        {pendingCheckoutCourse.difficulty}
+                      </span>
+                      <span>·</span>
+                      <span className="font-mono">{pendingCheckoutCourse.durationHours}h</span>
+                      <span>·</span>
+                      <span>
+                        {pendingSyllabus
+                          ? `${pendingSyllabus.sessions.length} ${isVi ? 'Học phần' : 'Sessions'}`
+                          : `${pendingCheckoutCourse.modules.length} Modules`}
+                      </span>
+                      <span>·</span>
+                      <span className="font-mono">Pass {pendingCheckoutCourse.passingScore}%</span>
+                    </div>
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">
+                      {isVi ? pendingCheckoutCourse.titleVi : pendingCheckoutCourse.titleEn}
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">
+                        {pendingCheckoutCourse.instructorName} · {pendingCheckoutCourse.instructorTitle}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  {[
+                    isVi ? 'Sở hữu trọn đời khóa học đã chọn' : 'Lifetime access to this course',
+                    isVi ? 'Toàn bộ học liệu, file mẫu Excel USALI & Case Study' : 'All lessons, USALI Excel templates & Case Study',
+                    isVi ? 'Làm bài thi trắc nghiệm & cấp chứng nhận hoàn thành' : 'End-of-course exam & completion certificate',
+                    isVi ? 'Mở khóa truy cập tự động ngay sau khi thanh toán QR' : 'Automatic instant unlock right after QR payment',
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-2 text-slate-700">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Payment Method, Coupon & VAT (locked once QR order created unless user clicks "Tạo đơn mới") */}
             <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5 text-xs">
@@ -831,7 +1007,7 @@ export const PricingBillingView: React.FC = () => {
                     onClick={() => {
                       setCourseOrder(null);
                       setCourseIdempotencyKey(
-                        `idem_${currentUser.id}_${pendingCheckoutCourse.id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                        `idem_${currentUser.id}_${checkoutTargetId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
                       );
                     }}
                     className="text-[11px] font-bold text-blue-700 hover:underline cursor-pointer"
@@ -1229,19 +1405,35 @@ export const PricingBillingView: React.FC = () => {
                       {isVi ? 'Thanh Toán QR Thành Công!' : 'QR Payment Confirmed!'}
                     </h4>
                     <p className="text-xs text-emerald-800 leading-relaxed">
-                      {isVi
-                        ? `Đơn hàng ${courseOrder.orderCode} đã được xác thực. Hệ thống đang tự động mở quyền truy cập nội dung khóa học ${pendingCheckoutCourse.code}...`
-                        : `Order ${courseOrder.orderCode} verified. Automatically opening course ${pendingCheckoutCourse.code}...`}
+                      {pendingCheckoutCombo
+                        ? isVi
+                          ? `Đơn hàng ${courseOrder.orderCode} đã được xác thực. Toàn bộ ${pendingComboCourses.length} khóa học trong Combo ${pendingCheckoutCombo.code} đang được tự động mở khóa...`
+                          : `Order ${courseOrder.orderCode} verified. Unlocking all ${pendingComboCourses.length} courses in Combo ${pendingCheckoutCombo.code}...`
+                        : isVi
+                        ? `Đơn hàng ${courseOrder.orderCode} đã được xác thực. Hệ thống đang tự động mở quyền truy cập nội dung khóa học ${pendingCheckoutCourse?.code}...`
+                        : `Order ${courseOrder.orderCode} verified. Automatically opening course ${pendingCheckoutCourse?.code}...`}
                     </p>
                     <button
                       type="button"
-                      onClick={() =>
-                        void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId)
-                      }
+                      onClick={() => {
+                        if (pendingCheckoutCombo) {
+                          void completeComboUnlock(pendingCheckoutCombo);
+                        } else if (pendingCheckoutCourse) {
+                          void completeCourseUnlock(pendingCheckoutCourse, pendingCheckoutLessonId);
+                        }
+                      }}
                       className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                     >
                       <PlayCircle className="w-4 h-4" />
-                      <span>{isVi ? 'Mở Nội Dung Khóa Học Ngay' : 'Open Course Content Now'}</span>
+                      <span>
+                        {pendingCheckoutCombo
+                          ? isVi
+                            ? 'Vào Học Combo Ngay'
+                            : 'Start Combo Courses Now'
+                          : isVi
+                          ? 'Mở Nội Dung Khóa Học Ngay'
+                          : 'Open Course Content Now'}
+                      </span>
                     </button>
                   </div>
                 )}
@@ -1417,6 +1609,118 @@ export const PricingBillingView: React.FC = () => {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Multi-Course Combos configured in Admin */}
+          {activeCombos.length > 0 && (
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-amber-600" />
+                    <span>
+                      {isVi
+                        ? 'Gói Combo Nhiều Khóa Học (Tiết Kiệm Chi Phí)'
+                        : 'Multi-Course Combo Bundles (Best Value)'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isVi
+                      ? 'Thanh toán 1 lần qua VietQR — hệ thống tự động mở khóa đồng loạt tất cả khóa học trong Combo.'
+                      : 'Single VietQR checkout — automatically unlocks every course in the combo.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeCombos.map((combo) => {
+                  const comboCourseObjs = combo.courseIds
+                    .map((cid) => courses.find((c) => c.id === cid || c.code === cid))
+                    .filter(Boolean) as Course[];
+                  const retailSum = comboCourseObjs.reduce(
+                    (sum, c) => sum + getEffectiveCoursePricing(c).priceVnd,
+                    0
+                  );
+                  const compareVal = retailSum;
+                  const saveVnd = Math.max(0, compareVal - combo.priceVnd);
+                  const ownedAll =
+                    comboCourseObjs.length > 0 && comboCourseObjs.every((c) => hasCourseAccess(c));
+                  const comboBadgeLabel = isVi ? combo.badgeVi : combo.badgeEn || combo.badgeVi;
+
+                  return (
+                    <div
+                      key={combo.id}
+                      className={`rounded-2xl p-5 border flex flex-col justify-between gap-4 ${
+                        combo.featured
+                          ? 'bg-amber-50/40 border-amber-400 shadow-sm'
+                          : 'bg-slate-50/60 border-slate-200'
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="px-2 py-0.5 rounded bg-[#0A192F] text-amber-300 font-mono text-[10px] font-bold">
+                            {combo.code}
+                          </span>
+                          {comboBadgeLabel && (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
+                              {comboBadgeLabel}
+                            </span>
+                          )}
+                        </div>
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          {isVi ? combo.nameVi : combo.nameEn || combo.nameVi}
+                        </h4>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {isVi ? combo.descriptionVi : combo.descriptionEn || combo.descriptionVi}
+                        </p>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {comboCourseObjs.map((cc) => (
+                            <span
+                              key={cc.id}
+                              className="px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700 font-mono text-[10px] font-bold"
+                            >
+                              {cc.code}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-200/80 flex items-end justify-between gap-3">
+                        <div>
+                          {compareVal > combo.priceVnd && (
+                            <span className="text-[11px] text-slate-400 line-through font-mono block">
+                              {formatVnd(compareVal)}
+                            </span>
+                          )}
+                          <span className="text-lg font-black font-mono text-[#0A192F] tabular-nums">
+                            {formatVnd(combo.priceVnd)}
+                          </span>
+                          {saveVnd > 0 && (
+                            <span className="block text-[10px] font-bold text-emerald-700">
+                              {isVi ? `Tiết kiệm ${formatVnd(saveVnd)}` : `Save ${formatVnd(saveVnd)}`}
+                            </span>
+                          )}
+                        </div>
+                        {ownedAll ? (
+                          <span className="px-3 py-2 rounded-xl bg-emerald-100 text-emerald-800 font-bold text-xs">
+                            {isVi ? 'Đã sở hữu' : 'Owned'}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => startComboCheckout(combo)}
+                            className="px-3.5 py-2 rounded-xl bg-[#0A192F] hover:bg-slate-800 text-amber-400 font-extrabold text-xs inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>{isVi ? 'Mua Combo' : 'Buy Combo'}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -1697,7 +2001,7 @@ export const PricingBillingView: React.FC = () => {
                       >
                         {courses.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.code} — {isVi ? c.titleVi : c.titleEn} ({formatVnd(getCoursePriceVnd(c))})
+                            {c.code} — {isVi ? c.titleVi : c.titleEn} ({formatVnd(getEffectiveCoursePricing(c).priceVnd)})
                           </option>
                         ))}
                       </select>

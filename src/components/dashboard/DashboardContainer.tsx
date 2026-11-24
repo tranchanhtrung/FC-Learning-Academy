@@ -4,6 +4,7 @@ import { LearnerDashboard } from './LearnerDashboard';
 import { FCDashboard } from './FCDashboard';
 import { GMDashboard } from './GMDashboard';
 import { AdminDashboard } from './AdminDashboard';
+import { PromoAdSlot } from '../common/SiteBroadcastWidgets';
 import { UserCheck, Briefcase, Crown, Shield, Eye } from 'lucide-react';
 import { UserRole } from '../../types';
 
@@ -81,6 +82,9 @@ export const DashboardContainer: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Promotional Ad Banners configured by Admin */}
+      <PromoAdSlot placement="dashboard_banner" />
 
       {/* Render selected dashboard */}
       {activeViewRole === 'learner' && <LearnerDashboard />}

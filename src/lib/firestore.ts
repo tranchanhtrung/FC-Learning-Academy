@@ -21,7 +21,14 @@ import {
   SYSTEM_ROLES,
   sanitizeRolePermissionsList,
 } from './rbac';
-import type { LessonMaterialDoc, PermissionKey, RolePermissionPolicyDoc, UserRole } from '../types';
+import type {
+  LessonMaterialDoc,
+  PermissionKey,
+  RolePermissionPolicyDoc,
+  SiteAdminConfigDoc,
+  UserRole,
+} from '../types';
+import { SITE_ADMIN_CONFIG_DOC_ID, normalizeSiteAdminConfig } from './siteAdminConfig';
 
 export type DuplicateStrategy = 'skip' | 'update' | 'insert_new' | 'reject';
 export type SimulationScenarioLifecycleStatus = 'Draft' | 'Validated' | 'Published' | 'Archived';
@@ -1007,4 +1014,52 @@ export async function commitCollectionToFirestore(
   }
 
   return outcome;
+}
+
+export async function fetchSiteAdminConfigFromFirestore(): Promise<SiteAdminConfigDoc | null> {
+  // Primary path: /siteSettings/site_settings_global
+  try {
+    const snap = await getDoc(doc(db, 'siteSettings', SITE_ADMIN_CONFIG_DOC_ID));
+    if (snap.exists()) {
+      return normalizeSiteAdminConfig(snap.data() as Partial<SiteAdminConfigDoc>);
+    }
+  } catch {
+    // Fallback below if siteSettings rule not deployed yet
+  }
+  // Fallback path compatible with existing deployed firestore.rules
+  try {
+    const fallbackSnap = await getDoc(doc(db, 'simulationDatasets', SITE_ADMIN_CONFIG_DOC_ID));
+    if (fallbackSnap.exists()) {
+      return normalizeSiteAdminConfig(fallbackSnap.data() as Partial<SiteAdminConfigDoc>);
+    }
+  } catch {
+    // ignore unauthenticated read
+  }
+  return null;
+}
+
+export async function saveSiteAdminConfigToFirestore(
+  config: SiteAdminConfigDoc
+): Promise<SiteAdminConfigDoc> {
+  const payload = sanitizeForFirestore({
+    ...normalizeSiteAdminConfig(config),
+    id: SITE_ADMIN_CONFIG_DOC_ID,
+    updatedAt: new Date().toISOString(),
+  });
+
+  try {
+    await setDoc(doc(db, 'siteSettings', SITE_ADMIN_CONFIG_DOC_ID), payload);
+    return payload;
+  } catch (err: any) {
+    const msg = String(err?.code || err?.message || '').toLowerCase();
+    if (msg.includes('permission-denied') || msg.includes('missing or insufficient permissions')) {
+      try {
+        await setDoc(doc(db, 'simulationDatasets', SITE_ADMIN_CONFIG_DOC_ID), payload);
+        return payload;
+      } catch (fbErr) {
+        handleFirestoreError(fbErr, OperationType.WRITE, `simulationDatasets/${SITE_ADMIN_CONFIG_DOC_ID}`);
+      }
+    }
+    handleFirestoreError(err, OperationType.WRITE, `siteSettings/${SITE_ADMIN_CONFIG_DOC_ID}`);
+  }
 }

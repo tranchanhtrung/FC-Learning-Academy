@@ -62,6 +62,7 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
     domains,
     ojtAssignments,
     lessonMaterials,
+    getMaterialApprovalStatus,
     hasPermission,
     canAccessRoute,
   } = useApp();
@@ -101,7 +102,11 @@ export const CoursePlayerModal: React.FC<CoursePlayerModalProps> = ({
   const isVi = language === 'vi';
   const canManageLessonMaterials = hasPermission('manage_lesson_materials');
   const courseLessonMaterials = sortLessonMaterialsAsc(
-    lessonMaterials.filter((m) => doesMaterialMatchCourse(m, course))
+    lessonMaterials.filter((m) => {
+      if (!doesMaterialMatchCourse(m, course)) return false;
+      if (canManageLessonMaterials) return true;
+      return getMaterialApprovalStatus(m) === 'approved';
+    })
   );
   const syllabus = getCourseSyllabus(course);
   const domainObj = domains.find((d) => d.id === course.domainId);

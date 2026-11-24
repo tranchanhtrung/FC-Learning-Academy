@@ -5,6 +5,11 @@ import { isUserDisabledRecord } from '../../lib/firebase';
 import { DataImportCenterView } from './DataImportCenterView';
 import { RolePermissionsControlPanel } from './RolePermissionsControlPanel';
 import { LessonMaterialsManager } from '../courses/LessonMaterialsManager';
+import { AdminOverviewTab } from './AdminOverviewTab';
+import { AdminCommerceTab } from './AdminCommerceTab';
+import { AdminMarketingTab } from './AdminMarketingTab';
+import { AdminMaterialApprovalTab } from './AdminMaterialApprovalTab';
+import { AdminSiteSettingsTab } from './AdminSiteSettingsTab';
 import {
   Settings,
   Database,
@@ -16,8 +21,30 @@ import {
   RefreshCw,
   ShieldCheck,
   Shield,
-  Paperclip,
+  LayoutDashboard,
+  Users,
+  Tag,
+  Megaphone,
+  FileCheck2,
+  Sliders,
+  Building2,
+  Activity,
+  Search,
+  CheckCircle2,
+  Upload,
 } from 'lucide-react';
+
+type AdminTabId =
+  | 'overview'
+  | 'users'
+  | 'commerce'
+  | 'marketing'
+  | 'materials'
+  | 'settings'
+  | 'permissions'
+  | 'properties'
+  | 'system'
+  | 'dataImport';
 
 const PROPERTIES_META = [
   {
@@ -59,6 +86,8 @@ export const AdminManagementView: React.FC = () => {
     users,
     currentUser,
     auditLogs,
+    lessonMaterials,
+    getMaterialApprovalStatus,
     addUser,
     updateUser,
     disableUser,
@@ -73,17 +102,51 @@ export const AdminManagementView: React.FC = () => {
     hasPermission,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'permissions' | 'lessonMaterials' | 'properties' | 'system' | 'dataImport'>('users');
-  const canManageLessonMaterials = hasPermission('manage_lesson_materials');
+  const isVi = language === 'vi';
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTabId>('overview');
+  const [materialsSubTab, setMaterialsSubTab] = useState<'approval' | 'upload'>('approval');
   const [syncingRoles, setSyncingRoles] = useState<boolean>(false);
+  const [userSearch, setUserSearch] = useState<string>('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'pending_role' | UserRole>('all');
+  const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
   const [userModalOpen, setUserModalOpen] = useState<boolean>(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [pendingDisableUser, setPendingDisableUser] = useState<User | null>(null);
   const [disablingUser, setDisablingUser] = useState<boolean>(false);
+
   const visibleUsers = useMemo(
     () => users.filter((u) => !isUserDisabledRecord(u)),
     [users]
   );
+
+  const pendingRoleRequestsCount = useMemo(
+    () => visibleUsers.filter((u) => u.requestedRole && u.requestedRole !== u.role).length,
+    [visibleUsers]
+  );
+
+  const pendingMaterialsCount = useMemo(
+    () => lessonMaterials.filter((m) => getMaterialApprovalStatus(m) === 'pending').length,
+    [lessonMaterials, getMaterialApprovalStatus]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    return visibleUsers.filter((u) => {
+      if (userRoleFilter === 'pending_role') {
+        if (!u.requestedRole || u.requestedRole === u.role) return false;
+      } else if (userRoleFilter !== 'all' && u.role !== userRoleFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        (u.position || '').toLowerCase().includes(q) ||
+        (u.property || '').toLowerCase().includes(q)
+      );
+    });
+  }, [visibleUsers, userSearch, userRoleFilter]);
+
   const [userForm, setUserForm] = useState<{
     name: string;
     email: string;
@@ -106,24 +169,36 @@ export const AdminManagementView: React.FC = () => {
 
   const canManageUsers = hasPermission('manage_users_rbac');
   const canConfigurePermissions = hasPermission('configure_role_permissions');
+  const canManageLessonMaterials = hasPermission('manage_lesson_materials');
   const canAccessDataImport = hasPermission('access_data_import_center');
-  const canViewSystemAudit =
-    canManageUsers || canConfigurePermissions || canAccessDataImport;
+  const canManageSite = canManageUsers || canConfigurePermissions || currentUser.role === 'super_admin';
+  const canViewSystemAudit = canManageUsers || canConfigurePermissions || canAccessDataImport;
 
   const allowedAdminTabs = useMemo(() => {
-    const list: Array<'users' | 'permissions' | 'lessonMaterials' | 'properties' | 'system' | 'dataImport'> = [];
+    const list: AdminTabId[] = ['overview'];
     if (canManageUsers) list.push('users');
+    if (canManageSite) {
+      list.push('commerce', 'marketing');
+    }
+    if (canManageLessonMaterials || canManageSite) list.push('materials');
+    if (canManageSite) list.push('settings');
     if (canConfigurePermissions) list.push('permissions');
     list.push('properties');
     if (canViewSystemAudit) list.push('system');
-    if (canManageLessonMaterials) list.push('lessonMaterials');
     if (canAccessDataImport) list.push('dataImport');
     return list;
-  }, [canManageUsers, canConfigurePermissions, canViewSystemAudit, canManageLessonMaterials, canAccessDataImport]);
+  }, [
+    canManageUsers,
+    canManageSite,
+    canManageLessonMaterials,
+    canConfigurePermissions,
+    canViewSystemAudit,
+    canAccessDataImport,
+  ]);
 
   useEffect(() => {
     if (!allowedAdminTabs.includes(activeAdminTab)) {
-      setActiveAdminTab(allowedAdminTabs[0] || 'properties');
+      setActiveAdminTab(allowedAdminTabs[0] || 'overview');
     }
   }, [allowedAdminTabs, activeAdminTab]);
 
@@ -160,7 +235,7 @@ export const AdminManagementView: React.FC = () => {
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userForm.name.trim() || !userForm.email.trim()) {
-      showToast(language === 'vi' ? 'Vui lòng nhập họ tên và email.' : 'Name and email are required.', 'error');
+      showToast(isVi ? 'Vui lòng nhập họ tên và email.' : 'Name and email are required.', 'error');
       return;
     }
 
@@ -168,7 +243,7 @@ export const AdminManagementView: React.FC = () => {
       const updated = await updateUser(editingUserId, userForm);
       if (updated) {
         showToast(
-          language === 'vi' ? `Đã cập nhật thông tin ${updated.name}.` : `Updated user ${updated.name}.`,
+          isVi ? `Đã cập nhật thông tin ${updated.name}.` : `Updated user ${updated.name}.`,
           'success'
         );
         setUserModalOpen(false);
@@ -177,7 +252,7 @@ export const AdminManagementView: React.FC = () => {
       const created = await addUser(userForm);
       if (created) {
         showToast(
-          language === 'vi' ? `Đã tạo tài khoản ${created.name}.` : `Created user ${created.name}.`,
+          isVi ? `Đã tạo tài khoản ${created.name}.` : `Created user ${created.name}.`,
           'success'
         );
         setUserModalOpen(false);
@@ -185,129 +260,183 @@ export const AdminManagementView: React.FC = () => {
     }
   };
 
+  const handleQuickApproveRole = async (u: User) => {
+    if (!u.requestedRole || u.requestedRole === u.role) return;
+    setApprovingUserId(u.id);
+    try {
+      const updated = await updateUser(u.id, {
+        role: u.requestedRole,
+        requestedRole: u.requestedRole,
+      });
+      if (updated) {
+        showToast(
+          isVi
+            ? `Đã duyệt nâng vai trò ${updated.name} thành ${t.roles[u.requestedRole]}!`
+            : `Approved role upgrade for ${updated.name} to ${t.roles[u.requestedRole]}!`,
+          'success'
+        );
+      }
+    } finally {
+      setApprovingUserId(null);
+    }
+  };
+
+  const allTabItems: Array<{
+    id: AdminTabId;
+    labelVi: string;
+    labelEn: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number;
+  }> = [
+    { id: 'overview', labelVi: 'Tổng Quan', labelEn: 'Overview', icon: LayoutDashboard },
+    {
+      id: 'users',
+      labelVi: 'Người Dùng',
+      labelEn: 'Users',
+      icon: Users,
+      badge: pendingRoleRequestsCount > 0 ? pendingRoleRequestsCount : undefined,
+    },
+    { id: 'commerce', labelVi: 'Giá, Combo & Đơn Hàng', labelEn: 'Pricing, Combos & Orders', icon: Tag },
+    { id: 'marketing', labelVi: 'Thông Báo & Quảng Cáo', labelEn: 'Announcements & Ads', icon: Megaphone },
+    {
+      id: 'materials',
+      labelVi: 'Duyệt & Upload Tài Liệu',
+      labelEn: 'Materials & Approval',
+      icon: FileCheck2,
+      badge: pendingMaterialsCount > 0 ? pendingMaterialsCount : undefined,
+    },
+    { id: 'settings', labelVi: 'Cài Đặt & VietQR', labelEn: 'Site & VietQR', icon: Sliders },
+    { id: 'permissions', labelVi: 'Phân Quyền (RBAC)', labelEn: 'RBAC Matrix', icon: Shield },
+    { id: 'properties', labelVi: 'Khách Sạn', labelEn: 'Properties', icon: Building2 },
+    { id: 'system', labelVi: 'Kiến Trúc & Audit', labelEn: 'System & Audit', icon: Activity },
+    { id: 'dataImport', labelVi: 'Nhập Dữ Liệu', labelEn: 'Data Import', icon: Database },
+  ];
+  const tabItems = allTabItems.filter((item) => allowedAdminTabs.includes(item.id));
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-[#0A192F] via-[#122645] to-[#1E3A8A] text-white p-6 sm:p-8 rounded-2xl border border-slate-700/60 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300 text-xs font-bold uppercase tracking-wider mb-2">
             <Settings className="w-3.5 h-3.5" />
-            <span>Enterprise System Governance</span>
+            <span>Enterprise Admin Control Center</span>
           </div>
-          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            {t.nav.administration}
+          <h2 className="text-2xl font-extrabold text-white tracking-tight">
+            {isVi ? 'Trung Tâm Quản Trị Toàn Diện Hệ Thống' : t.nav.administration}
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
-            {language === 'vi'
-              ? 'Quản trị người dùng, phân quyền vai trò (RBAC), danh mục khách sạn thành viên và cấu hình kết nối đám mây.'
-              : 'User management, role-based access control (RBAC), property organizations, and cloud integration health.'}
+          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
+            {isVi
+              ? 'Quản lý bảng giá từng khóa học, gói Combo nhiều khóa, mã giảm giá, thông báo hệ thống, banner quảng cáo, kiểm duyệt tài liệu, tài khoản VietQR, người dùng và phân quyền RBAC.'
+              : 'Manage individual course pricing, multi-course combos, coupons, broadcasts, ad banners, document moderation, VietQR bank settings, users, and RBAC policies.'}
           </p>
         </div>
 
-        <span className="px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
-          {t.roles[currentUser.role]}
-        </span>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 shadow-xs">
+            {t.roles[currentUser.role]}
+          </span>
+        </div>
       </div>
 
-      {/* Admin Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold overflow-x-auto">
-        {canManageUsers && (
-          <button
-            onClick={() => setActiveAdminTab('users')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeAdminTab === 'users'
-                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {language === 'vi' ? 'Quản Lý Người Dùng & Tài Khoản' : 'Users & Accounts'}
-          </button>
-        )}
-        {canConfigurePermissions && (
-          <button
-            onClick={() => setActiveAdminTab('permissions')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-              activeAdminTab === 'permissions'
-                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>{language === 'vi' ? 'Bảng Phân Quyền Vai Trò (RBAC)' : 'Role Permissions Matrix'}</span>
-          </button>
-        )}
-        <button
-          onClick={() => setActiveAdminTab('properties')}
-          className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-            activeAdminTab === 'properties'
-              ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          {language === 'vi' ? 'Khách Sạn & Đơn Vị Thành Viên' : 'Properties & Locations'}
-        </button>
-        {canViewSystemAudit && (
-          <button
-            onClick={() => setActiveAdminTab('system')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-              activeAdminTab === 'system'
-                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {language === 'vi' ? 'Kiến Trúc & Nhật Ký Kiểm Toán' : 'Architecture & Audit Logs'}
-          </button>
-        )}
-        {canManageLessonMaterials && (
-          <button
-            onClick={() => setActiveAdminTab('lessonMaterials')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-              activeAdminTab === 'lessonMaterials'
-                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Paperclip className="w-3.5 h-3.5" />
-            <span>
-              {language === 'vi'
-                ? 'Upload Học Liệu Bài Học (Firestore)'
-                : 'Lesson Materials (Firestore)'}
-            </span>
-          </button>
-        )}
-        {canAccessDataImport && (
-          <button
-            onClick={() => setActiveAdminTab('dataImport')}
-            className={`px-4 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
-              activeAdminTab === 'dataImport'
-                ? 'bg-[#0A192F] text-amber-400 shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5" />
-            <span>
-              {language === 'vi'
-                ? 'Quản Lý Dữ Liệu → Trung Tâm Nhập Dữ Liệu'
-                : 'Data Management → Data Import Center'}
-            </span>
-          </button>
-        )}
+      {/* Admin Navigation Tabs */}
+      <div className="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+          {tabItems.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeAdminTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveAdminTab(tab.id)}
+                className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  active
+                    ? 'bg-[#0A192F] text-amber-400 shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span>{isVi ? tab.labelVi : tab.labelEn}</span>
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <span
+                    className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black font-mono leading-none ${
+                      active ? 'bg-amber-400 text-slate-950' : 'bg-rose-500 text-white'
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {/* NEW ENTERPRISE ADMIN TABS */}
+      {activeAdminTab === 'overview' && (
+        <AdminOverviewTab onNavigateTab={(tab) => setActiveAdminTab(tab)} />
+      )}
+      {activeAdminTab === 'commerce' && canManageSite && <AdminCommerceTab />}
+      {activeAdminTab === 'marketing' && canManageSite && <AdminMarketingTab />}
+      {activeAdminTab === 'materials' && (canManageLessonMaterials || canManageSite) && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setMaterialsSubTab('approval')}
+                className={`px-3.5 py-2 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                  materialsSubTab === 'approval'
+                    ? 'bg-[#0A192F] text-amber-400 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileCheck2 className="w-3.5 h-3.5" />
+                <span>
+                  {isVi
+                    ? `Kiểm Duyệt Tài Liệu (${pendingMaterialsCount} chờ duyệt)`
+                    : `Moderation Queue (${pendingMaterialsCount} pending)`}
+                </span>
+              </button>
+              {canManageLessonMaterials && (
+                <button
+                  type="button"
+                  onClick={() => setMaterialsSubTab('upload')}
+                  className={`px-3.5 py-2 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                    materialsSubTab === 'upload'
+                      ? 'bg-[#0A192F] text-amber-400 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{isVi ? 'Upload Học Liệu Mới' : 'Upload Lesson Material'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {materialsSubTab === 'approval' ? (
+            <AdminMaterialApprovalTab />
+          ) : (
+            <LessonMaterialsManager />
+          )}
+        </div>
+      )}
+      {activeAdminTab === 'settings' && canManageSite && <AdminSiteSettingsTab />}
       {activeAdminTab === 'permissions' && canConfigurePermissions && <RolePermissionsControlPanel />}
-      {activeAdminTab === 'lessonMaterials' && canManageLessonMaterials && <LessonMaterialsManager />}
       {activeAdminTab === 'dataImport' && canAccessDataImport && <DataImportCenterView />}
 
-      {/* Users Tab */}
+      {/* USERS & ROLE APPROVAL TAB */}
       {activeAdminTab === 'users' && canManageUsers && (
         <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+              <h3 className="font-bold text-base text-slate-900 flex flex-wrap items-center gap-2">
                 <span>
-                  {language === 'vi'
-                    ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${visibleUsers.length})`
-                    : `System Users & Role Permissions (${visibleUsers.length})`}
+                  {isVi
+                    ? `Danh Sách Nhân Sự & Phân Quyền Hệ Thống (${filteredUsers.length}/${visibleUsers.length})`
+                    : `System Users & Role Permissions (${filteredUsers.length}/${visibleUsers.length})`}
                 </span>
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
@@ -316,7 +445,7 @@ export const AdminManagementView: React.FC = () => {
                       : 'bg-slate-100 text-slate-600'
                   }`}
                 >
-                  {dataSourceMode === 'firestore' ? 'Firestore /userProfiles' : 'Demo Sandbox'}
+                  {dataSourceMode === 'firestore' ? 'Firestore /userProfiles' : 'Local / Express'}
                 </span>
               </h3>
             </div>
@@ -337,21 +466,71 @@ export const AdminManagementView: React.FC = () => {
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${syncingRoles ? 'animate-spin' : ''}`} />
                   <span>
-                    {language === 'vi'
-                      ? 'Khai Báo Vai Trò Lên Firestore'
-                      : 'Sync Roles to Firestore'}
+                    {isVi ? 'Khai Báo Vai Trò Lên Firestore' : 'Sync Roles to Firestore'}
                   </span>
                 </button>
               )}
-              {canManageUsers && (
+              <button
+                onClick={openAddModal}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{isVi ? 'Tạo tài khoản mới' : 'Add User'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder={
+                  isVi
+                    ? 'Tìm theo tên, email, chức vụ, khách sạn...'
+                    : 'Search by name, email, job title, property...'
+                }
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 bg-slate-50/60 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {pendingRoleRequestsCount > 0 && (
                 <button
-                  onClick={openAddModal}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+                  type="button"
+                  onClick={() =>
+                    setUserRoleFilter((prev) => (prev === 'pending_role' ? 'all' : 'pending_role'))
+                  }
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
+                    userRoleFilter === 'pending_role'
+                      ? 'bg-amber-500 text-slate-950 border-amber-500'
+                      : 'bg-amber-50 text-amber-900 border-amber-200 hover:bg-amber-100'
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>{language === 'vi' ? 'Tạo tài khoản mới' : 'Add User'}</span>
+                  {isVi
+                    ? `Chờ duyệt vai trò (${pendingRoleRequestsCount})`
+                    : `Role requests (${pendingRoleRequestsCount})`}
                 </button>
               )}
+
+              <select
+                value={userRoleFilter}
+                onChange={(e) => setUserRoleFilter(e.target.value as any)}
+                className="px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-white text-slate-700"
+              >
+                <option value="all">{isVi ? 'Tất cả vai trò' : 'All Roles'}</option>
+                <option value="pending_role">
+                  {isVi ? 'Đang đề xuất nâng vai trò' : 'Pending Role Upgrade'}
+                </option>
+                <option value="learner">{t.roles.learner}</option>
+                <option value="financial_controller">{t.roles.financial_controller}</option>
+                <option value="lnd_manager">{t.roles.lnd_manager}</option>
+                <option value="general_manager">{t.roles.general_manager}</option>
+                <option value="super_admin">{t.roles.super_admin}</option>
+              </select>
             </div>
           </div>
 
@@ -359,91 +538,118 @@ export const AdminManagementView: React.FC = () => {
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
                 <tr>
-                  <th className="py-2.5 px-3">{language === 'vi' ? 'Họ và tên' : 'Full Name'}</th>
-                  <th className="py-2.5 px-3">{language === 'vi' ? 'Vai trò hệ thống' : 'System Role'}</th>
-                  <th className="py-2.5 px-3">{language === 'vi' ? 'Chức vụ chuyên môn' : 'Job Title'}</th>
-                  <th className="py-2.5 px-3">{language === 'vi' ? 'Đơn vị công tác' : 'Property'}</th>
-                  <th className="py-2.5 px-3 text-center">{language === 'vi' ? 'Cấp độ' : 'Level'}</th>
-                  {canManageUsers && (
-                    <th className="py-2.5 px-3 text-right">{language === 'vi' ? 'Thao tác' : 'Actions'}</th>
-                  )}
+                  <th className="py-2.5 px-3">{isVi ? 'Họ và tên' : 'Full Name'}</th>
+                  <th className="py-2.5 px-3">{isVi ? 'Vai trò hệ thống' : 'System Role'}</th>
+                  <th className="py-2.5 px-3">{isVi ? 'Chức vụ chuyên môn' : 'Job Title'}</th>
+                  <th className="py-2.5 px-3">{isVi ? 'Đơn vị công tác' : 'Property'}</th>
+                  <th className="py-2.5 px-3 text-center">{isVi ? 'Cấp độ' : 'Level'}</th>
+                  <th className="py-2.5 px-3 text-right">{isVi ? 'Thao tác' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {visibleUsers.map((u) => {
-                  const isSignedInOwner = officialAuthUser?.id === u.id;
-                  const isProtectedAccount =
-                    isSignedInOwner ||
-                    currentUser.id === u.id ||
-                    (u.email || '').toLowerCase() === 'tranchanhtrung@gmail.com';
-                  return (
-                  <tr key={u.id} className="hover:bg-slate-50/80">
-                    <td className="py-3 px-3 font-bold text-slate-900 flex items-center gap-2.5">
-                      <img
-                        src={u.avatar}
-                        alt={u.name}
-                        className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200"
-                      />
-                      <div>
-                        <span className="inline-flex items-center gap-1.5">
-                          {u.name}
-                          {isSignedInOwner && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                              <ShieldCheck className="w-2.5 h-2.5" />
-                              You
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-400">
+                      {isVi
+                        ? 'Không tìm thấy nhân sự phù hợp bộ lọc.'
+                        : 'No matching users found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((u) => {
+                    const isSignedInOwner = officialAuthUser?.id === u.id;
+                    const isProtectedAccount =
+                      isSignedInOwner ||
+                      currentUser.id === u.id ||
+                      (u.email || '').toLowerCase() === 'tranchanhtrung@gmail.com';
+                    const hasRoleRequest = Boolean(u.requestedRole && u.requestedRole !== u.role);
+                    return (
+                      <tr key={u.id} className="hover:bg-slate-50/80">
+                        <td className="py-3 px-3 font-bold text-slate-900 flex items-center gap-2.5">
+                          <img
+                            src={u.avatar}
+                            alt={u.name}
+                            className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <span className="inline-flex items-center gap-1.5">
+                              {u.name}
+                              {isSignedInOwner && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                  <ShieldCheck className="w-2.5 h-2.5" />
+                                  You
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-normal truncate">
+                              {u.email}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                            {t.roles[u.role]}
+                          </span>
+                          {hasRoleRequest && u.requestedRole && (
+                            <span className="block mt-1 text-[10px] font-semibold text-amber-700">
+                              {isVi ? 'Đề xuất: ' : 'Requested: '}
+                              {t.roles[u.requestedRole]}
                             </span>
                           )}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block font-normal">{u.email}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {t.roles[u.role]}
-                      </span>
-                      {u.requestedRole && u.requestedRole !== u.role && (
-                        <span className="block mt-1 text-[10px] font-semibold text-amber-700">
-                          {language === 'vi' ? 'Đề xuất: ' : 'Requested: '}
-                          {t.roles[u.requestedRole]}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 font-medium text-slate-700">{u.position}</td>
-                    <td className="py-3 px-3 text-slate-500 truncate max-w-[200px]">{u.property}</td>
-                    <td className="py-3 px-3 text-center font-bold text-slate-900 font-mono">
-                      Level {u.currentLevel} / {u.targetLevel}
-                    </td>
-                    {canManageUsers && (
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => openEditModal(u)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer transition-colors"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            <span>{language === 'vi' ? 'Sửa' : 'Edit'}</span>
-                          </button>
-                          {!isProtectedAccount && (
+                        </td>
+                        <td className="py-3 px-3 font-medium text-slate-700">{u.position}</td>
+                        <td className="py-3 px-3 text-slate-500 truncate max-w-[200px]">
+                          {u.property}
+                        </td>
+                        <td className="py-3 px-3 text-center font-bold text-slate-900 font-mono">
+                          Level {u.currentLevel} / {u.targetLevel}
+                        </td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            {hasRoleRequest && (
+                              <button
+                                type="button"
+                                disabled={approvingUserId === u.id}
+                                onClick={() => void handleQuickApproveRole(u)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer transition-colors disabled:opacity-50"
+                                title={
+                                  isVi
+                                    ? 'Chấp thuận nâng vai trò theo đề xuất của người dùng'
+                                    : 'Approve requested role upgrade'
+                                }
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>{isVi ? 'Duyệt vai trò' : 'Approve Role'}</span>
+                              </button>
+                            )}
                             <button
-                              type="button"
-                              onClick={() => setPendingDisableUser(u)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 font-bold text-[11px] cursor-pointer transition-colors"
-                              title={
-                                language === 'vi'
-                                  ? 'Chuyển tài khoản sang trạng thái vô hiệu hóa (Disabled) và ẩn khỏi danh sách'
-                                  : 'Disable and hide this user account'
-                              }
+                              onClick={() => openEditModal(u)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] cursor-pointer transition-colors"
                             >
-                              <Trash2 className="w-3 h-3" />
-                              <span>{language === 'vi' ? 'Xoá' : 'Delete'}</span>
+                              <Edit2 className="w-3 h-3" />
+                              <span>{isVi ? 'Sửa' : 'Edit'}</span>
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                  );
-                })}
+                            {!isProtectedAccount && (
+                              <button
+                                type="button"
+                                onClick={() => setPendingDisableUser(u)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 font-bold text-[11px] cursor-pointer transition-colors"
+                                title={
+                                  isVi
+                                    ? 'Chuyển tài khoản sang trạng thái vô hiệu hóa (Disabled) và ẩn khỏi danh sách'
+                                    : 'Disable and hide this user account'
+                                }
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>{isVi ? 'Xoá' : 'Delete'}</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -454,24 +660,31 @@ export const AdminManagementView: React.FC = () => {
       {activeAdminTab === 'properties' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {PROPERTIES_META.map((p, idx) => {
-            const learnerCount = users.filter(
+            const learnerCount = visibleUsers.filter(
               (u) => u.role === 'learner' && u.property === p.name
             ).length;
             return (
-              <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+              <div
+                key={idx}
+                className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3"
+              >
                 <div className="flex items-center justify-between">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
                     {p.brand}
                   </span>
                   <span className="text-xs font-bold text-slate-600">
-                    {learnerCount} {language === 'vi' ? 'học viên' : 'learners'}
+                    {learnerCount} {isVi ? 'học viên' : 'learners'}
                   </span>
                 </div>
                 <h4 className="font-extrabold text-sm text-slate-900">{p.name}</h4>
-                <p className="text-xs text-slate-500">{language === 'vi' ? p.keysVi : p.keysEn}</p>
+                <p className="text-xs text-slate-500">{isVi ? p.keysVi : p.keysEn}</p>
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                  <span>GM: <strong>{p.gm}</strong></span>
-                  <span>FC: <strong>{p.fc}</strong></span>
+                  <span>
+                    GM: <strong>{p.gm}</strong>
+                  </span>
+                  <span>
+                    FC: <strong>{p.fc}</strong>
+                  </span>
                 </div>
               </div>
             );
@@ -482,12 +695,11 @@ export const AdminManagementView: React.FC = () => {
       {/* Architecture & Audit Logs Tab */}
       {activeAdminTab === 'system' && (
         <div className="space-y-6">
-          {/* Architecture Status Box */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
             <div className="flex items-center gap-2 text-slate-900 font-bold text-sm">
               <Database className="w-4 h-4 text-emerald-600" />
               <span>
-                {language === 'vi'
+                {isVi
                   ? 'Kiến Trúc Kỹ Thuật & Cấu Hình Dịch Vụ Đám Mây'
                   : 'Technical Architecture & Cloud Service Status'}
               </span>
@@ -495,44 +707,56 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                <span className="text-[11px] text-emerald-700 font-bold block uppercase">AI Model Server</span>
+                <span className="text-[11px] text-emerald-700 font-bold block uppercase">
+                  AI Model Server
+                </span>
                 <p className="font-bold text-slate-900 mt-1">Google Gemini AI</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Server-Side Curriculum Proxy (/api/gemini/*)</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Server-Side Curriculum Proxy (/api/gemini/*)
+                </p>
               </div>
 
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
-                <span className="text-[10px] text-blue-700 font-bold block uppercase">Data & Storage Engine</span>
+                <span className="text-[10px] text-blue-700 font-bold block uppercase">
+                  Data & Auth Cloud Engine
+                </span>
                 <p className="font-bold text-slate-900 mt-1">
-                  {systemConfig.databaseDriver === 'postgresql'
+                  {dataSourceMode === 'firestore'
+                    ? 'Firebase Auth + Firestore Live'
+                    : systemConfig.databaseDriver === 'postgresql'
                     ? 'PostgreSQL Production'
-                    : dataSourceMode === 'firestore'
-                    ? 'Firebase Firestore Live'
-                    : 'Express REST Persistence'}
+                    : 'Express Serverless + Firestore'}
                 </p>
                 <p className="text-[10px] text-slate-500 mt-0.5">
-                  Storage: {systemConfig.storageDriver === 'cloudflare_r2' ? 'Cloudflare R2 (0đ Egress)' : 'Direct Server Storage (/api/storage)'}
+                  Storage:{' '}
+                  {systemConfig.storageDriver === 'cloudflare_r2'
+                    ? 'Cloudflare R2 (0đ Egress)'
+                    : 'Firebase / Direct Storage'}
                 </p>
               </div>
 
               <div className="p-3 bg-purple-50 rounded-xl border border-purple-200">
-                <span className="text-[10px] text-purple-700 font-bold block uppercase">Security & RBAC</span>
+                <span className="text-[10px] text-purple-700 font-bold block uppercase">
+                  Security & RBAC
+                </span>
                 <p className="font-bold text-slate-900 mt-1">Role-Based Access Control</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">5 Granular Roles & Live Server Audit Trail</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  5 Granular Roles & Live Server Audit Trail
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Audit Trail */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
             <h4 className="font-bold text-xs uppercase tracking-wider text-slate-500">
-              {language === 'vi'
+              {isVi
                 ? `Nhật Ký Kiểm Toán Vận Hành (${auditLogs.length})`
                 : `Operational Audit Logs (${auditLogs.length})`}
             </h4>
             <div className="space-y-2 text-xs max-h-[420px] overflow-y-auto pr-1">
               {auditLogs.length === 0 ? (
                 <p className="text-slate-400 italic py-4 text-center">
-                  {language === 'vi' ? 'Chưa có nhật ký kiểm toán nào.' : 'No audit log entries recorded.'}
+                  {isVi ? 'Chưa có nhật ký kiểm toán nào.' : 'No audit log entries recorded.'}
                 </p>
               ) : (
                 auditLogs.map((log) => (
@@ -579,8 +803,12 @@ export const AdminManagementView: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-bold text-base text-slate-900">
                 {editingUserId
-                  ? language === 'vi' ? 'Cập Nhật Tài Khoản Nhân Sự' : 'Edit User Account'
-                  : language === 'vi' ? 'Tạo Tài Khoản Nhân Sự Mới' : 'Create New User Account'}
+                  ? isVi
+                    ? 'Cập Nhật Tài Khoản Nhân Sự'
+                    : 'Edit User Account'
+                  : isVi
+                  ? 'Tạo Tài Khoản Nhân Sự Mới'
+                  : 'Create New User Account'}
               </h3>
               <button
                 type="button"
@@ -594,7 +822,7 @@ export const AdminManagementView: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  {language === 'vi' ? 'Họ và tên' : 'Full Name'}
+                  {isVi ? 'Họ và tên' : 'Full Name'}
                 </label>
                 <input
                   type="text"
@@ -619,7 +847,7 @@ export const AdminManagementView: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  {language === 'vi' ? 'Vai trò (RBAC Role)' : 'System Role (RBAC)'}
+                  {isVi ? 'Vai trò (RBAC Role)' : 'System Role (RBAC)'}
                 </label>
                 <select
                   value={userForm.role}
@@ -635,7 +863,7 @@ export const AdminManagementView: React.FC = () => {
               </div>
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  {language === 'vi' ? 'Chức vụ chuyên môn' : 'Job Title'}
+                  {isVi ? 'Chức vụ chuyên môn' : 'Job Title'}
                 </label>
                 <input
                   type="text"
@@ -648,7 +876,7 @@ export const AdminManagementView: React.FC = () => {
 
             <div>
               <label className="font-bold text-slate-700 block mb-1">
-                {language === 'vi' ? 'Khách sạn / Đơn vị' : 'Hotel / Property'}
+                {isVi ? 'Khách sạn / Đơn vị' : 'Hotel / Property'}
               </label>
               <select
                 value={userForm.property}
@@ -656,42 +884,56 @@ export const AdminManagementView: React.FC = () => {
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
               >
                 {PROPERTIES_META.map((p) => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
+                  <option key={p.name} value={p.name}>
+                    {p.name}
+                  </option>
                 ))}
-                <option value="Cluster Corporate Finance Office">Cluster Corporate Finance Office</option>
+                <option value="Cluster Corporate Finance Office">
+                  Cluster Corporate Finance Office
+                </option>
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  {language === 'vi' ? 'Cấp độ hiện tại' : 'Current Level'}
+                  {isVi ? 'Cấp độ hiện tại' : 'Current Level'}
                 </label>
                 <select
                   value={userForm.currentLevel}
                   onChange={(e) =>
-                    setUserForm({ ...userForm, currentLevel: Number(e.target.value) as ProficiencyLevel })
+                    setUserForm({
+                      ...userForm,
+                      currentLevel: Number(e.target.value) as ProficiencyLevel,
+                    })
                   }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                 >
                   {[1, 2, 3, 4].map((l) => (
-                    <option key={l} value={l}>Level {l}</option>
+                    <option key={l} value={l}>
+                      Level {l}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
-                  {language === 'vi' ? 'Cấp độ mục tiêu' : 'Target Level'}
+                  {isVi ? 'Cấp độ mục tiêu' : 'Target Level'}
                 </label>
                 <select
                   value={userForm.targetLevel}
                   onChange={(e) =>
-                    setUserForm({ ...userForm, targetLevel: Number(e.target.value) as ProficiencyLevel })
+                    setUserForm({
+                      ...userForm,
+                      targetLevel: Number(e.target.value) as ProficiencyLevel,
+                    })
                   }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
                 >
                   {[1, 2, 3, 4].map((l) => (
-                    <option key={l} value={l}>Level {l}</option>
+                    <option key={l} value={l}>
+                      Level {l}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -734,10 +976,12 @@ export const AdminManagementView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-sm text-slate-900">
-                    {language === 'vi' ? 'Xác Nhận Xoá (Vô Hiệu Hóa) Tài Khoản' : 'Confirm Disable User Account'}
+                    {isVi
+                      ? 'Xác Nhận Xoá (Vô Hiệu Hóa) Tài Khoản'
+                      : 'Confirm Disable User Account'}
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    {language === 'vi'
+                    {isVi
                       ? 'Chuyển trạng thái sang Disabled và ẩn khỏi hệ thống'
                       : 'Set account status to disabled and hide from directory'}
                   </p>
@@ -770,23 +1014,21 @@ export const AdminManagementView: React.FC = () => {
 
             <div className="p-3 rounded-xl bg-rose-50/80 border border-rose-200 text-rose-900 space-y-1 leading-relaxed">
               <p className="font-bold">
-                {language === 'vi'
-                  ? 'Thao tác này sẽ thực hiện:'
-                  : 'This action will:'}
+                {isVi ? 'Thao tác này sẽ thực hiện:' : 'This action will:'}
               </p>
               <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-rose-800">
                 <li>
-                  {language === 'vi'
+                  {isVi
                     ? 'Chuyển trạng thái tài khoản sang Disabled (vô hiệu hóa) và thu hồi quyền đăng nhập.'
                     : 'Set account status to Disabled and revoke sign-in access.'}
                 </li>
                 <li>
-                  {language === 'vi'
+                  {isVi
                     ? 'Ẩn hoàn toàn khỏi danh sách nhân sự và menu chuyển đổi vai trò.'
                     : 'Hide the user completely from the staff directory and role menus.'}
                 </li>
                 <li>
-                  {language === 'vi'
+                  {isVi
                     ? 'Bảo toàn lịch sử đào tạo, kết quả đánh giá và nhật ký kiểm toán.'
                     : 'Preserve historical training, assessment, and audit trail records.'}
                 </li>
@@ -821,10 +1063,10 @@ export const AdminManagementView: React.FC = () => {
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>
                   {disablingUser
-                    ? language === 'vi'
+                    ? isVi
                       ? 'Đang xử lý...'
                       : 'Disabling...'
-                    : language === 'vi'
+                    : isVi
                     ? 'Xác Nhận Xoá'
                     : 'Confirm Disable'}
                 </span>
@@ -836,4 +1078,3 @@ export const AdminManagementView: React.FC = () => {
     </div>
   );
 };
-
